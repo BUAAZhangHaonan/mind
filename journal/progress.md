@@ -49,3 +49,5 @@
 - Added `scripts/cache_reference_states.py`, `scripts/compute_drift.py`, and `scripts/run_experiment.py` to complete the planned script surface for experiment management.
 - Added a synthetic integration test that runs the full reference-bank to detector pipeline and writes plot artifacts.
 - Verified unit and integration coverage with `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`.
+- Updated the top-level README to match the repository's real environment path, script surface, and current execution blocker.
+- Added `docs/paper_outline.md` for the paper skeleton and experiment narrative.
