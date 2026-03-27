@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoProcessor
+from PIL import Image
+from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
 
 from mind.config import ModelConfig
 
@@ -36,6 +37,27 @@ class BaseModelWrapper:
         cleaned = text.replace("<think>", " ").replace("</think>", " ").strip()
         return parse_yes_no_answer(cleaned)
 
+    def _move_batch_to_device(self, batch: Any, device: str) -> Any:
+        if hasattr(batch, "to"):
+            return batch.to(device)
+        return batch
+
+    def decode_generation(
+        self,
+        processor: Any,
+        *,
+        generated_ids: Any,
+        prompt_input_ids: Any,
+    ) -> str:
+        prompt_length = int(prompt_input_ids.shape[-1])
+        continuation = generated_ids[:, prompt_length:]
+        decoded = processor.batch_decode(
+            continuation.tolist(),
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        )
+        return str(decoded[0]).strip()
+
     def load_processor(self):
         return AutoProcessor.from_pretrained(
             self.config.model_id,
@@ -53,6 +75,24 @@ class LoadedModelBundle:
 
 
 class QwenWrapper(BaseModelWrapper):
+    def prepare_inputs(
+        self,
+        processor: Any,
+        *,
+        question: str,
+        image_path: str | None,
+        device: str,
+    ) -> Any:
+        del image_path
+        messages = [{"role": "user", "content": [{"type": "text", "text": question}]}]
+        prompt = processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        batch = processor(text=[prompt], return_tensors="pt")
+        return self._move_batch_to_device(batch, device)
+
     def load_bundle(
         self,
         *,
@@ -72,6 +112,26 @@ class QwenWrapper(BaseModelWrapper):
 
 
 class QwenVLWrapper(QwenWrapper):
+    def prepare_inputs(
+        self,
+        processor: Any,
+        *,
+        question: str,
+        image_path: str | None,
+        device: str,
+    ) -> Any:
+        messages = self.build_messages(question=question, image_path=image_path)
+        prompt = processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        if image_path is None:
+            raise ValueError("QwenVLWrapper requires an image path.")
+        image = Image.open(image_path).convert("RGB")
+        batch = processor(text=[prompt], images=[image], return_tensors="pt")
+        return self._move_batch_to_device(batch, device)
+
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         if image_path is None:
             raise ValueError("QwenVLWrapper requires an image path.")
@@ -94,6 +154,29 @@ class QwenVLWrapper(QwenWrapper):
 
 
 class QwenTextWrapper(QwenWrapper):
+    def load_processor(self):
+        return AutoTokenizer.from_pretrained(
+            self.config.model_id,
+            trust_remote_code=self.config.trust_remote_code,
+        )
+
+    def load_bundle(
+        self,
+        *,
+        model_factory: Any = AutoModelForCausalLM,
+        processor_factory: Any = AutoTokenizer,
+        device: str = "cuda",
+    ) -> LoadedModelBundle:
+        processor = processor_factory.from_pretrained(
+            self.config.model_id,
+            trust_remote_code=self.config.trust_remote_code,
+        )
+        model = model_factory.from_pretrained(
+            self.config.model_id,
+            **self.model_load_kwargs(device=device),
+        )
+        return LoadedModelBundle(processor=processor, model=model)
+
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         del image_path
         return [{"role": "user", "content": [{"type": "text", "text": question}]}]

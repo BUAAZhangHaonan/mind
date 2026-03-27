@@ -93,6 +93,43 @@ def test_build_cache_output_path_uses_expected_layout(tmp_path: Path) -> None:
     assert output_path == tmp_path / "qwen3-vl-8b" / "pope" / "popular" / "shard-00003.pt"
 
 
+def test_load_normalized_records_reads_jsonl_rows(tmp_path: Path) -> None:
+    source = tmp_path / "popular.jsonl"
+    source.write_text(
+        '{"sample_id":"popular-1","image_id":101,"image_path":"a.jpg","question":"Q?","label":1,"object_name":"dog","split":"val","subset":"popular","source_dataset":"pope"}\n',
+        encoding="utf-8",
+    )
+
+    records = extract_eval_states.load_normalized_records(source)
+
+    assert len(records) == 1
+    assert records[0].sample_id == "popular-1"
+    assert records[0].object_name == "dog"
+
+
+def test_iter_record_shards_preserves_order_and_size() -> None:
+    records = [
+        HallucinationRecord(
+            sample_id=f"sample-{index}",
+            image_id=index,
+            image_path=f"{index}.jpg",
+            question="Q?",
+            label=index % 2,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        )
+        for index in range(5)
+    ]
+
+    shards = list(extract_eval_states.iter_record_shards(records, shard_size=2))
+
+    assert [len(shard) for shard in shards] == [2, 2, 1]
+    assert shards[0][0].sample_id == "sample-0"
+    assert shards[2][0].sample_id == "sample-4"
+
+
 def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
     class FakeBatch(dict):
         def to(self, device: str):
