@@ -31,3 +31,8 @@
 - Added local PCA manifold fitting, grouped reference-bank construction, and normalized normal residual scoring.
 - Added `scripts/build_manifolds.py` with the canonical manifold artifact layout by model, object, and layer.
 - Verified the geometry module on synthetic in-manifold and off-manifold queries with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
+- Added drift-curve computation over selected layers using the local PCA manifold score at each layer.
+- Added Haar wavelet feature extraction over the drift curve, including raw drift values, approximation energy, detail energy, and peak location features.
+- Added a logistic regression detector with standardized features and a stable `liblinear` solver.
+- Added `scripts/train_detector.py` for canonical feature output layout handling.
+- Verified the full unit suite with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
