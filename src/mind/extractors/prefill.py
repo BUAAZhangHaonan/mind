@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import torch
 
 from mind.data import HallucinationRecord
+from mind.models import parse_yes_no_answer
 
 
 def select_middle_layers(*, total_layers: int, count: int) -> list[int]:
@@ -64,6 +65,49 @@ def build_prefill_cache_entry(
         }
     )
     return payload
+
+
+def extract_prefill_entry(
+    *,
+    model: Any,
+    processor: Any,
+    wrapper: Any,
+    record: HallucinationRecord,
+    selected_layers: Sequence[int],
+    device: str,
+    token_index: int = -1,
+    max_new_tokens: int = 4,
+) -> dict[str, object]:
+    model_inputs = wrapper.prepare_inputs(
+        processor,
+        question=record.question,
+        image_path=record.image_path,
+        device=device,
+    )
+    outputs = model(**model_inputs, output_hidden_states=True, return_dict=True)
+    layer_vectors = extract_prefill_vectors(
+        outputs.hidden_states,
+        selected_layers=selected_layers,
+        token_index=token_index,
+    )
+    generated_ids = model.generate(
+        **model_inputs,
+        max_new_tokens=max_new_tokens,
+        do_sample=False,
+    )
+    answer_text = wrapper.decode_generation(
+        processor,
+        generated_ids=generated_ids,
+        prompt_input_ids=model_inputs["input_ids"],
+    )
+    return build_prefill_cache_entry(
+        record=record,
+        answer_text=answer_text,
+        parsed_answer=parse_yes_no_answer(answer_text),
+        selected_layers=selected_layers,
+        layer_vectors=layer_vectors,
+        first_token_logits=outputs.logits[0, token_index, :],
+    )
 
 
 def save_prefill_cache_shard(entries: Sequence[dict[str, object]], output_path: str | Path) -> None:

@@ -2,6 +2,7 @@
 
 from .prefill import (
     build_prefill_cache_entry,
+    extract_prefill_entry,
     extract_prefill_vectors,
     save_prefill_cache_shard,
     select_middle_layers,
@@ -9,6 +10,7 @@ from .prefill import (
 
 __all__ = [
     "build_prefill_cache_entry",
+    "extract_prefill_entry",
     "extract_prefill_vectors",
     "save_prefill_cache_shard",
     "select_middle_layers",
