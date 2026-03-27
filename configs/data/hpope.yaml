@@ -1,0 +1,10 @@
+name: hpope
+root: data/hpope
+splits:
+  - object
+  - attribute
+prompt_template: |
+  Answer yes or no based only on the image.
+  Question: {question}
+public_source: https://arxiv.org/abs/2411.04077
+availability: optional_public_assets
