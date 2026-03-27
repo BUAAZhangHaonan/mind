@@ -1,0 +1,6 @@
+name: qwen3.5-4b
+model_id: Qwen/Qwen3.5-4B
+family: qwen
+dtype: float16
+attn_implementation: sdpa
+trust_remote_code: true
