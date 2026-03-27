@@ -36,6 +36,13 @@
 - Added a logistic regression detector with standardized features and a stable `liblinear` solver.
 - Added `scripts/train_detector.py` for canonical feature output layout handling.
 - Verified the full unit suite with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
+- Expanded the evaluation pipeline to write both metrics JSON and flat CSV reports, with optional label overrides for RePOPE-style relabeling.
+- Added experiment configs for smoke, medium, main, and ablation runs under `configs/experiments/`.
+- Added plotting helpers for drift curves, wavelet heatmaps, ROC curves, and ablation bar charts, plus `scripts/plot_results.py`.
+- Verified the reporting and visualization layers with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
 - Added binary metric computation, subset-level evaluation, and JSON report writing utilities.
 - Added `scripts/evaluate.py` with the canonical report layout for metrics and row-level results.
 - Verified the evaluation layer and full unit suite with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
+- Added ablation summary helpers and plotting utilities for drift curves, wavelet heatmaps, ROC curves, and ablation bars.
+- Added `scripts/plot_results.py` with the canonical plot artifact layout.
+- Verified visualization coverage and the full unit suite with `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit`.
