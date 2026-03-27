@@ -53,3 +53,9 @@ def write_metrics_report(payload: dict[str, dict[str, float]], output_path: str 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_results_table(frame: pd.DataFrame, output_path: str | Path) -> None:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False)
