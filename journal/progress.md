@@ -28,3 +28,6 @@
 - Added `scripts/extract_eval_states.py` with the canonical cache shard layout for evaluation runs.
 - Expanded the wrapper contract to include standardized yes-no parsing and model bundle loading so later extraction code can call one shared interface.
 - Verified extraction and wrapper coverage with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
+- Added local PCA manifold fitting, grouped reference-bank construction, and normalized normal residual scoring.
+- Added `scripts/build_manifolds.py` with the canonical manifold artifact layout by model, object, and layer.
+- Verified the geometry module on synthetic in-manifold and off-manifold queries with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
