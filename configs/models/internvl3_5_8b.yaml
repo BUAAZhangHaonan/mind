@@ -1,0 +1,6 @@
+name: internvl3.5-8b
+model_id: OpenGVLab/InternVL3_5-8B-HF
+family: internvl
+dtype: bfloat16
+attn_implementation: sdpa
+trust_remote_code: true
