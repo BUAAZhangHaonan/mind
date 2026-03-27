@@ -1,0 +1,41 @@
+name: mind-py311
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip>=24.2
+  - git
+  - ca-certificates
+  - certifi
+  - openssl
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - torch==2.6.0
+      - torchvision==0.21.0
+      - torchaudio==2.6.0
+      - accelerate==1.6.0
+      - bitsandbytes==0.45.5
+      - datasets==3.5.0
+      - einops==0.8.1
+      - huggingface-hub==0.35.1
+      - joblib==1.4.2
+      - matplotlib==3.10.1
+      - numpy==2.2.4
+      - pandas==2.2.3
+      - pillow==11.1.0
+      - pyarrow==19.0.1
+      - pycocotools==2.0.8
+      - pydantic==2.11.2
+      - pytest==8.3.5
+      - pytest-cov==6.1.1
+      - PyWavelets==1.8.0
+      - pyyaml==6.0.2
+      - rich==14.0.0
+      - safetensors==0.5.3
+      - scikit-learn==1.6.1
+      - seaborn==0.13.2
+      - sentencepiece==0.2.0
+      - timm==1.0.19
+      - transformers==4.57.1
+      - tqdm==4.67.1
