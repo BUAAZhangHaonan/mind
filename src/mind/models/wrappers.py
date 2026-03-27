@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, Auto
 
 from mind.config import ModelConfig
 
-from .types import resolve_torch_dtype
+from .types import parse_yes_no_answer, resolve_torch_dtype
 
 
 @dataclass
@@ -32,6 +32,10 @@ class BaseModelWrapper:
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    def parse_yes_no_response(self, text: str) -> int | None:
+        cleaned = text.replace("<think>", " ").replace("</think>", " ").strip()
+        return parse_yes_no_answer(cleaned)
+
     def load_processor(self):
         return AutoProcessor.from_pretrained(
             self.config.model_id,
@@ -42,7 +46,32 @@ class BaseModelWrapper:
         raise NotImplementedError
 
 
-class QwenVLWrapper(BaseModelWrapper):
+@dataclass
+class LoadedModelBundle:
+    processor: Any
+    model: Any
+
+
+class QwenWrapper(BaseModelWrapper):
+    def load_bundle(
+        self,
+        *,
+        model_factory: Any = AutoModelForImageTextToText,
+        processor_factory: Any = AutoProcessor,
+        device: str = "cuda",
+    ) -> LoadedModelBundle:
+        processor = processor_factory.from_pretrained(
+            self.config.model_id,
+            trust_remote_code=self.config.trust_remote_code,
+        )
+        model = model_factory.from_pretrained(
+            self.config.model_id,
+            **self.model_load_kwargs(device=device),
+        )
+        return LoadedModelBundle(processor=processor, model=model)
+
+
+class QwenVLWrapper(QwenWrapper):
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         if image_path is None:
             raise ValueError("QwenVLWrapper requires an image path.")
@@ -64,7 +93,7 @@ class QwenVLWrapper(BaseModelWrapper):
         )
 
 
-class QwenTextWrapper(BaseModelWrapper):
+class QwenTextWrapper(QwenWrapper):
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         del image_path
         return [{"role": "user", "content": [{"type": "text", "text": question}]}]
