@@ -24,3 +24,7 @@
 - Verified the expanded unit suite with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
 - Notes:
   - The only stable local conda prefix found during execution was `/tmp/mind-py311`, so active verification now uses that interpreter path.
+- Added prefill extraction helpers for middle-layer selection, last-token slicing, and torch shard caching.
+- Added `scripts/extract_eval_states.py` with the canonical cache shard layout for evaluation runs.
+- Expanded the wrapper contract to include standardized yes-no parsing and model bundle loading so later extraction code can call one shared interface.
+- Verified extraction and wrapper coverage with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
