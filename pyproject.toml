@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mind"
+version = "0.1.0"
+description = "MIND: multi-scale internal drift detection for multimodal hallucination."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "MIND Contributors" }]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
