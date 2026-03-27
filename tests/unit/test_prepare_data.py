@@ -58,3 +58,41 @@ def test_prepare_data_normalize_pope_writes_canonical_jsonl(tmp_path: Path) -> N
             "source_dataset": "pope",
         }
     ]
+
+
+def test_prepare_data_normalize_pope_allows_source_dataset_override(tmp_path: Path) -> None:
+    source_path = tmp_path / "popular.jsonl"
+    output_path = tmp_path / "normalized.jsonl"
+    source_rows = [
+        {
+            "sample_id": "popular-1",
+            "image": "COCO_val2014_000000000101.jpg",
+            "text": "Is there a dog in the image?",
+            "label": "yes",
+            "object": "dog",
+        }
+    ]
+    source_path.write_text(
+        "\n".join(json.dumps(row) for row in source_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = prepare_data.main(
+        [
+            "normalize-pope",
+            "--source",
+            str(source_path),
+            "--output",
+            str(output_path),
+            "--subset",
+            "popular",
+            "--split",
+            "val",
+            "--source-dataset",
+            "repope",
+        ]
+    )
+
+    written = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    assert exit_code == 0
+    assert written[0]["source_dataset"] == "repope"

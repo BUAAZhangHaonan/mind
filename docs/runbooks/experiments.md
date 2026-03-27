@@ -1,44 +1,60 @@
 # Experiment Runbook
 
-This runbook follows the current staged plan for MIND on the available machine.
+This runbook matches the repo state that has actually been verified in this session.
 
-## Stage 1: Environment Check
+## 1. Environment
 
 ```bash
 make env
 make verify-env
+make verify-model MODEL_ID=Qwen/Qwen3-VL-8B-Instruct
+make verify-model MODEL_ID=OpenGVLab/InternVL3_5-8B-HF
 make test
 ```
 
-Expected result:
+Verified result in this session:
 
-- imports succeed
-- 4 GPUs are visible
-- the unit suite passes
+- `scripts/verify_env.py` saw all 4 RTX 3090 GPUs
+- Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
+- the full unit and integration suite passed
 
-## Stage 2: Prepare Benchmarks
+## 2. Normalize POPE and RePOPE
 
-Normalize each POPE subset into a canonical JSONL file.
+POPE:
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/prepare_data.py \
-  normalize-pope \
-  --source data/pope/popular.jsonl \
-  --output outputs/normalized/pope/popular.jsonl \
-  --subset popular \
-  --split val
+for subset in random popular adversarial; do
+  /tmp/mind-py311/bin/python scripts/prepare_data.py \
+    normalize-pope \
+    --source data/pope/${subset}.jsonl \
+    --output outputs/normalized/pope/${subset}.jsonl \
+    --subset ${subset} \
+    --split val
+done
 ```
 
-For RePOPE, keep the raw override file and apply it at evaluation time through `scripts/evaluate.py --label-overrides ...`.
-
-For H-POPE, only continue if the benchmark assets are publicly available in `data/hpope`.
-
-## Stage 3: Reference Candidates
-
-Build reference image candidates from MSCOCO train annotations.
+RePOPE:
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/prepare_data.py \
+for subset in random popular adversarial; do
+  /tmp/mind-py311/bin/python scripts/prepare_data.py \
+    normalize-pope \
+    --source data/repope/${subset}.jsonl \
+    --output outputs/normalized/repope/${subset}.jsonl \
+    --subset ${subset} \
+    --split val \
+    --source-dataset repope
+done
+```
+
+These normalized files already exist locally.
+
+## 3. Build Reference Candidates
+
+This step needs MSCOCO train annotations.
+
+```bash
+/tmp/mind-py311/bin/python scripts/prepare_data.py \
   build-reference \
   --instances-json data/coco/annotations/instances_train2017.json \
   --output outputs/reference_candidates/coco_train_candidates.json \
@@ -46,110 +62,130 @@ Build reference image candidates from MSCOCO train annotations.
   --allowed-object bus
 ```
 
-This step only builds the candidate list. The grounded subset still has to be filtered by model-correct samples once extraction runs.
+Notes:
 
-## Stage 4: Hidden-State Extraction
+- use only object names that appear in the target POPE subset
+- the current repo keeps reference candidates separate from evaluation records
+- the final grounded reference bank is built from cached hidden states, not directly from this JSON
 
-Run pre-generation extraction on normalized records.
+## 4. Plan Experiment Commands
+
+Preview the commands for a preset without running them:
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/extract_eval_states.py \
+/tmp/mind-py311/bin/python scripts/run_experiment.py \
+  --config configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml \
+  --stages prepare,cache_reference,extract_eval,build_manifolds,compute_drift,train_detector,evaluate,plot
+```
+
+Use `--execute` only after the required assets are in place.
+
+## 5. Manual Stage Commands
+
+### Reference cache
+
+```bash
+/tmp/mind-py311/bin/python scripts/cache_reference_states.py \
+  --references outputs/reference_candidates/coco_train_candidates.json \
+  --image-root data/coco/train2017 \
+  --model-config configs/models/qwen3_vl_8b.yaml \
+  --output-root outputs/cache \
+  --dataset-name pope-reference \
+  --split train \
+  --device cuda \
+  --selected-layers 16
+```
+
+### Evaluation cache
+
+```bash
+/tmp/mind-py311/bin/python scripts/extract_eval_states.py \
   --records outputs/normalized/pope/popular.jsonl \
   --model-config configs/models/qwen3_vl_8b.yaml \
   --output-root outputs/cache \
   --dataset-name pope \
   --split popular \
   --device cuda \
-  --selected-layers 16 \
-  --shard-size 64
+  --selected-layers 16
 ```
 
-Run this once for reference records and once for evaluation records.
-
-## Stage 5: Manifold Artifacts
-
-The current repo already fixes the output path convention.
+### Build manifolds
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/build_manifolds.py \
+/tmp/mind-py311/bin/python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/qwen3-vl-8b/pope-reference/train \
   --output-root outputs/reference_banks \
-  --model-name qwen3-vl-8b \
-  --object-name dog \
-  --layer-index 8
+  --model-name qwen3-vl-8b
 ```
 
-The actual manifold fit runs in Python through `mind.manifolds`.
+The reference cache input can be a single shard or a shard directory.
 
-## Stage 6: Detector Features
-
-The detector feature path is:
+### Compute drift and wavelet features
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/train_detector.py \
+/tmp/mind-py311/bin/python scripts/compute_drift.py \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
+  --reference-root outputs/reference_banks \
+  --model-name qwen3-vl-8b \
   --output-root outputs/features \
-  --experiment-name smoke-qwen3-vl \
+  --experiment-name medium-qwen3-vl-8b-popular \
   --split popular
 ```
 
-The actual feature content should include:
+The cache input can be a single shard or a shard directory.
 
-- raw drift values
-- approximation energy
-- detail energy by level
-- max drift
-- mean drift
-- peak layer index
-
-## Stage 7: Evaluation
-
-Evaluate raw predictions or feature-derived detector outputs.
+### Train detector
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/evaluate.py \
-  --input-path outputs/reports/raw/predictions.parquet \
+/tmp/mind-py311/bin/python scripts/train_detector.py \
+  --train-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
+  --eval-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --output-root outputs/reports \
-  --experiment-name smoke-qwen3-vl
+  --experiment-name medium-qwen3-vl-8b-popular
 ```
 
-For RePOPE relabeling:
+### Evaluate
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/evaluate.py \
-  --input-path outputs/reports/raw/predictions.parquet \
+/tmp/mind-py311/bin/python scripts/evaluate.py \
+  --input-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
   --output-root outputs/reports \
-  --experiment-name smoke-qwen3-vl-repope \
-  --label-overrides data/repope/relabels.jsonl
+  --experiment-name medium-qwen3-vl-8b-popular
 ```
 
-## Stage 8: Plotting
-
-Resolve the canonical output paths and write plots into `outputs/plots/<experiment>/`.
+### RePOPE relabel pass
 
 ```bash
-/home/d7049/miniconda3/envs/mind-py311/bin/python scripts/plot_results.py \
+/tmp/mind-py311/bin/python scripts/evaluate.py \
+  --input-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
+  --label-overrides outputs/normalized/repope/popular.jsonl \
+  --output-root outputs/reports \
+  --experiment-name medium-qwen3-vl-8b-popular-repope
+```
+
+### Plotting
+
+```bash
+/tmp/mind-py311/bin/python scripts/plot_results.py \
+  --features-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
+  --results-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
   --output-root outputs/plots \
-  --experiment-name smoke-qwen3-vl
+  --experiment-name medium-qwen3-vl-8b-popular
 ```
 
-The plot module currently supports:
+## 6. Intended Stage Order
 
-- drift curve comparison
-- wavelet heatmap
-- ROC curve
-- ablation bars
+1. Smoke: `configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml`
+2. Medium: `configs/experiments/medium/qwen3_vl_8b_pope_popular.yaml`
+3. Main: `configs/experiments/main/qwen3_vl_8b_pope_all.yaml`
+4. Ablations: `configs/experiments/ablations/qwen3_vl_8b_popular.yaml`
+5. RePOPE relabel evaluation on the same saved predictions
+6. InternVL cross-family comparison
+7. H-POPE only if the public files become available
 
-## Recommended Execution Order
+## 7. Current External Blockers
 
-1. Smoke run with `configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml`
-2. Medium run with `configs/experiments/medium/qwen3_vl_8b_pope_popular.yaml`
-3. Main POPE run with `configs/experiments/main/qwen3_vl_8b_pope_all.yaml`
-4. Ablations with `configs/experiments/ablations/qwen3_vl_8b_popular.yaml`
-5. RePOPE relabel evaluation on the same prediction table
-6. H-POPE only after the public assets are confirmed locally
-
-## Known Blocker
-
-Hugging Face access was unavailable during the current session. The repo is ready for model loading, but real end-to-end experiments require either:
-
-- restored access to `huggingface.co`
-- or `HF_ENDPOINT=https://hf-mirror.com` with the same model ids
+- `data/coco/annotations/instances_train2017.json` is not present locally
+- `data/coco/train2017/` images are not present locally
+- full model weight downloads were not completed in this session
+- H-POPE public assets were not found in a directly usable release package

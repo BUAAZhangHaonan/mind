@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Aggregate detector outputs into experiment reports."""
+"""Evaluate detector outputs and write experiment reports."""
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import pandas as pd
 
-from mind.evaluation import compute_binary_metrics, evaluate_by_subset, write_metrics_report, write_results_table
+from mind.evaluation import compute_binary_metrics, evaluate_by_subset, write_metrics_report
 
 
 def build_report_paths(*, output_root: Path, experiment_name: str) -> dict[str, Path]:
@@ -20,44 +19,35 @@ def build_report_paths(*, output_root: Path, experiment_name: str) -> dict[str, 
     }
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-path", type=Path, required=True)
-    parser.add_argument("--output-root", type=Path, required=True)
-    parser.add_argument("--experiment-name", required=True)
-    parser.add_argument("--label-overrides", type=Path, default=None)
-    return parser
-
-
-def load_results_frame(path: Path) -> pd.DataFrame:
-    if path.suffix == ".parquet":
-        return pd.read_parquet(path)
-    if path.suffix == ".csv":
-        return pd.read_csv(path)
-    raise ValueError(f"Unsupported results input format: {path.suffix}")
-
-
-def load_label_overrides(path: Path) -> pd.DataFrame:
-    if path.suffix == ".jsonl":
-        rows = [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        return pd.DataFrame(rows)
-    if path.suffix == ".csv":
-        return pd.read_csv(path)
-    raise ValueError(f"Unsupported label override format: {path.suffix}")
-
-
-def apply_label_overrides(frame: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFrame:
-    relabel_map = dict(zip(overrides["sample_id"], overrides["label"]))
-    relabeled = frame.copy()
-    relabeled["label"] = relabeled.apply(
-        lambda row: relabel_map.get(row["sample_id"], row["label"]),
-        axis=1,
+def apply_label_overrides(results: pd.DataFrame, overrides: Path | pd.DataFrame) -> pd.DataFrame:
+    if isinstance(overrides, pd.DataFrame):
+        override_frame = overrides
+    else:
+        override_frame = (
+            pd.read_parquet(overrides)
+            if overrides.suffix == ".parquet"
+            else pd.read_json(overrides, lines=True)
+        )
+    override_columns = [column for column in ["sample_id", "label"] if column in override_frame.columns]
+    if override_columns != ["sample_id", "label"]:
+        raise ValueError("Label override file must include sample_id and label columns.")
+    merged = results.drop(columns=["label"], errors="ignore").merge(
+        override_frame[["sample_id", "label"]],
+        on="sample_id",
+        how="left",
     )
-    return relabeled
+    merged["label"] = merged["label"].fillna(results["label"]).astype(int)
+    return merged
+
+
+def build_metrics(results: pd.DataFrame) -> dict[str, object]:
+    overall = compute_binary_metrics(
+        y_true=results["label"].tolist(),
+        y_pred=results["prediction"].tolist(),
+        y_score=results["score"].tolist(),
+    )
+    per_subset = evaluate_by_subset(results)
+    return {"overall": overall, "by_subset": per_subset}
 
 
 def run_evaluation(
@@ -65,39 +55,47 @@ def run_evaluation(
     input_path: Path,
     output_root: Path,
     experiment_name: str,
-    label_overrides_path: Path | None = None,
+    label_overrides: Path | pd.DataFrame | None = None,
 ) -> dict[str, Path]:
-    frame = load_results_frame(input_path)
-    if label_overrides_path is not None:
-        frame = apply_label_overrides(frame, load_label_overrides(label_overrides_path))
-
-    metrics_payload = {
-        "overall": compute_binary_metrics(
-            y_true=frame["label"],
-            y_pred=frame["prediction"],
-            y_score=frame["score"],
-        ),
-        "by_subset": evaluate_by_subset(frame),
-    }
-    output_paths = build_report_paths(
-        output_root=output_root,
-        experiment_name=experiment_name,
-    )
-    write_metrics_report(metrics_payload, output_paths["metrics"])
-    write_results_table(frame, output_paths["results"])
+    results = pd.read_parquet(input_path) if input_path.suffix == ".parquet" else pd.read_csv(input_path)
+    if label_overrides is not None:
+        results = apply_label_overrides(results, label_overrides)
+    metrics = build_metrics(results)
+    output_paths = build_report_paths(output_root=output_root, experiment_name=experiment_name)
+    output_paths["results"].parent.mkdir(parents=True, exist_ok=True)
+    results.to_csv(output_paths["results"], index=False)
+    write_metrics_report(metrics, output_paths["metrics"])
     return output_paths
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input-path", type=Path, default=None)
+    parser.add_argument("--label-overrides", type=Path, default=None)
+    parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument("--experiment-name", required=True)
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    paths = run_evaluation(
+    output_paths = build_report_paths(
+        output_root=args.output_root,
+        experiment_name=args.experiment_name,
+    )
+    if args.input_path is None:
+        for key, path in output_paths.items():
+            print(f"{key}={path}")
+        return 0
+
+    output_paths = run_evaluation(
         input_path=args.input_path,
         output_root=args.output_root,
         experiment_name=args.experiment_name,
-        label_overrides_path=args.label_overrides,
+        label_overrides=args.label_overrides,
     )
-    for path in paths.values():
-        print(path)
+    print(output_paths["metrics"])
+    print(output_paths["results"])
     return 0
 
 
