@@ -46,3 +46,6 @@
 - Added ablation summary helpers and plotting utilities for drift curves, wavelet heatmaps, ROC curves, and ablation bars.
 - Added `scripts/plot_results.py` with the canonical plot artifact layout.
 - Verified visualization coverage and the full unit suite with `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit`.
+- Added `scripts/cache_reference_states.py`, `scripts/compute_drift.py`, and `scripts/run_experiment.py` to complete the planned script surface for experiment management.
+- Added a synthetic integration test that runs the full reference-bank to detector pipeline and writes plot artifacts.
+- Verified unit and integration coverage with `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`.
