@@ -36,3 +36,6 @@
 - Added a logistic regression detector with standardized features and a stable `liblinear` solver.
 - Added `scripts/train_detector.py` for canonical feature output layout handling.
 - Verified the full unit suite with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.
+- Added binary metric computation, subset-level evaluation, and JSON report writing utilities.
+- Added `scripts/evaluate.py` with the canonical report layout for metrics and row-level results.
+- Verified the evaluation layer and full unit suite with `/tmp/mind-py311/bin/python -m pytest -q tests/unit`.

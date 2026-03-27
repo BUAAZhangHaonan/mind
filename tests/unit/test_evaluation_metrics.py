@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+
+import pandas as pd
+
+from mind.evaluation import compute_binary_metrics, evaluate_by_subset, write_metrics_report
+
+
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "evaluate.py"
+SPEC = importlib.util.spec_from_file_location("evaluate", SCRIPT_PATH)
+evaluate = importlib.util.module_from_spec(SPEC)
+assert SPEC is not None and SPEC.loader is not None
+SPEC.loader.exec_module(evaluate)
+
+
+def test_compute_binary_metrics_returns_expected_keys() -> None:
+    metrics = compute_binary_metrics(
+        y_true=[0, 0, 1, 1],
+        y_pred=[0, 0, 1, 1],
+        y_score=[0.1, 0.2, 0.8, 0.9],
+    )
+
+    assert metrics["accuracy"] == 1.0
+    assert metrics["f1"] == 1.0
+    assert metrics["roc_auc"] == 1.0
+    assert metrics["false_positive_rate"] == 0.0
+
+
+def test_evaluate_by_subset_computes_metrics_per_subset() -> None:
+    frame = pd.DataFrame(
+        [
+            {"subset": "popular", "label": 0, "prediction": 0, "score": 0.1},
+            {"subset": "popular", "label": 1, "prediction": 1, "score": 0.9},
+            {"subset": "adversarial", "label": 0, "prediction": 0, "score": 0.2},
+            {"subset": "adversarial", "label": 1, "prediction": 1, "score": 0.8},
+        ]
+    )
+
+    metrics = evaluate_by_subset(frame)
+
+    assert sorted(metrics) == ["adversarial", "popular"]
+    assert metrics["popular"]["accuracy"] == 1.0
+
+
+def test_write_metrics_report_writes_json_payload(tmp_path: Path) -> None:
+    output_path = tmp_path / "metrics.json"
+    payload = {"popular": {"accuracy": 1.0}}
+
+    write_metrics_report(payload, output_path)
+
+    restored = json.loads(output_path.read_text(encoding="utf-8"))
+    assert restored == payload
+
+
+def test_build_report_paths_returns_metrics_and_results_paths(tmp_path: Path) -> None:
+    paths = evaluate.build_report_paths(output_root=tmp_path, experiment_name="smoke-qwen3-vl")
+
+    assert paths["metrics"] == tmp_path / "smoke-qwen3-vl" / "metrics.json"
+    assert paths["results"] == tmp_path / "smoke-qwen3-vl" / "results.csv"
