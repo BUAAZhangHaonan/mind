@@ -4,7 +4,12 @@
 
 - Bootstrapped the repository skeleton in `/home/d7049/zhanghaonan/mind`.
 - Initialized local git on branch `feat/mind-bootstrap`.
-- Deferred environment setup, data integration, and experiments to later milestones.
+- Created the project environment at `/home/d7049/.conda/envs/mind-py311`.
+- Installed core dependencies including PyTorch 2.6.0 with CUDA 12.4 wheels, Transformers 4.57.1, Datasets 3.5.0, scikit-learn 1.6.1, and PyWavelets 1.8.0.
+- Verified imports and GPU visibility with `scripts/verify_env.py`.
+- Notes:
+  - `conda run` was unreliable on this machine, so the repository now uses the environment's Python interpreter directly in `Makefile`.
+  - The base `defaults` channel required a local ToS acceptance even though the project environment file uses `conda-forge`.
 - Added `environment.yml`, `requirements.txt`, and `env.example` for the `mind-py311` runtime.
 - Added `scripts/verify_env.py` for import, CUDA, and optional model-config checks.
 - Added Make targets for environment creation and verification.
