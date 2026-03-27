@@ -1,0 +1,10 @@
+name: repope
+root: data/repope
+splits:
+  - random
+  - popular
+  - adversarial
+prompt_template: |
+  Answer yes or no based only on the image.
+  Question: {question}
+public_source: https://github.com/xingruizuo/RePOPE

@@ -14,9 +14,9 @@ venv/
 env/
 .conda/
 
-outputs/
-artifacts/
-data/
+/outputs/
+/artifacts/
+/data/
 
 .env
 .env.local
