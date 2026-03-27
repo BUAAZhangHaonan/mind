@@ -1,0 +1,8 @@
+name: medium-qwen3-vl-8b-popular
+model_config: configs/models/qwen3_vl_8b.yaml
+dataset_config: configs/data/pope.yaml
+subset: popular
+split: val
+limit: 0
+selected_layers: 16
+detector: logistic

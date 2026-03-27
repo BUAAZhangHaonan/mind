@@ -60,3 +60,45 @@ def test_build_report_paths_returns_metrics_and_results_paths(tmp_path: Path) ->
 
     assert paths["metrics"] == tmp_path / "smoke-qwen3-vl" / "metrics.json"
     assert paths["results"] == tmp_path / "smoke-qwen3-vl" / "results.csv"
+
+
+def test_apply_label_overrides_relabels_matching_sample_ids() -> None:
+    frame = pd.DataFrame(
+        [
+            {"sample_id": "sample-1", "subset": "popular", "label": 0, "prediction": 1, "score": 0.9},
+            {"sample_id": "sample-2", "subset": "popular", "label": 1, "prediction": 1, "score": 0.8},
+        ]
+    )
+    overrides = pd.DataFrame([{"sample_id": "sample-1", "label": 1}])
+
+    relabeled = evaluate.apply_label_overrides(frame, overrides)
+
+    assert list(relabeled["label"]) == [1, 1]
+
+
+def test_run_evaluation_writes_metrics_and_results(tmp_path: Path) -> None:
+    input_path = tmp_path / "predictions.parquet"
+    frame = pd.DataFrame(
+        [
+            {"sample_id": "sample-1", "subset": "popular", "label": 0, "prediction": 0, "score": 0.1},
+            {"sample_id": "sample-2", "subset": "popular", "label": 1, "prediction": 1, "score": 0.9},
+            {"sample_id": "sample-3", "subset": "adversarial", "label": 0, "prediction": 0, "score": 0.2},
+            {"sample_id": "sample-4", "subset": "adversarial", "label": 1, "prediction": 1, "score": 0.8},
+        ]
+    )
+    frame.to_parquet(input_path, index=False)
+
+    outputs = evaluate.run_evaluation(
+        input_path=input_path,
+        output_root=tmp_path / "reports",
+        experiment_name="smoke-qwen3-vl",
+    )
+
+    metrics = json.loads(outputs["metrics"].read_text(encoding="utf-8"))
+    restored = pd.read_csv(outputs["results"])
+
+    assert outputs["metrics"].exists()
+    assert outputs["results"].exists()
+    assert metrics["overall"]["accuracy"] == 1.0
+    assert sorted(metrics["by_subset"]) == ["adversarial", "popular"]
+    assert list(restored["sample_id"]) == ["sample-1", "sample-2", "sample-3", "sample-4"]

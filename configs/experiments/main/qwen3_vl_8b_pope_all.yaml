@@ -1,0 +1,11 @@
+name: main-qwen3-vl-8b-pope
+model_config: configs/models/qwen3_vl_8b.yaml
+dataset_config: configs/data/pope.yaml
+subset:
+  - random
+  - popular
+  - adversarial
+split: val
+limit: 0
+selected_layers: 16
+detector: logistic
