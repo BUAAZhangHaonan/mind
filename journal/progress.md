@@ -51,3 +51,34 @@
 - Verified unit and integration coverage with `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`.
 - Updated the top-level README to match the repository's real environment path, script surface, and current execution blocker.
 - Added `docs/paper_outline.md` for the paper skeleton and experiment narrative.
+- Downloaded POPE question files directly from the public raw GitHub URLs into `data/pope/` after GitHub clone access was flaky on this machine.
+- Downloaded RePOPE relabel files directly from the public raw GitHub URLs into `data/repope/`.
+- Confirmed the current local row counts:
+  - POPE: `random=3000`, `popular=3000`, `adversarial=3000`
+  - RePOPE: `random=2774`, `popular=2727`, `adversarial=2684`
+- Normalized both benchmark sets into `outputs/normalized/pope/*.jsonl` and `outputs/normalized/repope/*.jsonl`.
+- Verified Hugging Face config and processor loading through the mirror endpoint with:
+  - `HF_ENDPOINT=https://hf-mirror.com /tmp/mind-py311/bin/python scripts/verify_env.py --model-id Qwen/Qwen3-VL-8B-Instruct`
+  - `HF_ENDPOINT=https://hf-mirror.com /tmp/mind-py311/bin/python scripts/verify_env.py --model-id OpenGVLab/InternVL3_5-8B-HF`
+- Fixed the script-level regression in `scripts/plot_results.py` so the canonical plot path helper matches the tested output layout.
+- Fixed `scripts/evaluate.py` so RePOPE label overrides work from both in-memory data frames and on-disk JSONL or parquet files.
+- Reworked `scripts/cache_reference_states.py` into a real reference-state extraction entry point:
+  - loads reference candidate JSON or JSONL
+  - expands grounded records by object category
+  - formats grounded yes-no prompts
+  - extracts and shards pre-generation states with the same layer-selection logic as evaluation extraction
+- Updated `scripts/build_manifolds.py` and `scripts/compute_drift.py` to accept either a single cache shard or a cache directory, which is necessary for realistic runs.
+- Replaced the placeholder `scripts/run_experiment.py` behavior with a real stage-command planner over the flat experiment YAML presets.
+- Updated `Makefile`, `README.md`, and `docs/runbooks/experiments.md` to match the commands and environment layout that actually work on this machine.
+- Verified the updated repo surface through the shipped commands:
+  - `make verify-env`
+  - `make test`
+  - `make plan-smoke`
+- Re-ran the full verified test command after the latest script changes:
+  - `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`
+  - result: `56 passed`
+- Remaining external blockers:
+  - `data/coco/annotations/instances_train2017.json` is still missing locally
+  - `data/coco/train2017/` is still missing locally
+  - H-POPE public benchmark files were not found in a directly usable package
+  - full model weight downloads for the planned experiment runs were not completed in this session

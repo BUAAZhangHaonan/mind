@@ -1,25 +1,36 @@
-CONDA_BASE := $(shell conda info --base)
-ENV_NAME := mind-py311
-ENV_PYTHON := $(CONDA_BASE)/envs/$(ENV_NAME)/bin/python
-CERT_BUNDLE := /etc/ssl/certs/ca-certificates.crt
+ENV_NAME ?= mind-py311
+ENV_PREFIX ?= /tmp/$(ENV_NAME)
+PYTHON ?= $(ENV_PREFIX)/bin/python
+CONDA ?= conda
+CERT_BUNDLE ?= /etc/ssl/certs/ca-certificates.crt
+HF_ENDPOINT ?= https://hf-mirror.com
+MODEL_ID ?= Qwen/Qwen3-VL-8B-Instruct
+SMOKE_CONFIG ?= configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml
 
-.PHONY: help env verify test smoke clean
+.PHONY: help env install verify-env verify-model test plan-smoke clean
 
 help:
-	@echo "Available targets: env verify test smoke clean"
+	@echo "Available targets: env install verify-env verify-model test plan-smoke clean"
 
 env:
-	conda create -n $(ENV_NAME) -c conda-forge --override-channels -y python=3.11 pip git ca-certificates certifi openssl
-	SSL_CERT_FILE=$(CERT_BUNDLE) REQUESTS_CA_BUNDLE=$(CERT_BUNDLE) PIP_CERT=$(CERT_BUNDLE) $(ENV_PYTHON) -m pip install -r requirements.txt
+	$(CONDA) create -p $(ENV_PREFIX) -c conda-forge --override-channels -y python=3.11 pip git ca-certificates certifi openssl
+	SSL_CERT_FILE=$(CERT_BUNDLE) REQUESTS_CA_BUNDLE=$(CERT_BUNDLE) PIP_CERT=$(CERT_BUNDLE) $(PYTHON) -m pip install -r requirements.txt
+	SSL_CERT_FILE=$(CERT_BUNDLE) REQUESTS_CA_BUNDLE=$(CERT_BUNDLE) PIP_CERT=$(CERT_BUNDLE) $(PYTHON) -m pip install -e .
 
-verify:
-	conda run --no-capture-output -n $(ENV_NAME) python scripts/verify_env.py
+install:
+	SSL_CERT_FILE=$(CERT_BUNDLE) REQUESTS_CA_BUNDLE=$(CERT_BUNDLE) PIP_CERT=$(CERT_BUNDLE) $(PYTHON) -m pip install -e .
+
+verify-env:
+	$(PYTHON) scripts/verify_env.py
+
+verify-model:
+	HF_ENDPOINT=$(HF_ENDPOINT) $(PYTHON) scripts/verify_env.py --model-id $(MODEL_ID)
 
 test:
-	conda run --no-capture-output -n $(ENV_NAME) pytest -q
+	PYTHONWARNINGS=ignore $(PYTHON) -m pytest -q tests/unit tests/integration
 
-smoke:
-	@echo "Smoke pipeline will be enabled after the pipeline milestones."
+plan-smoke:
+	$(PYTHON) scripts/run_experiment.py --config $(SMOKE_CONFIG) --stages all
 
 clean:
-	rm -rf .pytest_cache htmlcov
+	rm -rf .pytest_cache htmlcov src/*.egg-info

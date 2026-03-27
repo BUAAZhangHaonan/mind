@@ -21,6 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     normalize_pope.add_argument("--output", type=Path, required=True)
     normalize_pope.add_argument("--subset", required=True)
     normalize_pope.add_argument("--split", required=True)
+    normalize_pope.add_argument("--source-dataset", default="pope")
 
     reference = subparsers.add_parser("build-reference")
     reference.add_argument("--instances-json", type=Path, required=True)
@@ -40,7 +41,12 @@ def _write_jsonl(output_path: Path, rows: Sequence[dict[str, object]]) -> None:
 
 
 def _normalize_pope(args: argparse.Namespace) -> int:
-    records = load_pope_records(args.source, subset=args.subset, split=args.split)
+    records = load_pope_records(
+        args.source,
+        subset=args.subset,
+        split=args.split,
+        source_dataset=args.source_dataset,
+    )
     _write_jsonl(args.output, [asdict(record) for record in records])
     return 0
 
