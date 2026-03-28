@@ -5,6 +5,7 @@ from .prefill import (
     extract_prefill_entry,
     extract_prefill_vectors,
     save_prefill_cache_shard,
+    select_layer_range,
     select_middle_layers,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "extract_prefill_entry",
     "extract_prefill_vectors",
     "save_prefill_cache_shard",
+    "select_layer_range",
     "select_middle_layers",
 ]

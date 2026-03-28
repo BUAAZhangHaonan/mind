@@ -49,6 +49,7 @@ def load_experiment_spec(config_path: Path) -> dict[str, object]:
     payload.setdefault("limit", 0)
     payload.setdefault("detector", "logistic")
     payload.setdefault("device", "cuda")
+    payload.setdefault("layer_range", "middle")
     payload.setdefault("reference_dataset_name", "pope-reference")
     payload.setdefault("reference_split", "train")
     payload.setdefault("reference_candidates", "outputs/reference_candidates/coco_train_candidates.json")
@@ -92,6 +93,7 @@ def build_stage_commands(
     subset = str(experiment["subset"])
     split = str(experiment["split"])
     selected_layers = str(experiment["selected_layers"])
+    layer_range = str(experiment["layer_range"])
     limit = str(experiment["limit"])
     dataset_source = "repope" if dataset.name == "repope" else dataset.name
 
@@ -133,6 +135,8 @@ def build_stage_commands(
                 str(experiment["device"]),
                 "--selected-layers",
                 selected_layers,
+                "--layer-range",
+                layer_range,
             ]
             if int(limit) > 0:
                 command.extend(["--limit", limit])
@@ -168,6 +172,8 @@ def build_stage_commands(
                 str(experiment["device"]),
                 "--selected-layers",
                 selected_layers,
+                "--layer-range",
+                layer_range,
             ]
             if dataset.image_root:
                 command.extend(["--image-root", dataset.image_root])
