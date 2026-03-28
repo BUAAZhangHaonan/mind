@@ -148,10 +148,23 @@ Implemented and tested:
 - synthetic end-to-end integration coverage
 - experiment command planning
 
+Completed experiment checkpoints:
+
+- real smoke run with `Qwen/Qwen3-VL-4B-Instruct` on a `200`-sample POPE popular slice
+- smoke plots written under `outputs/plots/smoke-qwen3-vl-4b-popular/`
+- partial medium run recovered from the completed shards of a larger `Qwen/Qwen3-VL-8B-Instruct` popular run
+- partial medium metrics and ablation files written under `outputs/reports/medium-qwen3-vl-8b-popular-partial/`
+
 Current blockers:
 
-- full POPE and RePOPE model runs still need COCO train annotations and images for the grounded reference bank
-- full multimodal extraction still needs the actual model weights downloaded locally
+- the public data blockers were cleared in this session:
+  - COCO train annotations downloaded and extracted
+  - COCO `val2014` images downloaded and extracted
+  - COCO `train2017` images downloaded and extracted
+- the current hard blocker is machine-level CUDA health after a concurrent `Qwen/Qwen3-VL-8B-Instruct` run
+  - GPU1 entered an unknown-error state
+  - fresh PyTorch processes now report `torch.cuda.is_available() == False`
+  - a local driver reset is not possible from this session without privileged access
 - H-POPE remains blocked because the public benchmark package was not found
 
 See `docs/runbooks/experiments.md` for the staged run procedure, `journal/progress.md` for the command log, and `docs/paper_outline.md` for the writing scaffold.
