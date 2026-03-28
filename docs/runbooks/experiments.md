@@ -185,7 +185,8 @@ The cache input can be a single shard or a shard directory.
 
 ## 7. Current External Blockers
 
-- `data/coco/annotations/instances_train2017.json` is not present locally
-- `data/coco/train2017/` images are not present locally
-- full model weight downloads were not completed in this session
+- the public COCO assets are now present locally
+- `Qwen/Qwen3-VL-4B-Instruct`, `Qwen/Qwen3-VL-8B-Instruct`, and `OpenGVLab/InternVL3_5-8B-HF` config or processor checks were verified through `HF_ENDPOINT=https://hf-mirror.com`
+- the current blocker is a machine-level CUDA failure after a concurrent 8B extraction attempt
+  - the safe resume plan is to recover the NVIDIA driver or reboot the machine, then rerun the 8B stages sequentially
 - H-POPE public assets were not found in a directly usable release package
