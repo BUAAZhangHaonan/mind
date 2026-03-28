@@ -130,6 +130,38 @@ def test_iter_record_shards_preserves_order_and_size() -> None:
     assert shards[2][0].sample_id == "sample-4"
 
 
+def test_resolve_image_paths_joins_relative_paths_with_image_root(tmp_path: Path) -> None:
+    records = [
+        HallucinationRecord(
+            sample_id="sample-0",
+            image_id=0,
+            image_path="COCO_val2014_000000000000.jpg",
+            question="Q?",
+            label=0,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        ),
+        HallucinationRecord(
+            sample_id="sample-1",
+            image_id=1,
+            image_path=str(tmp_path / "already-absolute.jpg"),
+            question="Q?",
+            label=1,
+            object_name="cat",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        ),
+    ]
+
+    resolved = extract_eval_states.resolve_image_paths(records, image_root=tmp_path / "val2014")
+
+    assert resolved[0].image_path == str(tmp_path / "val2014" / "COCO_val2014_000000000000.jpg")
+    assert resolved[1].image_path == str(tmp_path / "already-absolute.jpg")
+
+
 def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
     class FakeBatch(dict):
         def to(self, device: str):

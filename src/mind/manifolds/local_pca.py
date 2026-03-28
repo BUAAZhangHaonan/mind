@@ -38,6 +38,9 @@ def fit_local_pca_manifold(
     if query_vector.ndim != 1:
         raise ValueError("query_vector must be rank 1")
 
+    reference_vectors = reference_vectors.to(dtype=torch.float32)
+    query_vector = query_vector.to(dtype=torch.float32)
+
     neighbor_indices = _topk_neighbor_indices(
         reference_vectors,
         query_vector,
@@ -64,6 +67,7 @@ def fit_local_pca_manifold(
 
 
 def normalized_normal_residual(query_vector: torch.Tensor, manifold: LocalPCAManifold) -> float:
+    query_vector = query_vector.to(dtype=torch.float32)
     centered = query_vector - manifold.mean
     projection = manifold.components.T @ (manifold.components @ centered)
     residual = centered - projection

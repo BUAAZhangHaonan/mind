@@ -27,7 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     reference.add_argument("--instances-json", type=Path, required=True)
     reference.add_argument("--output", type=Path, required=True)
     reference.add_argument("--allowed-object", action="append", dest="allowed_objects", default=[])
+    reference.add_argument("--allowed-objects-from", action="append", dest="allowed_objects_from", default=[])
     reference.add_argument("--exclude-image-ids", type=Path, default=None)
+    reference.add_argument("--max-images-per-object", type=int, default=0)
 
     return parser
 
@@ -61,12 +63,30 @@ def _load_excluded_image_ids(path: Path | None) -> set[int]:
     }
 
 
+def _load_allowed_objects(paths: Sequence[str], explicit_objects: Sequence[str]) -> set[str]:
+    allowed = {value.strip() for value in explicit_objects if value.strip()}
+    for raw_path in paths:
+        path = Path(raw_path)
+        rows = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        for row in rows:
+            object_name = str(row.get("object_name") or row.get("object") or "").strip()
+            if object_name:
+                allowed.add(object_name)
+    return allowed
+
+
 def _build_reference(args: argparse.Namespace) -> int:
     coco_instances = json.loads(args.instances_json.read_text(encoding="utf-8"))
+    allowed_objects = _load_allowed_objects(args.allowed_objects_from, args.allowed_objects)
     candidates = build_reference_candidates(
         coco_instances,
-        allowed_objects=set(args.allowed_objects),
+        allowed_objects=allowed_objects,
         exclude_image_ids=_load_excluded_image_ids(args.exclude_image_ids),
+        max_images_per_object=args.max_images_per_object,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

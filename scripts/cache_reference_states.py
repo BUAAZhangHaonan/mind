@@ -66,7 +66,7 @@ def build_reference_records(
                     image_id=image_id,
                     image_path=image_path,
                     question=prompt_template.format(object_name=object_name),
-                    label=0,
+                    label=1,
                     object_name=object_name,
                     split=split,
                     subset=subset,

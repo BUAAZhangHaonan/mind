@@ -96,3 +96,55 @@ def test_prepare_data_normalize_pope_allows_source_dataset_override(tmp_path: Pa
     written = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
     assert exit_code == 0
     assert written[0]["source_dataset"] == "repope"
+
+
+def test_prepare_data_build_reference_can_read_allowed_objects_from_normalized_records(tmp_path: Path) -> None:
+    instances_path = tmp_path / "instances.json"
+    allowed_objects_path = tmp_path / "normalized.jsonl"
+    output_path = tmp_path / "reference.json"
+
+    instances_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {"id": 1, "file_name": "000000000001.jpg"},
+                    {"id": 2, "file_name": "000000000002.jpg"},
+                ],
+                "categories": [
+                    {"id": 1, "name": "dog"},
+                    {"id": 2, "name": "bus"},
+                ],
+                "annotations": [
+                    {"id": 11, "image_id": 1, "category_id": 1},
+                    {"id": 12, "image_id": 2, "category_id": 2},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    allowed_objects_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"object_name": "dog"}),
+                json.dumps({"object_name": "dog"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = prepare_data.main(
+        [
+            "build-reference",
+            "--instances-json",
+            str(instances_path),
+            "--output",
+            str(output_path),
+            "--allowed-objects-from",
+            str(allowed_objects_path),
+        ]
+    )
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert written == [{"file_name": "000000000001.jpg", "image_id": 1, "object_names": ["dog"]}]

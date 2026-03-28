@@ -9,6 +9,14 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 
 
+def compute_object_hallucination_label(
+    *,
+    ground_truth_label: int,
+    answer_label: int | None,
+) -> int:
+    return int(answer_label == 1 and int(ground_truth_label) == 0)
+
+
 def compute_binary_metrics(
     *,
     y_true,

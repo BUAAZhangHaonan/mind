@@ -21,6 +21,7 @@ def test_load_yaml_config_builds_typed_experiment_config(tmp_path: Path) -> None
         "dataset": {
             "name": "pope",
             "root": "data/pope",
+            "image_root": "data/coco/val2014",
             "splits": ["popular"],
             "prompt_template": "Answer yes or no: {question}",
         },
@@ -38,4 +39,5 @@ def test_load_yaml_config_builds_typed_experiment_config(tmp_path: Path) -> None
     assert config.name == "smoke-qwen35"
     assert config.model.model_id == "Qwen/Qwen3.5-4B"
     assert config.dataset.splits == ["popular"]
+    assert config.dataset.image_root == "data/coco/val2014"
     assert config.runtime.selected_layers == 16

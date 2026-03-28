@@ -11,6 +11,10 @@ from .types import HallucinationRecord
 
 
 _IMAGE_ID_PATTERN = re.compile(r"(\d+)")
+_OBJECT_FROM_QUESTION_PATTERN = re.compile(
+    r"^\s*is there\s+(?:a|an)\s+(?P<object>.+?)\s+in the image\?\s*$",
+    re.IGNORECASE,
+)
 
 
 class DatasetUnavailableError(FileNotFoundError):
@@ -51,6 +55,18 @@ def _coerce_rows(source: Path | Sequence[dict[str, object]]) -> list[dict[str, o
     return list(source)
 
 
+def _parse_object_name(row: dict[str, object], question: str) -> str:
+    explicit = row.get("object") or row.get("object_name")
+    if explicit is not None:
+        value = str(explicit).strip()
+        if value:
+            return value
+    match = _OBJECT_FROM_QUESTION_PATTERN.match(question)
+    if match is None:
+        return "unknown"
+    return match.group("object").strip().lower()
+
+
 def load_pope_records(
     source: Path | Sequence[dict[str, object]],
     *,
@@ -64,7 +80,7 @@ def load_pope_records(
         image_path = str(row.get("image") or row.get("image_path") or "")
         sample_id = str(row.get("sample_id") or row.get("question_id") or f"{subset}-{index}")
         question = str(row.get("text") or row.get("question") or "")
-        object_name = str(row.get("object") or row.get("object_name") or "unknown")
+        object_name = _parse_object_name(row, question)
         records.append(
             HallucinationRecord(
                 sample_id=sample_id,

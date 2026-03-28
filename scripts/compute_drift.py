@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 
 from mind.drift import compute_drift_curve, standardize_drift_curve
+from mind.evaluation import compute_object_hallucination_label
 from mind.wavelets import extract_wavelet_features
 
 
@@ -58,7 +59,14 @@ def build_feature_frame(
         rows.append(
             {
                 "sample_id": entry["sample_id"],
-                "label": entry["label"],
+                "ground_truth_label": int(entry["label"]),
+                "answer_label": -1 if entry.get("parsed_answer") is None else int(entry["parsed_answer"]),
+                "label": compute_object_hallucination_label(
+                    ground_truth_label=int(entry["label"]),
+                    answer_label=(
+                        None if entry.get("parsed_answer") is None else int(entry["parsed_answer"])
+                    ),
+                ),
                 "subset": entry["subset"],
                 "object_name": entry["object_name"],
                 **features,

@@ -65,6 +65,26 @@ def test_normalized_normal_residual_grows_when_query_leaves_local_plane() -> Non
     assert residual > 0.4
 
 
+def test_fit_local_pca_manifold_accepts_float16_inputs() -> None:
+    reference_vectors = torch.tensor(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=torch.float16,
+    )
+    query_vector = torch.tensor([0.3, 0.4, 0.0], dtype=torch.float16)
+
+    manifold = fit_local_pca_manifold(reference_vectors, query_vector, k_neighbors=4)
+    residual = normalized_normal_residual(query_vector, manifold)
+
+    assert manifold.mean.dtype == torch.float32
+    assert manifold.components.dtype == torch.float32
+    assert residual < 1e-5
+
+
 def test_build_reference_bank_groups_vectors_by_object_and_layer() -> None:
     entries = [
         {

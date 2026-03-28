@@ -1,5 +1,6 @@
 name: pope
 root: data/pope
+image_root: data/coco/val2014
 splits:
   - random
   - popular

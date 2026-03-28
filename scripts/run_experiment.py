@@ -16,6 +16,7 @@ from mind.config import DatasetConfig, ModelConfig, load_yaml_config
 
 DEFAULT_STAGES = [
     "prepare",
+    "build_reference",
     "cache_reference",
     "extract_eval",
     "build_manifolds",
@@ -51,7 +52,9 @@ def load_experiment_spec(config_path: Path) -> dict[str, object]:
     payload.setdefault("reference_dataset_name", "pope-reference")
     payload.setdefault("reference_split", "train")
     payload.setdefault("reference_candidates", "outputs/reference_candidates/coco_train_candidates.json")
+    payload.setdefault("reference_instances_json", "data/coco/annotations/instances_train2017.json")
     payload.setdefault("reference_image_root", "data/coco/train2017")
+    payload.setdefault("reference_max_images_per_object", 64)
     return payload
 
 
@@ -133,6 +136,20 @@ def build_stage_commands(
             ]
             if int(limit) > 0:
                 command.extend(["--limit", limit])
+        elif stage == "build_reference":
+            command = [
+                python_bin,
+                "scripts/prepare_data.py",
+                "build-reference",
+                "--instances-json",
+                str(experiment["reference_instances_json"]),
+                "--output",
+                str(experiment["reference_candidates"]),
+                "--allowed-objects-from",
+                paths["normalized"],
+                "--max-images-per-object",
+                str(experiment["reference_max_images_per_object"]),
+            ]
         elif stage == "extract_eval":
             command = [
                 python_bin,
@@ -152,6 +169,8 @@ def build_stage_commands(
                 "--selected-layers",
                 selected_layers,
             ]
+            if dataset.image_root:
+                command.extend(["--image-root", dataset.image_root])
             if int(limit) > 0:
                 command.extend(["--limit", limit])
         elif stage == "build_manifolds":
@@ -187,8 +206,6 @@ def build_stage_commands(
                 python_bin,
                 "scripts/train_detector.py",
                 "--train-path",
-                paths["features"],
-                "--eval-path",
                 paths["features"],
                 "--output-root",
                 "outputs/reports",
