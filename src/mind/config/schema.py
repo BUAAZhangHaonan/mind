@@ -17,6 +17,7 @@ class ModelConfig(BaseModel):
 class DatasetConfig(BaseModel):
     name: str
     root: str
+    image_root: str | None = None
     splits: list[str] = Field(default_factory=list)
     prompt_template: str
 

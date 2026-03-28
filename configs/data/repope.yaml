@@ -1,5 +1,6 @@
 name: repope
 root: data/repope
+image_root: data/coco/val2014
 splits:
   - random
   - popular

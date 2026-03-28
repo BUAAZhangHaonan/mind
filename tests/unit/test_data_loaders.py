@@ -42,6 +42,27 @@ def test_load_pope_records_reads_jsonl_rows(tmp_path: Path) -> None:
     assert records[1].object_name == "train"
 
 
+def test_load_pope_records_extracts_object_name_from_question_when_missing(tmp_path: Path) -> None:
+    pope_path = tmp_path / "popular.jsonl"
+    rows = [
+        {
+            "question_id": 1,
+            "image": "COCO_val2014_000000310196.jpg",
+            "text": "Is there a snowboard in the image?",
+            "label": "yes",
+        }
+    ]
+    pope_path.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    records = load_pope_records(pope_path, subset="popular", split="val")
+
+    assert records[0].sample_id == "1"
+    assert records[0].object_name == "snowboard"
+
+
 def test_apply_repope_labels_rewrites_labels_by_sample_id() -> None:
     records = load_pope_records(
         [

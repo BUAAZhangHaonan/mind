@@ -84,6 +84,61 @@ def test_load_cache_entries_supports_directory_inputs(tmp_path: Path) -> None:
     assert [entry["sample_id"] for entry in drift_entries] == ["sample-1", "sample-2"]
 
 
+def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path) -> None:
+    reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "dog"
+    reference_root.mkdir(parents=True)
+    torch.save(
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]
+        ),
+        reference_root / "layer-08.pt",
+    )
+    torch.save(
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]
+        ),
+        reference_root / "layer-13.pt",
+    )
+
+    frame = compute_drift.build_feature_frame(
+        cache_entries=[
+            {
+                "sample_id": "hallucinated",
+                "label": 0,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8, 13],
+                "layer_vectors": torch.tensor([[0.3, 0.4, 0.3], [0.3, 0.4, 0.6]]),
+            },
+            {
+                "sample_id": "grounded",
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8, 13],
+                "layer_vectors": torch.tensor([[0.3, 0.4, 0.0], [0.3, 0.4, 0.0]]),
+            },
+        ],
+        reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
+    )
+
+    assert list(frame["ground_truth_label"]) == [0, 1]
+    assert list(frame["answer_label"]) == [1, 1]
+    assert list(frame["label"]) == [1, 0]
+
+
 def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -> None:
     config_path = tmp_path / "experiment.yaml"
     config_path.write_text(
@@ -103,7 +158,10 @@ def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    commands = run_experiment.build_stage_commands(config_path=config_path, stages=["prepare", "extract_eval"])
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["prepare", "build_reference", "extract_eval"],
+    )
 
     assert commands["prepare"][0].endswith("python")
     assert commands["prepare"][1:] == [
@@ -118,6 +176,11 @@ def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -
         "--split",
         "val",
     ]
+    assert commands["build_reference"][1] == "scripts/prepare_data.py"
+    assert "--allowed-objects-from" in commands["build_reference"]
+    assert "outputs/normalized/pope/popular.jsonl" in commands["build_reference"]
     assert commands["extract_eval"][1] == "scripts/extract_eval_states.py"
     assert "--records" in commands["extract_eval"]
     assert "outputs/normalized/pope/popular.jsonl" in commands["extract_eval"]
+    assert "--image-root" in commands["extract_eval"]
+    assert "data/coco/val2014" in commands["extract_eval"]

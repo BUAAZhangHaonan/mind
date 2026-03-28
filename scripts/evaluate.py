@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from mind.evaluation import compute_binary_metrics, evaluate_by_subset, write_metrics_report
+from mind.evaluation import (
+    compute_binary_metrics,
+    compute_object_hallucination_label,
+    evaluate_by_subset,
+    write_metrics_report,
+)
 
 
 def build_report_paths(*, output_root: Path, experiment_name: str) -> dict[str, Path]:
@@ -32,11 +37,27 @@ def apply_label_overrides(results: pd.DataFrame, overrides: Path | pd.DataFrame)
     if override_columns != ["sample_id", "label"]:
         raise ValueError("Label override file must include sample_id and label columns.")
     merged = results.drop(columns=["label"], errors="ignore").merge(
-        override_frame[["sample_id", "label"]],
+        override_frame[["sample_id", "label"]].rename(columns={"label": "override_label"}),
         on="sample_id",
         how="left",
     )
-    merged["label"] = merged["label"].fillna(results["label"]).astype(int)
+    if "ground_truth_label" in merged.columns and "answer_label" in merged.columns:
+        merged["ground_truth_label"] = (
+            merged["override_label"].fillna(merged["ground_truth_label"]).astype(int)
+        )
+        merged["label"] = [
+            compute_object_hallucination_label(
+                ground_truth_label=int(ground_truth),
+                answer_label=None if int(answer_label) < 0 else int(answer_label),
+            )
+            for ground_truth, answer_label in zip(
+                merged["ground_truth_label"].tolist(),
+                merged["answer_label"].tolist(),
+            )
+        ]
+        return merged.drop(columns=["override_label"])
+    merged["label"] = merged["override_label"].fillna(results["label"]).astype(int)
+    merged = merged.drop(columns=["override_label"])
     return merged
 
 

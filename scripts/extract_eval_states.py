@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import json
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--split", required=True)
+    parser.add_argument("--image-root", type=Path, default=None)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--shard-size", type=int, default=128)
     parser.add_argument("--selected-layers", type=int, default=16)
@@ -52,6 +54,23 @@ def load_normalized_records(path: Path) -> list[HallucinationRecord]:
         if line.strip()
     ]
     return [HallucinationRecord(**row) for row in rows]
+
+
+def resolve_image_paths(
+    records: Sequence[HallucinationRecord],
+    *,
+    image_root: Path | None,
+) -> list[HallucinationRecord]:
+    if image_root is None:
+        return list(records)
+    resolved_records: list[HallucinationRecord] = []
+    for record in records:
+        image_path = Path(record.image_path)
+        if image_path.is_absolute():
+            resolved_records.append(record)
+            continue
+        resolved_records.append(replace(record, image_path=str(image_root / image_path)))
+    return resolved_records
 
 
 def iter_record_shards(
@@ -86,6 +105,7 @@ def run_extraction(
     output_root: Path,
     dataset_name: str,
     split: str,
+    image_root: Path | None,
     device: str,
     shard_size: int,
     selected_layer_count: int,
@@ -101,6 +121,7 @@ def run_extraction(
         count=selected_layer_count,
     )
     records = load_normalized_records(records_path)
+    records = resolve_image_paths(records, image_root=image_root)
     if limit > 0:
         records = records[:limit]
 
@@ -140,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         output_root=args.output_root,
         dataset_name=args.dataset_name,
         split=args.split,
+        image_root=args.image_root,
         device=args.device,
         shard_size=args.shard_size,
         selected_layer_count=args.selected_layers,

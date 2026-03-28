@@ -65,30 +65,64 @@ def test_build_report_paths_returns_metrics_and_results_paths(tmp_path: Path) ->
 def test_apply_label_overrides_relabels_matching_sample_ids() -> None:
     frame = pd.DataFrame(
         [
-            {"sample_id": "sample-1", "subset": "popular", "label": 0, "prediction": 1, "score": 0.9},
-            {"sample_id": "sample-2", "subset": "popular", "label": 1, "prediction": 1, "score": 0.8},
+            {
+                "sample_id": "sample-1",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 1,
+                "score": 0.9,
+            },
+            {
+                "sample_id": "sample-2",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 1,
+                "score": 0.8,
+            },
         ]
     )
-    overrides = pd.DataFrame([{"sample_id": "sample-1", "label": 1}])
+    overrides = pd.DataFrame([{"sample_id": "sample-1", "label": 0}])
 
     relabeled = evaluate.apply_label_overrides(frame, overrides)
 
-    assert list(relabeled["label"]) == [1, 1]
+    assert list(relabeled["ground_truth_label"]) == [0, 1]
+    assert list(relabeled["label"]) == [1, 0]
 
 
 def test_apply_label_overrides_accepts_jsonl_path(tmp_path: Path) -> None:
     frame = pd.DataFrame(
         [
-            {"sample_id": "sample-1", "subset": "popular", "label": 0, "prediction": 1, "score": 0.9},
-            {"sample_id": "sample-2", "subset": "popular", "label": 1, "prediction": 1, "score": 0.8},
+            {
+                "sample_id": "sample-1",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 1,
+                "score": 0.9,
+            },
+            {
+                "sample_id": "sample-2",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 1,
+                "score": 0.8,
+            },
         ]
     )
     overrides_path = tmp_path / "repope.jsonl"
-    overrides_path.write_text('{"sample_id":"sample-1","label":1}\n', encoding="utf-8")
+    overrides_path.write_text('{"sample_id":"sample-1","label":0}\n', encoding="utf-8")
 
     relabeled = evaluate.apply_label_overrides(frame, overrides_path)
 
-    assert list(relabeled["label"]) == [1, 1]
+    assert list(relabeled["ground_truth_label"]) == [0, 1]
+    assert list(relabeled["label"]) == [1, 0]
 
 
 def test_run_evaluation_writes_metrics_and_results(tmp_path: Path) -> None:

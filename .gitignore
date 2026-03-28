@@ -18,6 +18,7 @@ env/
 /outputs/
 /artifacts/
 /data/
+/logs/
 
 .env
 .env.local

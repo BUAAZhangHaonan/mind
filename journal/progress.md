@@ -78,7 +78,62 @@
   - `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`
   - result: `56 passed`
 - Remaining external blockers:
-  - `data/coco/annotations/instances_train2017.json` is still missing locally
-  - `data/coco/train2017/` is still missing locally
   - H-POPE public benchmark files were not found in a directly usable package
   - full model weight downloads for the planned experiment runs were not completed in this session
+- Fixed a real benchmark bug in `load_pope_records`: the public POPE and RePOPE JSONL files do not include an explicit `object` field, so `object_name` is now extracted from the question text when needed.
+- Fixed a real extraction bug in `scripts/extract_eval_states.py`: normalized POPE records keep relative image filenames, so the script now resolves them through an explicit `--image-root`.
+- Added `image_root` to the typed dataset config and wired it through `scripts/run_experiment.py`.
+- Replaced the text-only smoke model path with a real multimodal smoke model:
+  - added `configs/models/qwen3_vl_4b.yaml`
+  - updated the smoke preset to use `Qwen/Qwen3-VL-4B-Instruct`
+  - verified the model assets with `HF_ENDPOINT=https://hf-mirror.com /tmp/mind-py311/bin/python scripts/verify_env.py --model-id Qwen/Qwen3-VL-4B-Instruct`
+- Fixed a semantic evaluation bug: detector labels now represent object hallucination events rather than raw object-presence labels.
+  - feature frames now store `ground_truth_label`, `answer_label`, and hallucination `label`
+  - RePOPE relabeling now recomputes hallucination labels correctly from the same predictions
+- Fixed a real numerical bug in manifold fitting by casting cached `float16` states to `float32` before CPU SVD.
+- Added capped reference-bank preparation:
+  - `scripts/prepare_data.py build-reference` can now read allowed objects directly from normalized benchmark files
+  - reference candidate generation now supports `--max-images-per-object`
+  - `scripts/run_experiment.py` now includes an explicit `build_reference` stage
+- Changed detector training so it no longer evaluates on the same rows it trains on when `--eval-path` is omitted.
+  - the script now performs a reproducible stratified split by default
+- Downloaded and extracted the required public COCO assets:
+  - `data/coco/annotations_trainval2017.zip`
+  - `data/coco/val2014.zip`
+  - `data/coco/train2017.zip`
+  - extracted directories `data/coco/annotations/`, `data/coco/val2014/`, and `data/coco/train2017/`
+- Rebuilt normalized POPE and RePOPE outputs after the object-name fix.
+- Built a full capped reference candidate file for the 79 POPE object categories:
+  - `outputs/reference_candidates/coco_train_candidates.json`
+  - 64 train images per object
+- Built a smoke-specific capped reference candidate file:
+  - `outputs/reference_candidates/coco_train_candidates_smoke32.json`
+  - 32 train images per object
+  - 2528 total grounded reference prompts after expansion
+- Verified the real multimodal extraction path end to end with actual model weights:
+  - one-sample `Qwen/Qwen3-VL-4B-Instruct` eval extraction
+  - one-sample `Qwen/Qwen3-VL-4B-Instruct` reference extraction
+  - one-sample `Qwen/Qwen3-VL-8B-Instruct` eval extraction
+- Completed a real smoke run with `Qwen/Qwen3-VL-4B-Instruct` on a `200`-sample slice of POPE popular:
+  - reference cache: `outputs/cache/qwen3-vl-4b/pope-reference-smoke32/train/`
+  - eval cache: `outputs/cache/qwen3-vl-4b/pope/popular-smoke200/`
+  - manifolds: `outputs/reference_banks/qwen3-vl-4b/`
+  - features: `outputs/features/smoke-qwen3-vl-4b-popular/popular.parquet`
+  - detector outputs: `outputs/reports/smoke-qwen3-vl-4b-popular/`
+  - plots: `outputs/plots/smoke-qwen3-vl-4b-popular/`
+- Smoke raw-model observations on the `200`-sample popular slice:
+  - all `200` answers were parsed as yes or no
+  - raw yes-no accuracy was `0.90`
+  - hallucination positives were `4 / 200 = 0.02`
+- Smoke detector result on the held-out split:
+  - evaluation rows: `60`
+  - hallucination positives in the eval fold: `1`
+  - overall accuracy: `0.9833`
+  - ROC-AUC: `0.4237`
+  - F1: `0.0`
+  - interpretation: the smoke run validates the pipeline, but the slice is too small and too imbalanced for a meaningful detector conclusion
+- Re-ran the full verified test command after the experiment-path fixes:
+  - `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`
+  - result: `65 passed`
+- Current next step:
+  - launch the medium-scale full POPE popular run with `Qwen/Qwen3-VL-8B-Instruct`
