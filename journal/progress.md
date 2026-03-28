@@ -137,3 +137,53 @@
   - result: `65 passed`
 - Current next step:
   - launch the medium-scale full POPE popular run with `Qwen/Qwen3-VL-8B-Instruct`
+- Added selectable layer ranges for future ablations:
+  - `early`
+  - `middle`
+  - `late`
+  - extraction scripts still default to `middle`
+- Re-verified the repository after the layer-range change:
+  - `PYTHONWARNINGS=ignore /tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`
+  - result: `66 passed`
+- Launched the medium-scale `Qwen/Qwen3-VL-8B-Instruct` run on full POPE popular with:
+  - reference bank target: `outputs/cache/qwen3-vl-8b/pope-reference-64/train/`
+  - eval target: `outputs/cache/qwen3-vl-8b/pope/popular/`
+- Observed a machine-level CUDA failure when the two 8B extraction jobs ran concurrently:
+  - both jobs started and wrote partial shards successfully
+  - both later crashed with `RuntimeError: CUDA error: unspecified launch failure`
+  - after the crash, `nvidia-smi` reported `Unable to determine the device handle for GPU1`
+  - after the crash, fresh PyTorch processes reported `torch.cuda.is_available() == False` and `device_count == 0`
+- Investigated the failure:
+  - no leftover user processes were still holding `/dev/nvidia*`
+  - a direct `Qwen/Qwen3-VL-8B-Instruct` two-sample retry also failed because CUDA initialization stayed broken
+  - a GPU1 reset attempt with `nvidia-smi -i 1 -r` did not recover the device
+- Root-cause judgment:
+  - this is not currently a repo logic bug
+  - it is a machine-level NVIDIA driver or device state failure triggered during concurrent 8B extraction
+  - the safe next execution pattern is sequential 8B extraction after machine recovery rather than parallel extraction
+- Salvaged a partial medium result set from the shards written before the crash:
+  - partial reference shards: `26`
+  - partial eval shards: `20`
+  - covered objects in the partial reference bank: `78`
+  - filtered eval entries with matching reference coverage: `639`
+- Built partial medium artifacts:
+  - `outputs/features/medium-qwen3-vl-8b-popular-partial/popular.parquet`
+  - `outputs/reports/medium-qwen3-vl-8b-popular-partial/metrics.json`
+  - `outputs/reports/medium-qwen3-vl-8b-popular-partial-repope/metrics.json`
+  - `outputs/reports/medium-qwen3-vl-8b-popular-partial/baselines_partial.json`
+  - `outputs/reports/medium-qwen3-vl-8b-popular-partial/ablations_partial.csv`
+  - `outputs/plots/medium-qwen3-vl-8b-popular-partial/`
+  - `outputs/plots/medium-qwen3-vl-8b-popular-partial-ablation/`
+- Partial medium metrics on the recovered subset:
+  - full MIND ROC-AUC: `0.7591`
+  - partial RePOPE ROC-AUC: `0.6891`
+  - drift-only ROC-AUC: `0.7490`
+  - no-manifold ROC-AUC: `0.8170`
+  - direct hidden-state linear probe ROC-AUC: `0.8440`
+  - note: the held-out eval fold had `7` positives out of `192`, so thresholded F1 is unstable and often collapses to all-negative predictions for some variants
+- Raw model observations on the recovered partial subset:
+  - total rows: `639`
+  - parsed yes-no rows: `479`
+  - unparsed rows: `160`
+  - parsed yes-no accuracy: `0.9436`
+  - hallucination positives: `22`

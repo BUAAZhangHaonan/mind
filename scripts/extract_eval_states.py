@@ -16,7 +16,7 @@ from mind.data import HallucinationRecord
 from mind.extractors import (
     extract_prefill_entry,
     save_prefill_cache_shard,
-    select_middle_layers,
+    select_layer_range,
 )
 from mind.models import create_model_wrapper
 
@@ -43,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--shard-size", type=int, default=128)
     parser.add_argument("--selected-layers", type=int, default=16)
+    parser.add_argument("--layer-range", default="middle")
     parser.add_argument("--limit", type=int, default=0)
     return parser
 
@@ -109,6 +110,7 @@ def run_extraction(
     device: str,
     shard_size: int,
     selected_layer_count: int,
+    layer_range: str,
     limit: int = 0,
 ) -> list[Path]:
     model_config = load_yaml_config(model_config_path, ModelConfig)
@@ -116,9 +118,10 @@ def run_extraction(
     processor = wrapper.load_processor()
     model = wrapper.load_model(device=device)
     total_layers = resolve_total_layers(model)
-    selected_layers = select_middle_layers(
+    selected_layers = select_layer_range(
         total_layers=total_layers,
         count=selected_layer_count,
+        range_name=layer_range,
     )
     records = load_normalized_records(records_path)
     records = resolve_image_paths(records, image_root=image_root)
@@ -165,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
         shard_size=args.shard_size,
         selected_layer_count=args.selected_layers,
+        layer_range=args.layer_range,
         limit=args.limit,
     )
     for output_path in output_paths:

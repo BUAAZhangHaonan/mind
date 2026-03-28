@@ -15,7 +15,7 @@ from mind.data import HallucinationRecord
 from mind.extractors import (
     extract_prefill_entry,
     save_prefill_cache_shard,
-    select_middle_layers,
+    select_layer_range,
 )
 from mind.models import create_model_wrapper
 
@@ -112,6 +112,7 @@ def run_reference_caching(
     device: str,
     shard_size: int,
     selected_layer_count: int,
+    layer_range: str,
     prompt_template: str,
     limit: int = 0,
 ) -> list[Path]:
@@ -120,9 +121,10 @@ def run_reference_caching(
     processor = wrapper.load_processor()
     model = wrapper.load_model(device=device)
     total_layers = resolve_total_layers(model)
-    selected_layers = select_middle_layers(
+    selected_layers = select_layer_range(
         total_layers=total_layers,
         count=selected_layer_count,
+        range_name=layer_range,
     )
     records = build_reference_records(
         candidates=load_reference_candidates(references_path),
@@ -174,6 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--shard-size", type=int, default=128)
     parser.add_argument("--selected-layers", type=int, default=16)
+    parser.add_argument("--layer-range", default="middle")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--prompt-template", default=DEFAULT_PROMPT_TEMPLATE)
     return parser
@@ -205,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
         shard_size=args.shard_size,
         selected_layer_count=args.selected_layers,
+        layer_range=args.layer_range,
         prompt_template=args.prompt_template,
         limit=args.limit,
     )

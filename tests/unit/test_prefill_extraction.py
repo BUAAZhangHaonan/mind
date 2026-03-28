@@ -11,6 +11,7 @@ from mind.extractors import (
     extract_prefill_entry,
     extract_prefill_vectors,
     save_prefill_cache_shard,
+    select_layer_range,
     select_middle_layers,
 )
 
@@ -26,6 +27,12 @@ def test_select_middle_layers_picks_middle_half_evenly() -> None:
     selected = select_middle_layers(total_layers=32, count=4)
 
     assert selected == [8, 13, 18, 23]
+
+
+def test_select_layer_range_supports_early_middle_and_late() -> None:
+    assert select_layer_range(total_layers=32, count=4, range_name="early") == [0, 5, 10, 15]
+    assert select_layer_range(total_layers=32, count=4, range_name="middle") == [8, 13, 18, 23]
+    assert select_layer_range(total_layers=32, count=4, range_name="late") == [16, 21, 26, 31]
 
 
 def test_extract_prefill_vectors_uses_last_prefill_token_from_selected_layers() -> None:

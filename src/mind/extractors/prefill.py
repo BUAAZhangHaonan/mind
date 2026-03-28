@@ -12,7 +12,7 @@ from mind.data import HallucinationRecord
 from mind.models import parse_yes_no_answer
 
 
-def select_middle_layers(*, total_layers: int, count: int) -> list[int]:
+def select_layer_range(*, total_layers: int, count: int, range_name: str) -> list[int]:
     if count <= 0:
         raise ValueError("count must be positive")
     if total_layers <= 0:
@@ -20,14 +20,32 @@ def select_middle_layers(*, total_layers: int, count: int) -> list[int]:
     if count > total_layers:
         raise ValueError("count cannot exceed total_layers")
 
-    start = total_layers // 4
-    end = total_layers - start - 1
+    normalized = range_name.strip().lower()
+    if normalized == "early":
+        start = 0
+        end = max(0, total_layers // 2 - 1)
+    elif normalized == "middle":
+        start = total_layers // 4
+        end = total_layers - start - 1
+    elif normalized == "late":
+        start = total_layers // 2
+        end = total_layers - 1
+    else:
+        raise ValueError(f"Unsupported layer range: {range_name}")
+
+    available = end - start + 1
+    if count > available:
+        raise ValueError(f"count cannot exceed available layers in the {normalized} range")
     if count == 1:
         return [(start + end) // 2]
     return [
         round(start + step * (end - start) / (count - 1))
         for step in range(count)
     ]
+
+
+def select_middle_layers(*, total_layers: int, count: int) -> list[int]:
+    return select_layer_range(total_layers=total_layers, count=count, range_name="middle")
 
 
 def extract_prefill_vectors(
