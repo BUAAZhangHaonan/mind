@@ -42,6 +42,14 @@ class BaseModelWrapper:
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    def format_yes_no_question(self, question: str) -> str:
+        normalized = question.strip()
+        suffix = "Respond with only one word: yes or no."
+        if suffix.lower() in normalized.lower():
+            return normalized
+        punctuation = "" if normalized.endswith(("?", ".", "!")) else "."
+        return f"{normalized}{punctuation} {suffix}"
+
     def prepare_batch_inputs(
         self,
         processor: Any,
@@ -107,7 +115,17 @@ class QwenWrapper(BaseModelWrapper):
         del image_paths
         prompts = [
             processor.apply_chat_template(
-                [{"role": "user", "content": [{"type": "text", "text": question}]}],
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": self.format_yes_no_question(question),
+                            }
+                        ],
+                    }
+                ],
                 tokenize=False,
                 add_generation_prompt=True,
             )
@@ -125,7 +143,17 @@ class QwenWrapper(BaseModelWrapper):
         device: str,
     ) -> Any:
         del image_path
-        messages = [{"role": "user", "content": [{"type": "text", "text": question}]}]
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": self.format_yes_no_question(question),
+                    }
+                ],
+            }
+        ]
         prompt = processor.apply_chat_template(
             messages,
             tokenize=False,
@@ -168,7 +196,10 @@ class QwenVLWrapper(QwenWrapper):
         for question, image_path in zip(questions, image_paths):
             if image_path is None:
                 raise ValueError("QwenVLWrapper requires an image path.")
-            messages = self.build_messages(question=question, image_path=image_path)
+            messages = self.build_messages(
+                question=self.format_yes_no_question(question),
+                image_path=image_path,
+            )
             prompts.append(
                 processor.apply_chat_template(
                     messages,
@@ -188,7 +219,10 @@ class QwenVLWrapper(QwenWrapper):
         image_path: str | None,
         device: str,
     ) -> Any:
-        messages = self.build_messages(question=question, image_path=image_path)
+        messages = self.build_messages(
+            question=self.format_yes_no_question(question),
+            image_path=image_path,
+        )
         prompt = processor.apply_chat_template(
             messages,
             tokenize=False,
