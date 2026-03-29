@@ -53,11 +53,12 @@ def extract_prefill_vectors(
     *,
     selected_layers: Sequence[int],
     token_index: int = -1,
+    batch_index: int = 0,
 ) -> torch.Tensor:
     vectors = []
     for layer in selected_layers:
         state = hidden_states[layer + 1]
-        vectors.append(state[0, token_index, :].detach().cpu())
+        vectors.append(state[batch_index, token_index, :].detach().cpu())
     return torch.stack(vectors, dim=0)
 
 
@@ -96,36 +97,71 @@ def extract_prefill_entry(
     token_index: int = -1,
     max_new_tokens: int = 4,
 ) -> dict[str, object]:
-    model_inputs = wrapper.prepare_inputs(
+    return extract_prefill_entries(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        records=[record],
+        selected_layers=selected_layers,
+        device=device,
+        token_index=token_index,
+        max_new_tokens=max_new_tokens,
+    )[0]
+
+
+def extract_prefill_entries(
+    *,
+    model: Any,
+    processor: Any,
+    wrapper: Any,
+    records: Sequence[HallucinationRecord],
+    selected_layers: Sequence[int],
+    device: str,
+    token_index: int = -1,
+    max_new_tokens: int = 4,
+) -> list[dict[str, object]]:
+    model_inputs = wrapper.prepare_batch_inputs(
         processor,
-        question=record.question,
-        image_path=record.image_path,
+        questions=[record.question for record in records],
+        image_paths=[record.image_path for record in records],
         device=device,
     )
-    outputs = model(**model_inputs, output_hidden_states=True, return_dict=True)
-    layer_vectors = extract_prefill_vectors(
-        outputs.hidden_states,
-        selected_layers=selected_layers,
-        token_index=token_index,
-    )
-    generated_ids = model.generate(
+    generation_output = model.generate(
         **model_inputs,
         max_new_tokens=max_new_tokens,
         do_sample=False,
+        return_dict_in_generate=True,
+        output_scores=True,
+        output_hidden_states=True,
     )
-    answer_text = wrapper.decode_generation(
-        processor,
-        generated_ids=generated_ids,
-        prompt_input_ids=model_inputs["input_ids"],
-    )
-    return build_prefill_cache_entry(
-        record=record,
-        answer_text=answer_text,
-        parsed_answer=parse_yes_no_answer(answer_text),
-        selected_layers=selected_layers,
-        layer_vectors=layer_vectors,
-        first_token_logits=outputs.logits[0, token_index, :],
-    )
+    if not generation_output.hidden_states:
+        raise ValueError("Generation output did not include hidden states.")
+    if not generation_output.scores:
+        raise ValueError("Generation output did not include token scores.")
+    entries: list[dict[str, object]] = []
+    for batch_index, record in enumerate(records):
+        layer_vectors = extract_prefill_vectors(
+            generation_output.hidden_states[0],
+            selected_layers=selected_layers,
+            token_index=token_index,
+            batch_index=batch_index,
+        )
+        answer_text = wrapper.decode_generation(
+            processor,
+            generated_ids=generation_output.sequences[batch_index : batch_index + 1],
+            prompt_input_ids=model_inputs["input_ids"][batch_index : batch_index + 1],
+        )
+        entries.append(
+            build_prefill_cache_entry(
+                record=record,
+                answer_text=answer_text,
+                parsed_answer=parse_yes_no_answer(answer_text),
+                selected_layers=selected_layers,
+                layer_vectors=layer_vectors,
+                first_token_logits=generation_output.scores[0][batch_index],
+            )
+        )
+    return entries
 
 
 def save_prefill_cache_shard(entries: Sequence[dict[str, object]], output_path: str | Path) -> None:

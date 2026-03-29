@@ -191,3 +191,53 @@ def test_internvl_prepare_inputs_uses_image_and_prompt(tmp_path: Path) -> None:
     assert batch["device"] == "cuda:0"
     assert processor.calls[1][1] == ["<vision-prompt>"]
     assert len(processor.calls[1][2]) == 1
+
+
+def test_internvl_prepare_batch_inputs_uses_padding_and_multiple_images(tmp_path: Path) -> None:
+    class FakeBatch(dict):
+        def to(self, device: str):
+            self["device"] = device
+            return self
+
+    class FakeProcessor:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def apply_chat_template(self, messages, *, tokenize: bool, add_generation_prompt: bool) -> str:
+            assert tokenize is False
+            assert add_generation_prompt is True
+            prompt = messages[0]["content"][1]["text"]
+            self.calls.append(("template", prompt))
+            return f"<vision-prompt:{prompt}>"
+
+        def __call__(self, *, text, images, return_tensors: str, padding: bool):
+            self.calls.append(("call", text, images, return_tensors, padding))
+            return FakeBatch({"input_ids": torch.tensor([[4, 5, 6], [7, 8, 9]])})
+
+    image_path_a = tmp_path / "demo-a.png"
+    image_path_b = tmp_path / "demo-b.png"
+    Image.new("RGB", (2, 2), color="white").save(image_path_a)
+    Image.new("RGB", (2, 2), color="black").save(image_path_b)
+    processor = FakeProcessor()
+    wrapper = InternVLWrapper(
+        ModelConfig(
+            name="internvl3.5-8b",
+            model_id="OpenGVLab/InternVL3_5-8B-HF",
+            family="internvl",
+        )
+    )
+
+    batch = wrapper.prepare_batch_inputs(
+        processor,
+        questions=["Is there a plane in the image?", "Is there a dog in the image?"],
+        image_paths=[str(image_path_a), str(image_path_b)],
+        device="cuda:2",
+    )
+
+    assert batch["device"] == "cuda:2"
+    assert processor.calls[2][1] == [
+        "<vision-prompt:Is there a plane in the image?>",
+        "<vision-prompt:Is there a dog in the image?>",
+    ]
+    assert len(processor.calls[2][2]) == 2
+    assert processor.calls[2][4] is True

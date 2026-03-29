@@ -9,6 +9,7 @@ from mind.data import HallucinationRecord
 from mind.extractors import (
     build_prefill_cache_entry,
     extract_prefill_entry,
+    extract_prefill_entries,
     extract_prefill_vectors,
     save_prefill_cache_shard,
     select_layer_range,
@@ -176,10 +177,10 @@ def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
             return self
 
     class FakeWrapper:
-        def prepare_inputs(self, processor, *, question: str, image_path: str | None, device: str):
+        def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
             assert processor == "processor"
-            assert question == "Is there a dog in the image?"
-            assert image_path == "COCO_val2014_000000000101.jpg"
+            assert questions == ["Is there a dog in the image?"]
+            assert image_paths == ["COCO_val2014_000000000101.jpg"]
             return FakeBatch(
                 {
                     "input_ids": torch.tensor([[10, 11, 12]]),
@@ -193,27 +194,27 @@ def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
             assert torch.equal(generated_ids, torch.tensor([[10, 11, 12, 42]]))
             return "Yes"
 
-    class FakeOutput:
-        def __init__(self):
-            self.hidden_states = tuple(
-                torch.full((1, 3, 2), fill_value=float(index))
-                for index in range(5)
-            )
-            self.logits = torch.tensor(
-                [[[0.1, 0.9], [0.2, 0.8], [0.3, 0.7]]],
-                dtype=torch.float32,
-            )
-
     class FakeModel:
-        def __call__(self, **kwargs):
-            assert kwargs["output_hidden_states"] is True
-            assert kwargs["return_dict"] is True
-            return FakeOutput()
-
         def generate(self, **kwargs):
             assert kwargs["max_new_tokens"] == 4
             assert kwargs["do_sample"] is False
-            return torch.tensor([[10, 11, 12, 42]])
+            assert kwargs["return_dict_in_generate"] is True
+            assert kwargs["output_scores"] is True
+            assert kwargs["output_hidden_states"] is True
+            return type(
+                "FakeGenerationOutput",
+                (),
+                {
+                    "sequences": torch.tensor([[10, 11, 12, 42]]),
+                    "scores": [torch.tensor([[0.3, 0.7]], dtype=torch.float32)],
+                    "hidden_states": [
+                        tuple(
+                            torch.full((1, 3, 2), fill_value=float(index))
+                            for index in range(5)
+                        )
+                    ],
+                },
+            )()
 
     record = HallucinationRecord(
         sample_id="popular-1",
@@ -240,3 +241,109 @@ def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
     assert entry["selected_layers"] == [0, 2]
     assert entry["layer_vectors"].shape == (2, 2)
     assert torch.equal(entry["first_token_logits"], torch.tensor([0.3, 0.7]))
+
+
+def test_extract_prefill_entries_decode_each_sample_from_true_prompt_length() -> None:
+    class FakeBatch(dict):
+        def to(self, device: str):
+            self["device"] = device
+            return self
+
+    class FakeProcessor:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def batch_decode(self, token_ids, *, skip_special_tokens: bool, clean_up_tokenization_spaces: bool):
+            assert skip_special_tokens is True
+            assert clean_up_tokenization_spaces is True
+            self.calls.append(token_ids)
+            return ["Yes"] if token_ids == [[42]] else ["No"]
+
+    class FakeWrapper:
+        def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
+            assert processor.__class__.__name__ == "FakeProcessor"
+            assert questions == ["Q1", "Q2"]
+            assert image_paths == ["a.jpg", "b.jpg"]
+            return FakeBatch(
+                {
+                    "input_ids": torch.tensor([[10, 11, 12], [0, 20, 21]]),
+                    "attention_mask": torch.tensor([[1, 1, 1], [0, 1, 1]]),
+                }
+            ).to(device)
+
+        def decode_generation(self, processor, *, generated_ids: torch.Tensor, prompt_input_ids: torch.Tensor) -> str:
+            prompt_length = int(prompt_input_ids.shape[-1])
+            continuation = generated_ids[:, prompt_length:]
+            decoded = processor.batch_decode(
+                continuation.tolist(),
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=True,
+            )
+            return str(decoded[0]).strip()
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            assert kwargs["return_dict_in_generate"] is True
+            assert kwargs["output_scores"] is True
+            assert kwargs["output_hidden_states"] is True
+            return type(
+                "FakeGenerationOutput",
+                (),
+                {
+                    "sequences": torch.tensor([[10, 11, 12, 42], [0, 20, 21, 43]]),
+                    "scores": [torch.tensor([[0.2, 0.8], [0.7, 0.3]], dtype=torch.float32)],
+                    "hidden_states": [
+                        tuple(
+                            torch.tensor(
+                                [
+                                    [[100.0 + layer, 101.0 + layer], [110.0 + layer, 111.0 + layer], [120.0 + layer, 121.0 + layer]],
+                                    [[200.0 + layer, 201.0 + layer], [210.0 + layer, 211.0 + layer], [220.0 + layer, 221.0 + layer]],
+                                ]
+                            )
+                            for layer in range(5)
+                        )
+                    ],
+                },
+            )()
+
+    records = [
+        HallucinationRecord(
+            sample_id="sample-1",
+            image_id=1,
+            image_path="a.jpg",
+            question="Q1",
+            label=1,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        ),
+        HallucinationRecord(
+            sample_id="sample-2",
+            image_id=2,
+            image_path="b.jpg",
+            question="Q2",
+            label=0,
+            object_name="cat",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        ),
+    ]
+
+    processor = FakeProcessor()
+    entries = extract_prefill_entries(
+        model=FakeModel(),
+        processor=processor,
+        wrapper=FakeWrapper(),
+        records=records,
+        selected_layers=[0, 2],
+        device="cuda:0",
+    )
+
+    assert processor.calls == [[[42]], [[43]]]
+    assert [entry["parsed_answer"] for entry in entries] == [1, 0]
+    assert torch.equal(entries[0]["layer_vectors"][0], torch.tensor([121.0, 122.0]))
+    assert torch.equal(entries[1]["layer_vectors"][0], torch.tensor([221.0, 222.0]))
+    assert torch.equal(entries[0]["first_token_logits"], torch.tensor([0.2, 0.8]))
+    assert torch.equal(entries[1]["first_token_logits"], torch.tensor([0.7, 0.3]))

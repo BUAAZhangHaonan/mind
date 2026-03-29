@@ -14,6 +14,15 @@ from mind.config import ModelConfig
 from .types import parse_yes_no_answer, resolve_torch_dtype
 
 
+def configure_left_padding(processor: Any) -> Any:
+    if hasattr(processor, "padding_side"):
+        processor.padding_side = "left"
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is not None and hasattr(tokenizer, "padding_side"):
+        tokenizer.padding_side = "left"
+    return processor
+
+
 @dataclass
 class BaseModelWrapper:
     """Base wrapper that normalizes model loading and prompt shape."""
@@ -31,6 +40,16 @@ class BaseModelWrapper:
         return kwargs
 
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
         raise NotImplementedError
 
     def parse_yes_no_response(self, text: str) -> int | None:
@@ -59,9 +78,11 @@ class BaseModelWrapper:
         return str(decoded[0]).strip()
 
     def load_processor(self):
-        return AutoProcessor.from_pretrained(
-            self.config.model_id,
-            trust_remote_code=self.config.trust_remote_code,
+        return configure_left_padding(
+            AutoProcessor.from_pretrained(
+                self.config.model_id,
+                trust_remote_code=self.config.trust_remote_code,
+            )
         )
 
     def load_model(self, *, device: str = "cuda"):
@@ -75,6 +96,26 @@ class LoadedModelBundle:
 
 
 class QwenWrapper(BaseModelWrapper):
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        del image_paths
+        prompts = [
+            processor.apply_chat_template(
+                [{"role": "user", "content": [{"type": "text", "text": question}]}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            for question in questions
+        ]
+        batch = processor(text=prompts, return_tensors="pt", padding=True)
+        return self._move_batch_to_device(batch, device)
+
     def prepare_inputs(
         self,
         processor: Any,
@@ -112,6 +153,33 @@ class QwenWrapper(BaseModelWrapper):
 
 
 class QwenVLWrapper(QwenWrapper):
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        prompts = []
+        images = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("QwenVLWrapper requires an image path.")
+            messages = self.build_messages(question=question, image_path=image_path)
+            prompts.append(
+                processor.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            )
+            images.append(Image.open(image_path).convert("RGB"))
+        batch = processor(text=prompts, images=images, return_tensors="pt", padding=True)
+        return self._move_batch_to_device(batch, device)
+
     def prepare_inputs(
         self,
         processor: Any,
@@ -155,9 +223,11 @@ class QwenVLWrapper(QwenWrapper):
 
 class QwenTextWrapper(QwenWrapper):
     def load_processor(self):
-        return AutoTokenizer.from_pretrained(
-            self.config.model_id,
-            trust_remote_code=self.config.trust_remote_code,
+        return configure_left_padding(
+            AutoTokenizer.from_pretrained(
+                self.config.model_id,
+                trust_remote_code=self.config.trust_remote_code,
+            )
         )
 
     def load_bundle(

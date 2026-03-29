@@ -26,6 +26,18 @@
   - sequential `Qwen/Qwen3-VL-8B-Instruct` reference sanity extraction: success
   - sequential `Qwen/Qwen3-VL-8B-Instruct` eval sanity extraction: success
   - conclusion: the earlier crash was consistent with concurrent heavy extraction on unstable hardware, not with the basic single-run path
+- Found a practical throughput blocker in the original extraction implementation:
+  - the repo was still extracting one sample at a time
+  - a full 8B run at that throughput would take far too long for the planned experiment matrix
+- Reworked the extraction path to support true batched multimodal prefill extraction:
+  - model wrappers now prepare batched text-image inputs
+  - processors now use left padding for decoder-only generation
+  - extraction scripts now accept `--batch-size`
+  - the extractor now handles batched generation outputs while keeping the same pre-generation hidden-state signal
+- Verified the new extraction path:
+  - fresh unit and integration suite: `69 passed`
+  - real `Qwen/Qwen3-VL-8B-Instruct` eval sanity run with `32` samples and `--batch-size 32`: success
+  - observed wall time for that real sanity shard: about `37s` including model load
 - Notes:
   - the earlier `/tmp/mind-py311` interpreter no longer exists, so old command examples in prior notes should be read as superseded by the named env above
 
