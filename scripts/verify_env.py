@@ -11,6 +11,7 @@ from typing import Iterable
 
 
 REQUIRED_MODULES = (
+    "mind",
     "torch",
     "transformers",
     "accelerate",

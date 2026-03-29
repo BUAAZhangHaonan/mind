@@ -37,7 +37,7 @@ Key modules:
 
 ## Environment
 
-The project environment name is `mind-py311`. On this machine the stable local prefix was `/tmp/mind-py311`, so the Make targets use that path by default.
+The project environment name is `mind-py311`. The canonical runtime is the named conda environment, and all documented commands now use `conda run --no-capture-output -n mind-py311 ...` through the shipped `Makefile`.
 
 ```bash
 make env
@@ -49,7 +49,7 @@ make test
 
 What has been verified in this session:
 
-- `/tmp/mind-py311/bin/python -m pytest -q tests/unit tests/integration`
+- `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
 - `56 passed`
 - `scripts/verify_env.py` succeeded for:
   - `Qwen/Qwen3-VL-8B-Instruct`
@@ -109,7 +109,7 @@ Included presets:
 Preview the planned commands for a preset:
 
 ```bash
-/tmp/mind-py311/bin/python scripts/run_experiment.py \
+conda run --no-capture-output -n mind-py311 python scripts/run_experiment.py \
   --config configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml \
   --stages prepare,extract_eval
 ```

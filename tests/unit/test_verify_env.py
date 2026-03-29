@@ -34,3 +34,7 @@ def test_check_imports_collects_module_versions(monkeypatch) -> None:
     versions = verify_env.check_imports(("alpha", "beta"))
 
     assert versions == {"alpha": "1.0", "beta": "2.0"}
+
+
+def test_required_modules_include_local_mind_package() -> None:
+    assert "mind" in verify_env.REQUIRED_MODULES
