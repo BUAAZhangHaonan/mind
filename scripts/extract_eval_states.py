@@ -14,7 +14,7 @@ import torch
 from mind.config import ModelConfig, load_yaml_config
 from mind.data import HallucinationRecord
 from mind.extractors import (
-    extract_prefill_entry,
+    extract_prefill_entries,
     save_prefill_cache_shard,
     select_layer_range,
 )
@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-root", type=Path, default=None)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--shard-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--selected-layers", type=int, default=16)
     parser.add_argument("--layer-range", default="middle")
     parser.add_argument("--limit", type=int, default=0)
@@ -109,6 +110,7 @@ def run_extraction(
     image_root: Path | None,
     device: str,
     shard_size: int,
+    batch_size: int,
     selected_layer_count: int,
     layer_range: str,
     limit: int = 0,
@@ -133,17 +135,18 @@ def run_extraction(
         for shard_index, shard_records in enumerate(
             iter_record_shards(records, shard_size=shard_size)
         ):
-            entries = [
-                extract_prefill_entry(
-                    model=model,
-                    processor=processor,
-                    wrapper=wrapper,
-                    record=record,
-                    selected_layers=selected_layers,
-                    device=device,
+            entries = []
+            for start in range(0, len(shard_records), batch_size):
+                entries.extend(
+                    extract_prefill_entries(
+                        model=model,
+                        processor=processor,
+                        wrapper=wrapper,
+                        records=shard_records[start : start + batch_size],
+                        selected_layers=selected_layers,
+                        device=device,
+                    )
                 )
-                for record in shard_records
-            ]
             output_path = build_cache_output_path(
                 output_root=output_root,
                 model_name=model_config.name,
@@ -167,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         image_root=args.image_root,
         device=args.device,
         shard_size=args.shard_size,
+        batch_size=args.batch_size,
         selected_layer_count=args.selected_layers,
         layer_range=args.layer_range,
         limit=args.limit,
