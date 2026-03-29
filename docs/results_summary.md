@@ -52,13 +52,22 @@ Interpretation:
 - Wavelet features helped slightly over raw drift on popular.
 - The manifold term helped on popular relative to the no-manifold variant.
 
-## Cross-Family Status
+## Cross-Family InternVL Result
 
-- Target model: `OpenGVLab/InternVL3_5-8B-HF`
-- Target setting: POPE popular plus RePOPE relabeling
-- Status while writing this summary: the full `64`-image reference cache is still running on the recovered 3-GPU machine
+Model: `OpenGVLab/InternVL3_5-8B-HF`
 
-Planned output root:
+| Setting | MIND ROC-AUC | Accuracy | F1 | Raw yes/no accuracy | Linear probe ROC-AUC | Drift-only ROC-AUC | No-manifold ROC-AUC |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| POPE popular | 0.836676 | 0.912222 | 0.024691 | 0.873000 | 0.908870 | 0.835256 | 0.723454 |
+| RePOPE popular | 0.811205 | 0.898889 | 0.021505 | - | - | - | - |
+
+Observations:
+
+- InternVL was clearly stronger than Qwen on the popular split in ROC-AUC.
+- Within the InternVL run, MIND only slightly improved over drift-only features.
+- The direct hidden-state linear probe was still stronger than MIND, so the current evidence supports MIND more as an interpretable geometry-aware detector than as the strongest raw predictor in this codebase.
+
+Output roots:
 
 - `outputs/reports/cross-internvl3.5-8b-popular/`
 - `outputs/reports/cross-internvl3.5-8b-popular-repope/`

@@ -228,3 +228,75 @@
   - unparsed rows: `160`
   - parsed yes-no accuracy: `0.9436`
   - hallucination positives: `22`
+- Verified GitHub SSH auth for the generated project key:
+  - `ssh -T git@github.com`
+  - result: authentication succeeded
+  - remote remains `git@github.com:BUAAZhangHaonan/mind.git`
+- Found and fixed the real cause of the poor yes-no parse rate in the earlier 8B popular run:
+  - the prompt did not force a one-word answer
+  - generation also allowed extra continuation text before the first `yes` or `no`
+  - fix:
+    - the wrapper now appends `Respond with only one word: yes or no.`
+    - extraction scripts now default to `--max-new-tokens 1`
+- Re-ran the canonical corrected Qwen popular run after the prompt fix:
+  - all `3000 / 3000` outputs were parsed as yes or no
+  - corrected popular MIND ROC-AUC: `0.6736919366677152`
+  - corrected popular RePOPE ROC-AUC: `0.644326829726598`
+  - corrected popular drift-only ROC-AUC: `0.6650588934325959`
+  - corrected popular no-manifold ROC-AUC: `0.6113033448673588`
+  - corrected popular linear probe ROC-AUC: `0.9241200936702667`
+  - corrected raw yes-no accuracy: `0.889`
+- Ran the required layer-range ablation on the corrected popular Qwen run:
+  - early ROC-AUC: `0.5696410471496978`
+  - middle ROC-AUC: `0.6736919366677152`
+  - late ROC-AUC: `0.8612072279892349`
+  - conclusion: on the corrected popular run, `late > middle > early`
+- Completed the full main-stage Qwen runs with the corrected one-word prompt:
+  - popular ROC-AUC: `0.6736919366677152`
+  - popular RePOPE ROC-AUC: `0.644326829726598`
+  - random ROC-AUC: `0.5819786995515696`
+  - random RePOPE ROC-AUC: `0.6409582412330486`
+  - adversarial ROC-AUC: `0.7079378276634565`
+  - adversarial RePOPE ROC-AUC: `0.7048090371167294`
+- Wrote the corrected Qwen summary into committed docs:
+  - added `docs/results_summary.md`
+  - added `docs/plans/2026-03-29-mind-remaining-execution.md`
+  - updated the experiment runbook and paper outline to match the corrected command surface and the real Qwen narrative
+- Cross-family InternVL stage:
+  - stable machine settings:
+    - `HF_ENDPOINT=https://hf-mirror.com`
+    - `CUDA_VISIBLE_DEVICES=0,1,2`
+    - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+    - `--batch-size 8`
+    - `--shard-size 8`
+    - `--max-new-tokens 1`
+  - full reference cache finished successfully:
+    - `outputs/cache/internvl3.5-8b/pope-reference-64/train/`
+    - shard count: `632`
+  - full popular eval cache finished successfully:
+    - `outputs/cache/internvl3.5-8b/pope/popular/`
+    - shard count: `375`
+  - completed artifacts:
+    - `outputs/features/cross-internvl3.5-8b-popular/popular.parquet`
+    - `outputs/reports/cross-internvl3.5-8b-popular/`
+    - `outputs/reports/cross-internvl3.5-8b-popular-repope/`
+    - `outputs/plots/cross-internvl3.5-8b-popular/`
+  - final InternVL popular MIND ROC-AUC: `0.8366760821195814`
+  - final InternVL popular RePOPE ROC-AUC: `0.8112054752767426`
+  - InternVL drift-only ROC-AUC: `0.8352558741380127`
+  - InternVL no-manifold ROC-AUC: `0.7234539458111755`
+  - InternVL linear probe ROC-AUC: `0.9088699878493317`
+  - InternVL raw yes-no accuracy: `0.873`
+  - interpretation:
+    - InternVL improved the popular ROC-AUC over Qwen on the same pipeline
+    - MIND only slightly improved over drift-only on InternVL
+    - the direct hidden-state linear probe still remained stronger than MIND
+- H-POPE status:
+  - kept the loader and config surface intact
+  - searched for a directly usable public benchmark package during execution
+  - did not find a public asset release that could be downloaded and run in this session
+- Final repo verification before the closing commit:
+  - `make verify-env`
+  - result: `torch.cuda.is_available() == True`, `device_count == 3`
+  - `PYTHONWARNINGS=ignore make test`
+  - result: `73 passed`

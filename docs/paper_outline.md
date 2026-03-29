@@ -6,7 +6,7 @@ MIND: Multi-scale Internal Drift on Visual-grounded Manifolds for MLLM Hallucina
 
 ## One-Sentence Claim
 
-Object hallucination can be detected before final answer generation by measuring how middle-layer hidden states drift away from local visual-grounded manifolds, then modeling that drift across layers with wavelet features.
+Object hallucination can be detected before final answer generation by measuring how selected hidden states drift away from local visual-grounded manifolds, then modeling that drift across layers with wavelet features.
 
 ## Abstract Skeleton
 
@@ -15,7 +15,7 @@ Problem:
 
 Method:
 - Build local manifolds from grounded reference states.
-- Measure normalized normal residual drift across selected middle layers.
+- Measure normalized normal residual drift across selected layers.
 - Apply Haar wavelet features to the drift curve.
 - Train a lightweight detector on top of those features.
 
@@ -23,6 +23,7 @@ Result:
 - Report overall and per-subset gains on POPE.
 - Re-evaluate the same predictions with RePOPE relabeling.
 - Show ablations for no-manifold, no-wavelet, and layer-range variants.
+- Report that the completed InternVL popular run is stronger than the completed Qwen popular run in ROC-AUC, while the direct linear probe still remains strongest inside each model family.
 
 Takeaway:
 - Internal manifold drift is an interpretable and useful early warning signal for object hallucination.
@@ -33,7 +34,7 @@ Takeaway:
 
 - Hallucination detection is usually treated as an output judgment problem.
 - Internal states can expose failure earlier than final text.
-- Existing work motivates middle-layer analysis, but the geometry-plus-dynamics view is still missing.
+- Existing work motivates internal-layer analysis, but the geometry-plus-dynamics view is still missing.
 - MIND proposes that missing view.
 
 ### 2. Related Work
@@ -109,8 +110,8 @@ Takeaway:
 
 ## Main Experimental Story
 
-1. Show that drift-based features outperform direct output-only judgment.
-2. Show that manifold drift beats direct hidden-state probing.
-3. Show that wavelet features add value over raw drift alone.
-4. Show that middle layers matter most.
-5. Confirm that the same conclusions still hold under RePOPE relabeling.
+1. Show that drift-based features provide a useful early ranking signal before final answer generation.
+2. Show that manifold drift is interpretable and useful even when a direct hidden-state probe is stronger in raw ROC-AUC on the completed Qwen runs.
+3. Show that wavelet features add modest value over raw drift alone on the corrected Qwen runs.
+4. Report layer-location findings empirically; in the corrected popular run, late layers were strongest.
+5. Confirm that the main ranking conclusions still hold under RePOPE relabeling and cross-family validation.

@@ -1,6 +1,6 @@
 # Experiment Runbook
 
-This runbook matches the repo state that has actually been verified in this session.
+This runbook matches the repo state that has actually been verified on the recovered `3 x RTX 3090 24GB` machine in this session.
 
 ## 1. Environment
 
@@ -17,6 +17,8 @@ Verified result in this session:
 - `scripts/verify_env.py` currently sees the 3 usable RTX 3090 GPUs on this machine
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
 - the full unit and integration suite passed
+- the project now uses one canonical environment only: `mind-py311`
+- the answer prompt was tightened to one-word yes/no output and the extraction scripts now run with `--max-new-tokens 1`
 
 ## 2. Normalize POPE and RePOPE
 
@@ -58,8 +60,8 @@ conda run --no-capture-output -n mind-py311 python scripts/prepare_data.py \
   build-reference \
   --instances-json data/coco/annotations/instances_train2017.json \
   --output outputs/reference_candidates/coco_train_candidates.json \
-  --allowed-object dog \
-  --allowed-object bus
+  --allowed-objects-from outputs/normalized/pope/popular.jsonl \
+  --max-images-per-object 64
 ```
 
 Notes:
@@ -90,10 +92,14 @@ conda run --no-capture-output -n mind-py311 python scripts/cache_reference_state
   --image-root data/coco/train2017 \
   --model-config configs/models/qwen3_vl_8b.yaml \
   --output-root outputs/cache \
-  --dataset-name pope-reference \
+  --dataset-name pope-reference-64 \
   --split train \
   --device cuda \
-  --selected-layers 16
+  --selected-layers 16 \
+  --layer-range middle \
+  --shard-size 8 \
+  --batch-size 8 \
+  --max-new-tokens 1
 ```
 
 ### Evaluation cache
@@ -105,15 +111,20 @@ conda run --no-capture-output -n mind-py311 python scripts/extract_eval_states.p
   --output-root outputs/cache \
   --dataset-name pope \
   --split popular \
+  --image-root data/coco/val2014 \
   --device cuda \
-  --selected-layers 16
+  --selected-layers 16 \
+  --layer-range middle \
+  --shard-size 8 \
+  --batch-size 8 \
+  --max-new-tokens 1
 ```
 
 ### Build manifolds
 
 ```bash
 conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
-  --reference-cache outputs/cache/qwen3-vl-8b/pope-reference/train \
+  --reference-cache outputs/cache/qwen3-vl-8b/pope-reference-64/train \
   --output-root outputs/reference_banks \
   --model-name qwen3-vl-8b
 ```
@@ -139,10 +150,11 @@ The cache input can be a single shard or a shard directory.
 ```bash
 conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
   --train-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
-  --eval-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --output-root outputs/reports \
   --experiment-name medium-qwen3-vl-8b-popular
 ```
+
+This command performs its own reproducible stratified split when `--eval-path` is omitted.
 
 ### Evaluate
 
@@ -169,9 +181,41 @@ conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
 conda run --no-capture-output -n mind-py311 python scripts/plot_results.py \
   --features-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --results-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
+  --ablation-path outputs/reports/medium-qwen3-vl-8b-popular/ablations.csv \
   --output-root outputs/plots \
   --experiment-name medium-qwen3-vl-8b-popular
 ```
+
+### Baselines and ablations
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py \
+  --features-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
+  --reference-root outputs/reference_banks \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/reports \
+  --experiment-name medium-qwen3-vl-8b-popular
+```
+
+### Cross-family InternVL popular run
+
+The stable setting on the current machine is:
+
+- `CUDA_VISIBLE_DEVICES=0,1,2`
+- `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+- `HF_ENDPOINT=https://hf-mirror.com`
+- `--batch-size 8`
+- `--shard-size 8`
+- `--max-new-tokens 1`
+
+Use the same stage commands as above, but swap the model config to `configs/models/internvl3_5_8b.yaml` and the model name to `internvl3.5-8b`.
+
+Completed output roots from this session:
+
+- `outputs/reports/cross-internvl3.5-8b-popular/`
+- `outputs/reports/cross-internvl3.5-8b-popular-repope/`
+- `outputs/plots/cross-internvl3.5-8b-popular/`
 
 ## 6. Intended Stage Order
 
@@ -185,8 +229,7 @@ conda run --no-capture-output -n mind-py311 python scripts/plot_results.py \
 
 ## 7. Current External Blockers
 
-- the public COCO assets are now present locally
+- the public COCO assets are present locally
 - `Qwen/Qwen3-VL-4B-Instruct`, `Qwen/Qwen3-VL-8B-Instruct`, and `OpenGVLab/InternVL3_5-8B-HF` config or processor checks were verified through `HF_ENDPOINT=https://hf-mirror.com`
-- the current blocker is a machine-level CUDA failure after a concurrent 8B extraction attempt
-  - the safe resume plan is to recover the NVIDIA driver or reboot the machine, then rerun the 8B stages sequentially
+- the fourth GPU remains faulty and unavailable, but the sequential `3 x RTX 3090` path is working
 - H-POPE public assets were not found in a directly usable release package
