@@ -14,7 +14,7 @@ make test
 
 Verified result in this session:
 
-- `scripts/verify_env.py` saw all 4 RTX 3090 GPUs
+- `scripts/verify_env.py` currently sees the 3 usable RTX 3090 GPUs on this machine
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
 - the full unit and integration suite passed
 
@@ -24,7 +24,7 @@ POPE:
 
 ```bash
 for subset in random popular adversarial; do
-  /tmp/mind-py311/bin/python scripts/prepare_data.py \
+  conda run --no-capture-output -n mind-py311 python scripts/prepare_data.py \
     normalize-pope \
     --source data/pope/${subset}.jsonl \
     --output outputs/normalized/pope/${subset}.jsonl \
@@ -37,7 +37,7 @@ RePOPE:
 
 ```bash
 for subset in random popular adversarial; do
-  /tmp/mind-py311/bin/python scripts/prepare_data.py \
+  conda run --no-capture-output -n mind-py311 python scripts/prepare_data.py \
     normalize-pope \
     --source data/repope/${subset}.jsonl \
     --output outputs/normalized/repope/${subset}.jsonl \
@@ -54,7 +54,7 @@ These normalized files already exist locally.
 This step needs MSCOCO train annotations.
 
 ```bash
-/tmp/mind-py311/bin/python scripts/prepare_data.py \
+conda run --no-capture-output -n mind-py311 python scripts/prepare_data.py \
   build-reference \
   --instances-json data/coco/annotations/instances_train2017.json \
   --output outputs/reference_candidates/coco_train_candidates.json \
@@ -73,7 +73,7 @@ Notes:
 Preview the commands for a preset without running them:
 
 ```bash
-/tmp/mind-py311/bin/python scripts/run_experiment.py \
+conda run --no-capture-output -n mind-py311 python scripts/run_experiment.py \
   --config configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml \
   --stages prepare,cache_reference,extract_eval,build_manifolds,compute_drift,train_detector,evaluate,plot
 ```
@@ -85,7 +85,7 @@ Use `--execute` only after the required assets are in place.
 ### Reference cache
 
 ```bash
-/tmp/mind-py311/bin/python scripts/cache_reference_states.py \
+conda run --no-capture-output -n mind-py311 python scripts/cache_reference_states.py \
   --references outputs/reference_candidates/coco_train_candidates.json \
   --image-root data/coco/train2017 \
   --model-config configs/models/qwen3_vl_8b.yaml \
@@ -99,7 +99,7 @@ Use `--execute` only after the required assets are in place.
 ### Evaluation cache
 
 ```bash
-/tmp/mind-py311/bin/python scripts/extract_eval_states.py \
+conda run --no-capture-output -n mind-py311 python scripts/extract_eval_states.py \
   --records outputs/normalized/pope/popular.jsonl \
   --model-config configs/models/qwen3_vl_8b.yaml \
   --output-root outputs/cache \
@@ -112,7 +112,7 @@ Use `--execute` only after the required assets are in place.
 ### Build manifolds
 
 ```bash
-/tmp/mind-py311/bin/python scripts/build_manifolds.py \
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
   --reference-cache outputs/cache/qwen3-vl-8b/pope-reference/train \
   --output-root outputs/reference_banks \
   --model-name qwen3-vl-8b
@@ -123,7 +123,7 @@ The reference cache input can be a single shard or a shard directory.
 ### Compute drift and wavelet features
 
 ```bash
-/tmp/mind-py311/bin/python scripts/compute_drift.py \
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
   --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
   --reference-root outputs/reference_banks \
   --model-name qwen3-vl-8b \
@@ -137,7 +137,7 @@ The cache input can be a single shard or a shard directory.
 ### Train detector
 
 ```bash
-/tmp/mind-py311/bin/python scripts/train_detector.py \
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
   --train-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --eval-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --output-root outputs/reports \
@@ -147,7 +147,7 @@ The cache input can be a single shard or a shard directory.
 ### Evaluate
 
 ```bash
-/tmp/mind-py311/bin/python scripts/evaluate.py \
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
   --input-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
   --output-root outputs/reports \
   --experiment-name medium-qwen3-vl-8b-popular
@@ -156,7 +156,7 @@ The cache input can be a single shard or a shard directory.
 ### RePOPE relabel pass
 
 ```bash
-/tmp/mind-py311/bin/python scripts/evaluate.py \
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
   --input-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
   --label-overrides outputs/normalized/repope/popular.jsonl \
   --output-root outputs/reports \
@@ -166,7 +166,7 @@ The cache input can be a single shard or a shard directory.
 ### Plotting
 
 ```bash
-/tmp/mind-py311/bin/python scripts/plot_results.py \
+conda run --no-capture-output -n mind-py311 python scripts/plot_results.py \
   --features-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --results-path outputs/reports/medium-qwen3-vl-8b-popular/results.csv \
   --output-root outputs/plots \

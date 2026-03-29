@@ -1,5 +1,34 @@
 # MIND Progress Log
 
+## 2026-03-29
+
+- Re-checked machine health after the earlier CUDA crash:
+  - `nvidia-smi` now reports `3` usable RTX 3090 GPUs
+  - `nvcc --version` is healthy
+  - `conda run --no-capture-output -n mind-py311 python` reports `torch.cuda.is_available() == True` and `device_count == 3`
+- Found two duplicate `mind-py311` environments:
+  - `/home/d7049/miniconda3/envs/mind-py311`
+  - `/home/d7049/zhanghaonan/mind/.conda/mind-py311`
+- Chose the named conda environment as the single supported runtime and updated the repo command surface to match it:
+  - `Makefile` now uses `conda run --no-capture-output -n mind-py311`
+  - `README.md` no longer points to the expired `/tmp/mind-py311`
+  - `docs/runbooks/experiments.md` now uses the named env in all runnable commands
+- Removed the duplicate repo-local environment at `/home/d7049/zhanghaonan/mind/.conda/mind-py311`.
+- Fixed an environment verification blind spot:
+  - `scripts/verify_env.py` now imports the local `mind` package too
+  - reinstalled the repo into the named env with `make install`
+  - this prevents direct script entrypoints from failing with `ModuleNotFoundError: mind`
+- Re-verified the canonical runtime after the env cleanup:
+  - `make verify-env`
+  - `PYTHONWARNINGS=ignore make test`
+  - result: `67 passed`
+- Reproduced the earlier 8B extraction pattern in the safe sequential form and confirmed it now works on the recovered machine:
+  - sequential `Qwen/Qwen3-VL-8B-Instruct` reference sanity extraction: success
+  - sequential `Qwen/Qwen3-VL-8B-Instruct` eval sanity extraction: success
+  - conclusion: the earlier crash was consistent with concurrent heavy extraction on unstable hardware, not with the basic single-run path
+- Notes:
+  - the earlier `/tmp/mind-py311` interpreter no longer exists, so old command examples in prior notes should be read as superseded by the named env above
+
 ## 2026-03-28
 
 - Bootstrapped the repository skeleton in `/home/d7049/zhanghaonan/mind`.
