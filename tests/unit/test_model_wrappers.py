@@ -47,6 +47,25 @@ def test_parse_yes_no_response_strips_thinking_and_punctuation() -> None:
     assert wrapper.parse_yes_no_response("No.") == 0
 
 
+def test_qwen_wrapper_formats_yes_no_question_once() -> None:
+    wrapper = QwenWrapper(
+        ModelConfig(
+            name="qwen3.5-4b",
+            model_id="Qwen/Qwen3.5-4B",
+            family="qwen",
+        )
+    )
+
+    assert (
+        wrapper.format_yes_no_question("Is there a dog in the image?")
+        == "Is there a dog in the image? Respond with only one word: yes or no."
+    )
+    assert (
+        wrapper.format_yes_no_question("Is there a dog in the image? Respond with only one word: yes or no.")
+        == "Is there a dog in the image? Respond with only one word: yes or no."
+    )
+
+
 def test_load_bundle_uses_standard_transformers_kwargs(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -124,7 +143,10 @@ def test_qwen_text_prepare_inputs_uses_chat_template_and_device() -> None:
         def apply_chat_template(self, messages, *, tokenize: bool, add_generation_prompt: bool) -> str:
             assert tokenize is False
             assert add_generation_prompt is True
-            assert messages[0]["content"][0]["text"] == "Answer yes or no."
+            assert (
+                messages[0]["content"][0]["text"]
+                == "Answer yes or no. Respond with only one word: yes or no."
+            )
             return "<prompt>"
 
         def __call__(self, text, return_tensors: str):
@@ -191,6 +213,7 @@ def test_internvl_prepare_inputs_uses_image_and_prompt(tmp_path: Path) -> None:
     assert batch["device"] == "cuda:0"
     assert processor.calls[1][1] == ["<vision-prompt>"]
     assert len(processor.calls[1][2]) == 1
+    assert processor.calls[0][1][0]["content"][1]["text"].endswith("Respond with only one word: yes or no.")
 
 
 def test_internvl_prepare_batch_inputs_uses_padding_and_multiple_images(tmp_path: Path) -> None:
@@ -236,8 +259,8 @@ def test_internvl_prepare_batch_inputs_uses_padding_and_multiple_images(tmp_path
 
     assert batch["device"] == "cuda:2"
     assert processor.calls[2][1] == [
-        "<vision-prompt:Is there a plane in the image?>",
-        "<vision-prompt:Is there a dog in the image?>",
+        "<vision-prompt:Is there a plane in the image? Respond with only one word: yes or no.>",
+        "<vision-prompt:Is there a dog in the image? Respond with only one word: yes or no.>",
     ]
     assert len(processor.calls[2][2]) == 2
     assert processor.calls[2][4] is True

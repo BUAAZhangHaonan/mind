@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--selected-layers", type=int, default=16)
     parser.add_argument("--layer-range", default="middle")
+    parser.add_argument("--max-new-tokens", type=int, default=1)
     parser.add_argument("--limit", type=int, default=0)
     return parser
 
@@ -113,6 +114,7 @@ def run_extraction(
     batch_size: int,
     selected_layer_count: int,
     layer_range: str,
+    max_new_tokens: int,
     limit: int = 0,
 ) -> list[Path]:
     model_config = load_yaml_config(model_config_path, ModelConfig)
@@ -145,6 +147,7 @@ def run_extraction(
                         records=shard_records[start : start + batch_size],
                         selected_layers=selected_layers,
                         device=device,
+                        max_new_tokens=max_new_tokens,
                     )
                 )
             output_path = build_cache_output_path(
@@ -173,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         batch_size=args.batch_size,
         selected_layer_count=args.selected_layers,
         layer_range=args.layer_range,
+        max_new_tokens=args.max_new_tokens,
         limit=args.limit,
     )
     for output_path in output_paths:
