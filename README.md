@@ -49,8 +49,8 @@ make test
 
 What has been verified in this session:
 
-- `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
-- `56 passed`
+- `PYTHONWARNINGS=ignore conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
+- `73 passed`
 - `scripts/verify_env.py` succeeded for:
   - `Qwen/Qwen3-VL-8B-Instruct`
   - `OpenGVLab/InternVL3_5-8B-HF`
@@ -73,12 +73,16 @@ Normalized copies already written to:
 - `outputs/normalized/pope/*.jsonl`
 - `outputs/normalized/repope/*.jsonl`
 
-Still missing for full multimodal runs:
+Local multimodal assets already present:
 
 - `data/coco/annotations/instances_train2017.json`
 - `data/coco/train2017/`
-- public H-POPE benchmark files
-- full local checkpoint downloads for the planned models
+- `data/coco/val2014/`
+- model assets for the completed Qwen stages
+
+Still not publicly obtainable in a directly usable package:
+
+- H-POPE benchmark files
 
 ## Core Scripts
 
@@ -152,19 +156,30 @@ Completed experiment checkpoints:
 
 - real smoke run with `Qwen/Qwen3-VL-4B-Instruct` on a `200`-sample POPE popular slice
 - smoke plots written under `outputs/plots/smoke-qwen3-vl-4b-popular/`
-- partial medium run recovered from the completed shards of a larger `Qwen/Qwen3-VL-8B-Instruct` popular run
-- partial medium metrics and ablation files written under `outputs/reports/medium-qwen3-vl-8b-popular-partial/`
+- corrected full popular run with `Qwen/Qwen3-VL-8B-Instruct`
+- full main-stage Qwen runs on POPE `popular`, `random`, and `adversarial`
+- RePOPE relabel evaluation for all completed Qwen subsets
+- baseline and ablation reports for the corrected popular run
+- layer-range ablation showing `late > middle > early` on the corrected popular split
+- completed cross-family popular run with `OpenGVLab/InternVL3_5-8B-HF`
+- cross-family RePOPE relabel evaluation, baselines, and plots written under `outputs/reports/cross-internvl3.5-8b-popular*/` and `outputs/plots/cross-internvl3.5-8b-popular/`
 
-Current blockers:
+Key Qwen results:
 
-- the public data blockers were cleared in this session:
-  - COCO train annotations downloaded and extracted
-  - COCO `val2014` images downloaded and extracted
-  - COCO `train2017` images downloaded and extracted
-- the current hard blocker is machine-level CUDA health after a concurrent `Qwen/Qwen3-VL-8B-Instruct` run
-  - GPU1 entered an unknown-error state
-  - fresh PyTorch processes now report `torch.cuda.is_available() == False`
-  - a local driver reset is not possible from this session without privileged access
+- popular MIND ROC-AUC: `0.6737`
+- popular RePOPE ROC-AUC: `0.6443`
+- random MIND ROC-AUC: `0.5820`
+- random RePOPE ROC-AUC: `0.6410`
+- adversarial MIND ROC-AUC: `0.7079`
+- adversarial RePOPE ROC-AUC: `0.7048`
+- InternVL popular MIND ROC-AUC: `0.8367`
+- InternVL popular RePOPE ROC-AUC: `0.8112`
+- direct hidden-state linear probe outperformed MIND on the completed Qwen runs
+- InternVL improved the popular cross-family ROC-AUC over Qwen on the same benchmark, but the direct hidden-state linear probe still remained strongest within the InternVL run too
+
+Remaining open items:
+
+- the fourth physical GPU is still faulty, but the recovered `3 x RTX 3090` runtime is healthy and verified
 - H-POPE remains blocked because the public benchmark package was not found
 
-See `docs/runbooks/experiments.md` for the staged run procedure, `journal/progress.md` for the command log, and `docs/paper_outline.md` for the writing scaffold.
+See `docs/results_summary.md` for the compact result tables, `docs/runbooks/experiments.md` for the staged run procedure, `journal/progress.md` for the command log, and `docs/paper_outline.md` for the writing scaffold.
