@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
 import torch
 
 from mind.manifolds import (
@@ -238,7 +239,65 @@ def test_compute_reference_bank_stats_pools_counts_when_scope_shared() -> None:
     assert sorted(stats) == ["__shared__"]
     assert stats["__shared__"][8]["count"] == 3
     assert "residual_mean" in stats["__shared__"][8]
-    assert "neighbor_radius_mean" in stats["__shared__"][8]
+
+
+def test_compute_reference_bank_stats_matches_reference_loop_on_small_layer() -> None:
+    entries = [
+        {
+            "sample_id": "sample-1",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.0, 0.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-2",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[1.0, 0.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-3",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.0, 1.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-4",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.1, 0.1, 0.5]]),
+        },
+    ]
+
+    stats = compute_reference_bank_stats(entries, k_neighbors=2)["dog"][8]
+    vectors = build_reference_bank(entries)["dog"][8]
+    residuals = []
+    neighbor_residuals = []
+    neighbor_radii = []
+    for index in range(vectors.shape[0]):
+        mask = [offset for offset in range(vectors.shape[0]) if offset != index]
+        leave_one_out = vectors[mask]
+        query = vectors[index]
+        manifold = fit_local_pca_manifold(leave_one_out, query, k_neighbors=2)
+        residuals.append(normalized_normal_residual(query, manifold))
+        distances = torch.norm(leave_one_out - query.unsqueeze(0), dim=1)
+        topk = torch.topk(distances, k=2, largest=False)
+        neighbor_radius = float(topk.values.mean())
+        neighbor_residual = float(topk.values.min() / max(neighbor_radius, 1e-8))
+        neighbor_residuals.append(neighbor_residual)
+        neighbor_radii.append(neighbor_radius)
+
+    assert stats["count"] == 4
+    assert stats["residual_mean"] == pytest.approx(sum(residuals) / len(residuals), rel=1e-5)
+    assert stats["neighbor_residual_mean"] == pytest.approx(
+        sum(neighbor_residuals) / len(neighbor_residuals),
+        rel=1e-5,
+    )
+    assert stats["neighbor_radius_mean"] == pytest.approx(sum(neighbor_radii) / len(neighbor_radii), rel=1e-5)
 
 
 def test_build_output_path_uses_object_and_layer_subdirectories(tmp_path: Path) -> None:
