@@ -137,6 +137,8 @@ def build_no_manifold_feature_frame(
             raw_curve,
             selected_layers=selected_layers,
             layer_stats=reference_stats[object_name],
+            mean_key="neighbor_residual_mean",
+            std_key="neighbor_residual_std",
         )
         features = build_drift_features(
             raw_curve=raw_curve,

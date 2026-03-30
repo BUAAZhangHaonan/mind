@@ -63,15 +63,17 @@ def build_feature_frame(
     rows: list[dict[str, object]] = []
     for entry in cache_entries:
         selected_layers = [int(layer) for layer in entry["selected_layers"]]
+        object_name = str(entry["object_name"])
+        if object_name not in reference_bank or object_name not in reference_stats:
+            continue
+        if any(layer_index not in reference_bank[object_name] for layer_index in selected_layers):
+            continue
         raw_curve = compute_drift_curve(
             layer_vectors=entry["layer_vectors"],
             selected_layers=selected_layers,
-            object_name=str(entry["object_name"]),
+            object_name=object_name,
             reference_bank=reference_bank,
         )
-        object_name = str(entry["object_name"])
-        if object_name not in reference_stats:
-            raise KeyError(f"Missing reference stats for object {object_name}")
         calibrated_curve = calibrate_drift_curve(
             raw_curve,
             selected_layers=selected_layers,

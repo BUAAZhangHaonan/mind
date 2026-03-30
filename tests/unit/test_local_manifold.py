@@ -7,6 +7,8 @@ import torch
 
 from mind.manifolds import (
     build_reference_bank,
+    clean_reference_entries,
+    compute_reference_bank_stats,
     fit_local_pca_manifold,
     normalized_normal_residual,
 )
@@ -104,6 +106,85 @@ def test_build_reference_bank_groups_vectors_by_object_and_layer() -> None:
     assert sorted(bank) == ["dog"]
     assert sorted(bank["dog"]) == [8, 13]
     assert bank["dog"][8].shape == (2, 2)
+
+
+def test_clean_reference_entries_keeps_only_parsed_yes_rows() -> None:
+    cleaned = clean_reference_entries(
+        [
+            {"sample_id": "yes", "parsed_answer": 1, "object_name": "dog"},
+            {"sample_id": "no", "parsed_answer": 0, "object_name": "dog"},
+            {"sample_id": "unparsed", "parsed_answer": None, "object_name": "dog"},
+        ]
+    )
+
+    assert [entry["sample_id"] for entry in cleaned] == ["yes"]
+
+
+def test_build_reference_bank_excludes_layers_below_min_support() -> None:
+    entries = [
+        {
+            "sample_id": "sample-1",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[1.0, 2.0]]),
+        },
+        {
+            "sample_id": "sample-2",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[3.0, 4.0]]),
+        },
+        {
+            "sample_id": "sample-3",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[5.0, 6.0]]),
+        },
+    ]
+
+    bank = build_reference_bank(entries, min_points=4)
+
+    assert bank == {}
+
+
+def test_compute_reference_bank_stats_returns_layerwise_counts_and_radius_summaries() -> None:
+    entries = [
+        {
+            "sample_id": "sample-1",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.0, 0.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-2",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[1.0, 0.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-3",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.0, 1.0, 0.0]]),
+        },
+    ]
+
+    stats = compute_reference_bank_stats(entries, k_neighbors=2)
+
+    assert stats["dog"][8]["count"] == 3
+    assert "residual_mean" in stats["dog"][8]
+    assert "residual_std" in stats["dog"][8]
+    assert "neighbor_radius_mean" in stats["dog"][8]
+    assert "neighbor_radius_std" in stats["dog"][8]
+    assert "neighbor_radius_q10" in stats["dog"][8]
+    assert "neighbor_radius_q50" in stats["dog"][8]
+    assert "neighbor_radius_q90" in stats["dog"][8]
 
 
 def test_build_output_path_uses_object_and_layer_subdirectories(tmp_path: Path) -> None:
