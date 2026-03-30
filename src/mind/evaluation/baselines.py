@@ -10,14 +10,14 @@ import torch
 from sklearn.model_selection import train_test_split
 
 from mind.detectors import fit_logistic_detector
-from mind.drift import standardize_drift_curve
-from mind.wavelets import extract_wavelet_features
+from mind.drift import build_drift_features, calibrate_drift_curve
 
 from .metrics import compute_binary_metrics, compute_object_hallucination_label
 
 
 METADATA_COLUMNS = {
     "sample_id",
+    "image_id",
     "label",
     "subset",
     "object_name",
@@ -29,11 +29,24 @@ METADATA_COLUMNS = {
 def load_reference_bank(reference_root: Path, model_name: str) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, torch.Tensor]] = {}
     model_root = reference_root / model_name
-    for layer_path in model_root.glob("*/*.pt"):
+    for layer_path in model_root.glob("*/layer-*.pt"):
         object_name = layer_path.parent.name
         layer_index = int(layer_path.stem.split("-")[-1])
         bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
     return bank
+
+
+def load_reference_stats(reference_root: Path, model_name: str) -> dict[str, dict[int, dict[str, float]]]:
+    stats_map: dict[str, dict[int, dict[str, float]]] = {}
+    model_root = reference_root / model_name
+    for stats_path in model_root.glob("*/stats.pt"):
+        object_name = stats_path.parent.name
+        payload = torch.load(stats_path, weights_only=False)
+        stats_map[object_name] = {
+            int(layer_index): {str(key): float(value) for key, value in layer_stats.items()}
+            for layer_index, layer_stats in payload.items()
+        }
+    return stats_map
 
 
 def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
@@ -50,11 +63,11 @@ def feature_columns(frame: pd.DataFrame) -> list[str]:
 
 
 def drift_only_columns(frame: pd.DataFrame) -> list[str]:
-    keep = {"max_drift", "mean_drift", "peak_layer_index"}
+    keep = {"raw_max_drift", "raw_mean_drift", "raw_peak_layer_index"}
     return [
         column
         for column in frame.columns
-        if column.startswith("drift_") or column in keep
+        if column.startswith("raw_drift_") or column in keep
     ]
 
 
@@ -103,26 +116,36 @@ def build_no_manifold_feature_frame(
     *,
     cache_entries: Sequence[dict[str, object]],
     reference_bank: dict[str, dict[int, torch.Tensor]],
+    reference_stats: dict[str, dict[int, dict[str, float]]],
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for entry in cache_entries:
         object_name = str(entry["object_name"])
-        if object_name not in reference_bank:
+        if object_name not in reference_bank or object_name not in reference_stats:
             continue
         selected_layers = [int(layer_index) for layer_index in entry["selected_layers"]]
         if any(layer_index not in reference_bank[object_name] for layer_index in selected_layers):
             continue
-        drift_curve = [
+        raw_curve = [
             _normalized_neighbor_residual(
                 entry["layer_vectors"][offset],
                 reference_bank[object_name][layer_index],
             )
             for offset, layer_index in enumerate(selected_layers)
         ]
-        features = extract_wavelet_features(standardize_drift_curve(drift_curve))
+        calibrated_curve = calibrate_drift_curve(
+            raw_curve,
+            selected_layers=selected_layers,
+            layer_stats=reference_stats[object_name],
+        )
+        features = build_drift_features(
+            raw_curve=raw_curve,
+            calibrated_curve=calibrated_curve,
+        )
         rows.append(
             {
                 "sample_id": entry["sample_id"],
+                "image_id": int(entry.get("image_id", -1)),
                 "ground_truth_label": int(entry["label"]),
                 "answer_label": -1 if entry.get("parsed_answer") is None else int(entry["parsed_answer"]),
                 "label": compute_object_hallucination_label(
@@ -146,6 +169,7 @@ def build_linear_probe_frame(cache_entries: Sequence[dict[str, object]]) -> pd.D
         rows.append(
             {
                 "sample_id": entry["sample_id"],
+                "image_id": int(entry.get("image_id", -1)),
                 "ground_truth_label": int(entry["label"]),
                 "answer_label": -1 if entry.get("parsed_answer") is None else int(entry["parsed_answer"]),
                 "label": compute_object_hallucination_label(

@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 
 from mind.detectors import fit_logistic_detector
-from mind.drift import compute_drift_curve, standardize_drift_curve
+from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
 from mind.evaluation import compute_object_hallucination_label
 from mind.wavelets import extract_wavelet_features
 
@@ -61,13 +61,20 @@ def test_compute_drift_curve_scores_each_layer_against_reference_bank() -> None:
     assert drift[1] > 0.4
 
 
-def test_standardize_drift_curve_returns_zero_mean_unit_scale() -> None:
-    curve = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+def test_calibrate_drift_curve_uses_reference_stats_not_self_normalization() -> None:
+    curve = np.array([10.0, 12.0], dtype=np.float32)
 
-    standardized = standardize_drift_curve(curve)
+    calibrated = calibrate_drift_curve(
+        curve,
+        selected_layers=[8, 13],
+        layer_stats={
+            8: {"residual_mean": 8.0, "residual_std": 2.0},
+            13: {"residual_mean": 10.0, "residual_std": 4.0},
+        },
+    )
 
-    assert np.isclose(float(standardized.mean()), 0.0, atol=1e-6)
-    assert np.isclose(float(standardized.std()), 1.0, atol=1e-6)
+    assert np.allclose(calibrated, np.array([1.0, 0.5], dtype=np.float32))
+    assert not np.isclose(float(calibrated.mean()), 0.0, atol=1e-6)
 
 
 def test_extract_wavelet_features_returns_raw_curve_and_energy_terms() -> None:
@@ -80,6 +87,37 @@ def test_extract_wavelet_features_returns_raw_curve_and_energy_terms() -> None:
     assert "approx_energy" in features
     assert "detail_energy_l1" in features
     assert features["max_drift"] == 3.0
+
+
+def test_build_drift_features_preserves_raw_magnitude_and_wavelet_terms_only_for_calibrated_curve() -> None:
+    raw_curve = np.array([2.0, 4.0, 6.0, 8.0], dtype=np.float32)
+    calibrated_curve = np.array([0.0, 0.5, 1.0, 1.5], dtype=np.float32)
+
+    features = build_drift_features(raw_curve=raw_curve, calibrated_curve=calibrated_curve)
+
+    assert features["raw_drift_0"] == 2.0
+    assert features["raw_drift_3"] == 8.0
+    assert features["raw_mean_drift"] == 5.0
+    assert features["raw_max_drift"] == 8.0
+    assert features["cal_drift_0"] == 0.0
+    assert features["cal_drift_3"] == 1.5
+    assert "cal_approx_energy" in features
+    assert "cal_detail_energy_l1" in features
+    assert "raw_approx_energy" not in features
+
+
+def test_build_drift_features_preserves_magnitude_for_same_shape_curves() -> None:
+    small = build_drift_features(
+        raw_curve=np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+        calibrated_curve=np.array([0.0, 0.5, 1.0, 1.5], dtype=np.float32),
+    )
+    large = build_drift_features(
+        raw_curve=np.array([2.0, 4.0, 6.0, 8.0], dtype=np.float32),
+        calibrated_curve=np.array([0.0, 0.5, 1.0, 1.5], dtype=np.float32),
+    )
+
+    assert large["raw_mean_drift"] > small["raw_mean_drift"]
+    assert large["raw_max_drift"] > small["raw_max_drift"]
 
 
 def test_fit_logistic_detector_learns_simple_separable_problem() -> None:

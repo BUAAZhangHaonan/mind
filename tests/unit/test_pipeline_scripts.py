@@ -114,6 +114,7 @@ def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path
         cache_entries=[
             {
                 "sample_id": "hallucinated",
+                "image_id": 101,
                 "label": 0,
                 "parsed_answer": 1,
                 "subset": "popular",
@@ -123,6 +124,7 @@ def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path
             },
             {
                 "sample_id": "grounded",
+                "image_id": 102,
                 "label": 1,
                 "parsed_answer": 1,
                 "subset": "popular",
@@ -132,11 +134,23 @@ def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path
             },
         ],
         reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
+        reference_stats={
+            "dog": {
+                8: {"residual_mean": 0.1, "residual_std": 0.2},
+                13: {"residual_mean": 0.1, "residual_std": 0.2},
+            }
+        },
     )
 
+    assert list(frame["image_id"]) == [101, 102]
     assert list(frame["ground_truth_label"]) == [0, 1]
     assert list(frame["answer_label"]) == [1, 1]
     assert list(frame["label"]) == [1, 0]
+    assert "raw_drift_0" in frame.columns
+    assert "raw_mean_drift" in frame.columns
+    assert "cal_drift_0" in frame.columns
+    assert "cal_approx_energy" in frame.columns
+    assert "approx_energy" not in frame.columns
 
 
 def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -> None:

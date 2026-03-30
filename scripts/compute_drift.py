@@ -9,9 +9,8 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from mind.drift import compute_drift_curve, standardize_drift_curve
+from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
 from mind.evaluation import compute_object_hallucination_label
-from mind.wavelets import extract_wavelet_features
 
 
 def build_feature_output_path(
@@ -26,11 +25,24 @@ def build_feature_output_path(
 def load_reference_bank(reference_root: Path, model_name: str) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, torch.Tensor]] = {}
     model_root = reference_root / model_name
-    for layer_path in model_root.glob("*/*.pt"):
+    for layer_path in model_root.glob("*/layer-*.pt"):
         object_name = layer_path.parent.name
         layer_index = int(layer_path.stem.split("-")[-1])
         bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
     return bank
+
+
+def load_reference_stats(reference_root: Path, model_name: str) -> dict[str, dict[int, dict[str, float]]]:
+    stats_map: dict[str, dict[int, dict[str, float]]] = {}
+    model_root = reference_root / model_name
+    for stats_path in model_root.glob("*/stats.pt"):
+        object_name = stats_path.parent.name
+        payload = torch.load(stats_path, weights_only=False)
+        stats_map[object_name] = {
+            int(layer_index): {str(key): float(value) for key, value in layer_stats.items()}
+            for layer_index, layer_stats in payload.items()
+        }
+    return stats_map
 
 
 def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
@@ -46,19 +58,33 @@ def build_feature_frame(
     *,
     cache_entries: list[dict[str, object]],
     reference_bank: dict[str, dict[int, torch.Tensor]],
+    reference_stats: dict[str, dict[int, dict[str, float]]],
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for entry in cache_entries:
-        curve = compute_drift_curve(
+        selected_layers = [int(layer) for layer in entry["selected_layers"]]
+        raw_curve = compute_drift_curve(
             layer_vectors=entry["layer_vectors"],
-            selected_layers=[int(layer) for layer in entry["selected_layers"]],
+            selected_layers=selected_layers,
             object_name=str(entry["object_name"]),
             reference_bank=reference_bank,
         )
-        features = extract_wavelet_features(standardize_drift_curve(curve))
+        object_name = str(entry["object_name"])
+        if object_name not in reference_stats:
+            raise KeyError(f"Missing reference stats for object {object_name}")
+        calibrated_curve = calibrate_drift_curve(
+            raw_curve,
+            selected_layers=selected_layers,
+            layer_stats=reference_stats[object_name],
+        )
+        features = build_drift_features(
+            raw_curve=raw_curve,
+            calibrated_curve=calibrated_curve,
+        )
         rows.append(
             {
                 "sample_id": entry["sample_id"],
+                "image_id": int(entry.get("image_id", -1)),
                 "ground_truth_label": int(entry["label"]),
                 "answer_label": -1 if entry.get("parsed_answer") is None else int(entry["parsed_answer"]),
                 "label": compute_object_hallucination_label(
@@ -68,7 +94,7 @@ def build_feature_frame(
                     ),
                 ),
                 "subset": entry["subset"],
-                "object_name": entry["object_name"],
+                "object_name": object_name,
                 **features,
             }
         )
@@ -99,7 +125,12 @@ def main(argv: list[str] | None = None) -> int:
 
     cache_entries = load_cache_entries(args.cache_path)
     reference_bank = load_reference_bank(args.reference_root, args.model_name)
-    frame = build_feature_frame(cache_entries=cache_entries, reference_bank=reference_bank)
+    reference_stats = load_reference_stats(args.reference_root, args.model_name)
+    frame = build_feature_frame(
+        cache_entries=cache_entries,
+        reference_bank=reference_bank,
+        reference_stats=reference_stats,
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(output_path, index=False)
     print(output_path)
