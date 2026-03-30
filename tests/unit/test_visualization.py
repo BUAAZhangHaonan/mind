@@ -23,8 +23,8 @@ SPEC.loader.exec_module(plot_results)
 def test_plot_drift_curves_writes_png(tmp_path: Path) -> None:
     frame = pd.DataFrame(
         [
-            {"label": 0, "drift_0": 0.1, "drift_1": 0.2, "drift_2": 0.3},
-            {"label": 1, "drift_0": 0.4, "drift_1": 0.5, "drift_2": 0.6},
+            {"label": 0, "raw_drift_0": 0.1, "raw_drift_1": 0.2, "raw_drift_2": 0.3},
+            {"label": 1, "raw_drift_0": 0.4, "raw_drift_1": 0.5, "raw_drift_2": 0.6},
         ]
     )
     output_path = tmp_path / "drift.png"
@@ -37,8 +37,8 @@ def test_plot_drift_curves_writes_png(tmp_path: Path) -> None:
 def test_plot_wavelet_heatmap_writes_png(tmp_path: Path) -> None:
     frame = pd.DataFrame(
         [
-            {"detail_energy_l1": 0.2, "detail_energy_l2": 0.1, "approx_energy": 0.7},
-            {"detail_energy_l1": 0.4, "detail_energy_l2": 0.3, "approx_energy": 0.9},
+            {"cal_detail_energy_l1": 0.2, "cal_detail_energy_l2": 0.1, "cal_approx_energy": 0.7},
+            {"cal_detail_energy_l1": 0.4, "cal_detail_energy_l2": 0.3, "cal_approx_energy": 0.9},
         ]
     )
     output_path = tmp_path / "heatmap.png"

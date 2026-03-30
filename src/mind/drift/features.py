@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from mind.manifolds import fit_local_pca_manifold, normalized_normal_residual
+from mind.wavelets import extract_wavelet_features
 
 
 def compute_drift_curve(
@@ -40,3 +41,40 @@ def standardize_drift_curve(curve: np.ndarray) -> np.ndarray:
     if std < 1e-8:
         return np.zeros_like(curve)
     return (curve - curve.mean()) / std
+
+
+def calibrate_drift_curve(
+    curve: np.ndarray,
+    *,
+    selected_layers: list[int],
+    layer_stats: dict[int, dict[str, float]],
+) -> np.ndarray:
+    curve = np.asarray(curve, dtype=np.float32)
+    if curve.shape[0] != len(selected_layers):
+        raise ValueError("curve and selected_layers must align")
+    calibrated = []
+    for value, layer_index in zip(curve.tolist(), selected_layers):
+        if int(layer_index) not in layer_stats:
+            raise KeyError(f"Missing calibration stats for layer {layer_index}")
+        stats = layer_stats[int(layer_index)]
+        std = max(float(stats["residual_std"]), 1e-8)
+        calibrated.append((float(value) - float(stats["residual_mean"])) / std)
+    return np.asarray(calibrated, dtype=np.float32)
+
+
+def build_drift_features(
+    *,
+    raw_curve: np.ndarray,
+    calibrated_curve: np.ndarray,
+) -> dict[str, float]:
+    raw_curve = np.asarray(raw_curve, dtype=np.float32)
+    calibrated_curve = np.asarray(calibrated_curve, dtype=np.float32)
+    features = {
+        f"raw_drift_{index}": float(value)
+        for index, value in enumerate(raw_curve.tolist())
+    }
+    features["raw_max_drift"] = float(raw_curve.max())
+    features["raw_mean_drift"] = float(raw_curve.mean())
+    features["raw_peak_layer_index"] = float(raw_curve.argmax())
+    features.update(extract_wavelet_features(calibrated_curve, prefix="cal_"))
+    return features

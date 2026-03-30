@@ -36,7 +36,9 @@ def plot_drift_curves(
     output_path: str | Path,
 ) -> None:
     if frame is not None:
-        drift_columns = [column for column in frame.columns if column.startswith("drift_")]
+        drift_columns = [column for column in frame.columns if column.startswith("raw_drift_")]
+        if not drift_columns:
+            drift_columns = [column for column in frame.columns if column.startswith("drift_")]
         grounded_curve = frame.loc[frame["label"] == 0, drift_columns].mean(axis=0).to_numpy()
         hallucinated_curve = frame.loc[frame["label"] == 1, drift_columns].mean(axis=0).to_numpy()
     if grounded_curve is None or hallucinated_curve is None:
@@ -94,8 +96,14 @@ def plot_wavelet_heatmap(frame: pd.DataFrame, *, output_path: str | Path) -> Non
     energy_columns = [
         column
         for column in frame.columns
-        if column == "approx_energy" or column.startswith("detail_energy_")
+        if column == "cal_approx_energy" or column.startswith("cal_detail_energy_")
     ]
+    if not energy_columns:
+        energy_columns = [
+            column
+            for column in frame.columns
+            if column == "approx_energy" or column.startswith("detail_energy_")
+        ]
     matrix = frame[energy_columns].to_numpy()
     row_labels = [f"sample_{index}" for index in range(len(frame))]
     plot_wavelet_energy_heatmap(

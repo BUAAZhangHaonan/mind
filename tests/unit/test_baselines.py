@@ -67,6 +67,7 @@ def test_build_no_manifold_feature_frame_builds_wavelet_features() -> None:
         cache_entries=[
             {
                 "sample_id": "sample-1",
+                "image_id": 11,
                 "label": 0,
                 "parsed_answer": 1,
                 "subset": "popular",
@@ -76,13 +77,19 @@ def test_build_no_manifold_feature_frame_builds_wavelet_features() -> None:
             }
         ],
         reference_bank=reference_bank,
+        reference_stats={
+            "dog": {
+                8: {"residual_mean": 0.1, "residual_std": 0.2},
+                13: {"residual_mean": 0.1, "residual_std": 0.2},
+            }
+        },
     )
 
     assert isinstance(frame, pd.DataFrame)
     assert list(frame["label"]) == [1]
-    assert "approx_energy" in frame.columns
-    assert "detail_energy_l1" in frame.columns
-    assert "drift_0" in frame.columns
+    assert "cal_approx_energy" in frame.columns
+    assert "cal_detail_energy_l1" in frame.columns
+    assert "raw_drift_0" in frame.columns
     assert frame.loc[0, "object_name"] == "dog"
 
 
@@ -97,6 +104,7 @@ def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverag
         cache_entries=[
             {
                 "sample_id": "covered",
+                "image_id": 21,
                 "label": 1,
                 "parsed_answer": 1,
                 "subset": "popular",
@@ -106,6 +114,7 @@ def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverag
             },
             {
                 "sample_id": "missing",
+                "image_id": 22,
                 "label": 1,
                 "parsed_answer": 1,
                 "subset": "popular",
@@ -115,6 +124,11 @@ def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverag
             },
         ],
         reference_bank=reference_bank,
+        reference_stats={
+            "dog": {
+                8: {"residual_mean": 0.1, "residual_std": 0.2},
+            }
+        },
     )
 
     assert list(frame["sample_id"]) == ["covered"]
