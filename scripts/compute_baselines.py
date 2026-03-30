@@ -18,6 +18,7 @@ from mind.evaluation.baselines import (
     feature_columns,
     load_cache_entries,
     load_reference_bank,
+    load_reference_stats,
 )
 
 
@@ -39,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--test-size", type=float, default=0.3)
     parser.add_argument("--random-state", type=int, default=13)
+    parser.add_argument(
+        "--split-strategy",
+        choices=["row", "image_grouped", "object_heldout"],
+        default="row",
+    )
+    parser.add_argument("--num-folds", type=int, default=5)
     return parser
 
 
@@ -47,31 +54,46 @@ def main(argv: list[str] | None = None) -> int:
     features = pd.read_parquet(args.features_path)
     cache_entries = load_cache_entries(args.cache_path)
     reference_bank = load_reference_bank(args.reference_root, args.model_name)
+    reference_stats = load_reference_stats(args.reference_root, args.model_name)
+    no_manifold_frame = build_no_manifold_feature_frame(
+        cache_entries=cache_entries,
+        reference_bank=reference_bank,
+        reference_stats=reference_stats,
+    )
+    linear_probe_frame = build_linear_probe_frame(cache_entries)
 
     baselines: dict[str, object] = {}
     full_metrics, _ = evaluate_feature_frame(
         features,
         columns=feature_columns(features),
+        split_strategy=args.split_strategy,
         test_size=args.test_size,
         random_state=args.random_state,
+        num_folds=args.num_folds,
     )
     drift_metrics, _ = evaluate_feature_frame(
         features,
         columns=drift_only_columns(features),
+        split_strategy=args.split_strategy,
         test_size=args.test_size,
         random_state=args.random_state,
+        num_folds=args.num_folds,
     )
     no_manifold_metrics, _ = evaluate_feature_frame(
-        build_no_manifold_feature_frame(cache_entries=cache_entries, reference_bank=reference_bank),
-        columns=feature_columns(build_no_manifold_feature_frame(cache_entries=cache_entries, reference_bank=reference_bank)),
+        no_manifold_frame,
+        columns=feature_columns(no_manifold_frame),
+        split_strategy=args.split_strategy,
         test_size=args.test_size,
         random_state=args.random_state,
+        num_folds=args.num_folds,
     )
     linear_probe_metrics, _ = evaluate_feature_frame(
-        build_linear_probe_frame(cache_entries),
-        columns=feature_columns(build_linear_probe_frame(cache_entries)),
+        linear_probe_frame,
+        columns=feature_columns(linear_probe_frame),
+        split_strategy=args.split_strategy,
         test_size=args.test_size,
         random_state=args.random_state,
+        num_folds=args.num_folds,
     )
 
     baselines["full"] = full_metrics

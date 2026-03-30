@@ -6,6 +6,7 @@ import torch
 from mind.evaluation.baselines import (
     build_no_manifold_feature_frame,
     build_raw_model_yes_no_baseline,
+    evaluate_feature_frame,
 )
 
 
@@ -147,3 +148,33 @@ def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverag
     )
 
     assert list(frame["sample_id"]) == ["covered"]
+
+
+def test_evaluate_feature_frame_uses_image_grouped_out_of_fold_results() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "object_name": "dog" if index < 4 else "cat",
+                "label": index % 2,
+                "raw_drift_0": float(index),
+                "raw_mean_drift": float(index) / 2.0,
+            }
+            for index in range(8)
+        ]
+    )
+
+    metrics, results = evaluate_feature_frame(
+        frame,
+        columns=["raw_drift_0", "raw_mean_drift"],
+        split_strategy="image_grouped",
+        random_state=17,
+        num_folds=2,
+    )
+
+    assert len(results) == len(frame)
+    assert sorted(results["fold"].unique().tolist()) == [0, 1]
+    assert sorted(results["sample_id"].tolist()) == sorted(frame["sample_id"].tolist())
+    assert "pr_auc" in metrics
+    assert "tpr_at_fpr_0.01" in metrics

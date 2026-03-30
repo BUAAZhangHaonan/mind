@@ -7,7 +7,7 @@ from typing import Sequence
 
 import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
 from mind.detectors import fit_logistic_detector
 from mind.drift import build_drift_features, calibrate_drift_curve
@@ -23,6 +23,12 @@ METADATA_COLUMNS = {
     "object_name",
     "ground_truth_label",
     "answer_label",
+    "fold",
+}
+
+GROUP_COLUMN_BY_STRATEGY = {
+    "image_grouped": "image_id",
+    "object_heldout": "object_name",
 }
 
 
@@ -188,26 +194,82 @@ def build_linear_probe_frame(cache_entries: Sequence[dict[str, object]]) -> pd.D
     return pd.DataFrame(rows)
 
 
+def build_train_eval_splits(
+    frame: pd.DataFrame,
+    *,
+    split_strategy: str = "row",
+    test_size: float = 0.3,
+    random_state: int = 13,
+    num_folds: int = 5,
+) -> list[tuple[int, pd.DataFrame, pd.DataFrame]]:
+    if frame["label"].nunique() < 2:
+        raise ValueError("Input frame must contain both hallucinated and non-hallucinated samples.")
+    if split_strategy == "row":
+        train_frame, eval_frame = train_test_split(
+            frame,
+            test_size=test_size,
+            random_state=random_state,
+            stratify=frame["label"],
+        )
+        return [(0, train_frame.reset_index(drop=True), eval_frame.reset_index(drop=True))]
+    if split_strategy not in GROUP_COLUMN_BY_STRATEGY:
+        raise ValueError(f"Unsupported split strategy: {split_strategy}")
+    if num_folds < 2:
+        raise ValueError("Grouped evaluation requires at least two folds.")
+    group_column = GROUP_COLUMN_BY_STRATEGY[split_strategy]
+    if group_column not in frame.columns:
+        raise ValueError(f"Missing required grouping column: {group_column}")
+
+    splitter = StratifiedGroupKFold(
+        n_splits=num_folds,
+        shuffle=True,
+        random_state=random_state,
+    )
+    splits: list[tuple[int, pd.DataFrame, pd.DataFrame]] = []
+    for fold, (train_index, eval_index) in enumerate(
+        splitter.split(frame, frame["label"], frame[group_column])
+    ):
+        train_frame = frame.iloc[train_index].reset_index(drop=True)
+        eval_frame = frame.iloc[eval_index].reset_index(drop=True)
+        if train_frame["label"].nunique() < 2 or eval_frame["label"].nunique() < 2:
+            raise ValueError(
+                f"Fold {fold} under {split_strategy} does not preserve both classes in train and eval."
+            )
+        splits.append((fold, train_frame, eval_frame))
+    return splits
+
+
 def evaluate_feature_frame(
     frame: pd.DataFrame,
     *,
     columns: Sequence[str],
+    split_strategy: str = "row",
     test_size: float = 0.3,
     random_state: int = 13,
+    num_folds: int = 5,
 ) -> tuple[dict[str, float], pd.DataFrame]:
-    train_frame, eval_frame = train_test_split(
+    result_frames: list[pd.DataFrame] = []
+    for fold, train_frame, eval_frame in build_train_eval_splits(
         frame,
+        split_strategy=split_strategy,
         test_size=test_size,
         random_state=random_state,
-        stratify=frame["label"],
-    )
-    detector = fit_logistic_detector(
-        train_frame[list(columns)].to_numpy(),
-        train_frame["label"].to_numpy(),
-    )
-    probabilities = detector.predict_proba(eval_frame[list(columns)].to_numpy())[:, 1]
-    predictions = detector.predict(eval_frame[list(columns)].to_numpy())
-    results = eval_frame.assign(prediction=predictions, score=probabilities).reset_index(drop=True)
+        num_folds=num_folds,
+    ):
+        detector = fit_logistic_detector(
+            train_frame[list(columns)].to_numpy(),
+            train_frame["label"].to_numpy(),
+        )
+        probabilities = detector.predict_proba(eval_frame[list(columns)].to_numpy())[:, 1]
+        predictions = detector.predict(eval_frame[list(columns)].to_numpy())
+        result_frames.append(
+            eval_frame.assign(prediction=predictions, score=probabilities, fold=fold).reset_index(
+                drop=True
+            )
+        )
+    results = pd.concat(result_frames, ignore_index=True)
+    if "sample_id" in results.columns:
+        results = results.sort_values("sample_id").reset_index(drop=True)
     metrics = compute_binary_metrics(
         y_true=results["label"],
         y_pred=results["prediction"],

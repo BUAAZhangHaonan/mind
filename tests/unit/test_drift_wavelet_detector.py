@@ -160,37 +160,102 @@ def test_feature_columns_excludes_label_metadata_columns() -> None:
         [
             {
                 "sample_id": "sample-1",
+                "image_id": 101,
                 "label": 1,
                 "subset": "popular",
                 "object_name": "dog",
                 "ground_truth_label": 0,
                 "answer_label": 1,
-                "drift_0": 0.5,
-                "approx_energy": 1.2,
+                "raw_drift_0": 0.5,
+                "cal_approx_energy": 1.2,
             }
         ]
     )
 
     columns = train_detector.feature_columns(frame)
 
-    assert columns == ["drift_0", "approx_energy"]
+    assert columns == ["raw_drift_0", "cal_approx_energy"]
 
 
-def test_split_train_eval_frame_preserves_both_classes() -> None:
+def test_build_train_eval_splits_keeps_image_groups_disjoint() -> None:
     frame = pd.DataFrame(
         [
-            {"sample_id": f"sample-{index}", "label": index % 2, "drift_0": float(index)}
-            for index in range(10)
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "object_name": "dog" if index < 4 else "cat",
+                "label": index % 2,
+                "raw_drift_0": float(index),
+            }
+            for index in range(8)
         ]
     )
 
-    train_frame, eval_frame = train_detector.split_train_eval_frame(
+    splits = train_detector.build_train_eval_splits(
         frame,
-        test_size=0.4,
+        split_strategy="image_grouped",
         random_state=7,
+        num_folds=2,
     )
 
-    assert len(train_frame) == 6
-    assert len(eval_frame) == 4
-    assert sorted(train_frame["label"].unique().tolist()) == [0, 1]
-    assert sorted(eval_frame["label"].unique().tolist()) == [0, 1]
+    assert len(splits) == 2
+    for _, train_frame, eval_frame in splits:
+        assert set(train_frame["image_id"]).isdisjoint(set(eval_frame["image_id"]))
+        assert sorted(train_frame["label"].unique().tolist()) == [0, 1]
+        assert sorted(eval_frame["label"].unique().tolist()) == [0, 1]
+
+
+def test_build_train_eval_splits_keeps_object_groups_disjoint() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": 100 + index,
+                "object_name": "dog" if index < 2 else "cat" if index < 4 else "bus" if index < 6 else "chair",
+                "label": 0 if index in {0, 2, 4, 6} else 1,
+                "raw_drift_0": float(index),
+            }
+            for index in range(8)
+        ]
+    )
+
+    splits = train_detector.build_train_eval_splits(
+        frame,
+        split_strategy="object_heldout",
+        random_state=11,
+        num_folds=2,
+    )
+
+    assert len(splits) == 2
+    for _, train_frame, eval_frame in splits:
+        assert set(train_frame["object_name"]).isdisjoint(set(eval_frame["object_name"]))
+        assert sorted(train_frame["label"].unique().tolist()) == [0, 1]
+        assert sorted(eval_frame["label"].unique().tolist()) == [0, 1]
+
+
+def test_train_detector_frame_assigns_fold_column_for_grouped_evaluation() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "object_name": "dog" if index < 4 else "cat",
+                "label": index % 2,
+                "raw_drift_0": float(index),
+                "raw_mean_drift": float(index) / 2.0,
+            }
+            for index in range(8)
+        ]
+    )
+
+    _, results = train_detector.train_detector_frame(
+        frame,
+        columns=["raw_drift_0", "raw_mean_drift"],
+        split_strategy="image_grouped",
+        random_state=5,
+        num_folds=2,
+    )
+
+    assert len(results) == len(frame)
+    assert sorted(results["fold"].unique().tolist()) == [0, 1]
+    assert sorted(results["sample_id"].tolist()) == sorted(frame["sample_id"].tolist())
