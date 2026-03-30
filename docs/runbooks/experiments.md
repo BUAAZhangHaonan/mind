@@ -14,12 +14,22 @@ make test
 
 Verified result in this session:
 
-- `scripts/verify_env.py` and direct PyTorch checks now see `4 x RTX 3090 24GB`
+- `scripts/verify_env.py` and direct PyTorch checks did see `4 x RTX 3090 24GB` after the earlier recovery
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
 - the full unit and integration suite passed
 - the project now uses one canonical environment only: `mind-py311`
 - the answer prompt was tightened to one-word yes/no output and the extraction scripts now run with `--max-new-tokens 1`
 - if you switch branches or worktrees, run `make install` again so the editable package points at the active checkout
+
+Current machine note for the closeout phase:
+
+- the fresh InternVL adversarial rerun hit a recurring machine-level failure on `2026-03-31`
+- observed state after the failed retry:
+  - `nvidia-smi`: `Unable to determine the device handle for GPU1`
+  - fresh `mind-py311` PyTorch: `torch.cuda.device_count() == 0`
+- that means:
+  - CPU-only closeout stages can continue
+  - the fresh InternVL adversarial extraction cannot complete until the GPU state is recovered again
 
 ## 2. Correction-Phase Reruns From Existing Popular Caches
 
@@ -147,6 +157,140 @@ Use the same commands with:
 
 - `outputs/correction_phase/reports/correction_summary.csv`
 - `outputs/correction_phase/plots/correction_summary_protocols.png`
+
+## 2A. Paper-Closeout Follow-up
+
+These are the additional closeout commands layered on top of the correction phase.
+
+### RePOPE relabel on the corrected popular predictions
+
+Qwen:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
+  --input-path outputs/correction_phase/reports/correction-qwen3-vl-8b-popular/results.csv \
+  --label-overrides outputs/normalized/repope/popular.jsonl \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular-repope
+```
+
+InternVL:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
+  --input-path outputs/correction_phase/reports/correction-internvl3.5-8b-popular/results.csv \
+  --label-overrides outputs/normalized/repope/popular.jsonl \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular-repope
+```
+
+### Shared-bank control
+
+Build shared banks:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/qwen3-vl-8b/pope-reference-64/train \
+  --output-root outputs/correction_phase/reference_banks_shared \
+  --model-name qwen3-vl-8b \
+  --bank-scope shared
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/internvl3.5-8b/pope-reference-64/train \
+  --output-root outputs/correction_phase/reference_banks_shared \
+  --model-name internvl3.5-8b \
+  --bank-scope shared
+```
+
+Compute shared-bank popular features:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks_shared \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-qwen3-vl-8b-popular-shared \
+  --split popular \
+  --bank-scope shared
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/internvl3.5-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks_shared \
+  --model-name internvl3.5-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-internvl3.5-8b-popular-shared \
+  --split popular \
+  --bank-scope shared
+```
+
+Popular `image_grouped` detector runs:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-qwen3-vl-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular-shared \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular-shared \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+Popular `object_heldout` detector runs:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-qwen3-vl-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular-shared-object-heldout \
+  --split-strategy object_heldout \
+  --num-folds 2
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular-shared-object-heldout \
+  --split-strategy object_heldout \
+  --num-folds 2
+```
+
+### Adversarial closeout reruns
+
+Qwen can reuse the existing adversarial cache:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/adversarial \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-qwen3-vl-8b-adversarial \
+  --split adversarial
+```
+
+InternVL needs a fresh adversarial extraction first, and that is the step currently blocked by the machine CUDA state described above.
+
+### Export the paper package
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/export_paper_package.py \
+  --reports-root outputs/correction_phase/reports \
+  --output-root artifacts/paper_closeout
+```
 
 ## 3. Normalize POPE and RePOPE
 

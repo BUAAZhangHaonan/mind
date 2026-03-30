@@ -96,6 +96,7 @@ The main scripts are now wired to real repo paths:
 - `scripts/compute_drift.py`
 - `scripts/train_detector.py`
 - `scripts/evaluate.py`
+- `scripts/export_paper_package.py`
 - `scripts/plot_results.py`
 - `scripts/run_experiment.py`
 - `scripts/verify_env.py`
@@ -149,7 +150,9 @@ Implemented and verified:
 - local manifold construction with cleaned reference-bank stats
 - corrected drift and Haar wavelet feature extraction
 - grouped evaluation protocols: `row`, `image_grouped`, and `object_heldout`
+- shared-bank control with `bank_scope = object | shared`
 - logistic detector training, baseline comparison, and plotting
+- script-generated paper closeout export for the three main tables and three main figures
 - synthetic end-to-end integration coverage and corrected full test suite
 
 Correction-phase experiment checkpoints completed on the existing popular caches:
@@ -162,6 +165,9 @@ Correction-phase experiment checkpoints completed on the existing popular caches
 - corrected InternVL popular rerun under legacy `row`
 - corrected InternVL popular rerun under `object_heldout`
 - grouped comparison figure written to `outputs/correction_phase/plots/correction_summary_protocols.png`
+- corrected popular RePOPE relabel reports written for both model families:
+  - `correction-qwen3-vl-8b-popular-repope`
+  - `correction-internvl3.5-8b-popular-repope`
 
 Primary corrected findings:
 
@@ -183,12 +189,16 @@ Current paper-safe interpretation:
 
 - the corrected MIND signal is real and materially stronger than corrected drift-only and corrected no-manifold on the primary grouped protocol for both model families
 - the direct hidden-state linear probe still keeps a clear PR-AUC advantage on the primary grouped protocol, so the repo should not claim strongest overall detector performance
-- the strongest current framing is low-dimensional geometry-aware early warning, interpretability, calibration, and cross-model stability
+- the strongest current framing is low-dimensional geometry-aware early warning, interpretability, and cross-model stability
+- the closeout control question is now object-conditioned bank versus shared bank, not detector-head escalation
 
 Current environment note:
 
-- as of `2026-03-30`, `nvidia-smi` and PyTorch both report `4 x RTX 3090 24GB` visible again on this machine
-- older `3 GPU` notes in the journal are historical incident notes, not the current state
+- as of `2026-03-31`, the machine has an intermittent GPU-side failure mode:
+  - `nvidia-smi` can fall back to `Unable to determine the device handle for GPU1`
+  - once that happens, fresh `mind-py311` PyTorch processes can report `torch.cuda.device_count() == 0`
+  - this is the current blocker on the fresh InternVL adversarial extraction
+- older `3 GPU` notes in the journal remain historical incident notes, but the live state is now less stable than the recovered `4 GPU` snapshot from `2026-03-30`
 - H-POPE remains blocked because the public benchmark package was not found in a directly usable release
 
 See `docs/results_summary.md` for the corrected tables, `docs/runbooks/experiments.md` for the staged and corrected commands, `journal/progress.md` for the full command log, and `docs/paper_outline.md` for the revised writing direction.

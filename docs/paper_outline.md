@@ -12,7 +12,7 @@ MIND: Multi-scale Internal Normal-residual Drift for Early Multimodal Hallucinat
 
 ## One-Sentence Claim
 
-Pre-answer hidden states carry a real geometry-aware hallucination signal, and a low-dimensional manifold-drift representation can detect that signal early and interpretably even when a high-dimensional linear probe is still stronger in raw PR-AUC.
+Hallucination leaves a compressible, interpretable geometric drift signal in pre-answer hidden states, and that low-dimensional signal survives grouped evaluation across model families even when a full hidden-state linear probe still performs as an upper baseline.
 
 ## Abstract Skeleton
 
@@ -40,10 +40,11 @@ Result:
 - On corrected `image_grouped` evaluation, full MIND beats corrected drift-only and corrected no-manifold on both Qwen and InternVL.
 - The linear probe still leads on PR-AUC on the primary grouped protocol.
 - InternVL is notably more stable than Qwen under `object_heldout`.
+- RePOPE popular relabeling preserves the main ordering on the corrected popular predictions.
 
 Takeaway:
 
-- The paper should argue for geometry-aware early warning, not strongest overall detector performance.
+- The paper should argue for geometry-aware early warning and low-dimensional structure, not strongest overall detector performance.
 
 ## Section Plan
 
@@ -68,6 +69,9 @@ Takeaway:
 - Build the bank from external COCO reference images only.
 - Keep only entries with `parsed_answer == 1`.
 - Store both support counts and leave-one-out residual statistics for each object and layer.
+- Add one closeout control only:
+  - object-conditioned bank as the main method
+  - shared bank pooled by `model + layer` as the transfer control
 
 #### 3.2 Local Manifold Score
 
@@ -142,17 +146,28 @@ Takeaway:
 ## Core Figures
 
 1. Method overview: grounded bank -> manifold residual -> calibrated drift -> detector
-2. Corrected Qwen popular drift curves and ROC
-3. Corrected InternVL popular drift curves and ROC
-4. Protocol comparison figure from `outputs/correction_phase/plots/correction_summary_protocols.png`
-5. Reference-bank cleaning and support table
+2. ROC + PR curves for `popular + image_grouped` on Qwen and InternVL
+3. Protocol comparison figure using `row`, `image_grouped`, and `object_heldout`
 
 ## Core Tables
 
-1. Primary `image_grouped` results on Qwen and InternVL
-2. Structural baseline comparison: full vs drift-only vs no-manifold vs linear probe
-3. Secondary `object_heldout` results
-4. Reference-bank cleaning and support counts
+1. Main grouped results:
+   - Qwen popular
+   - Qwen popular + RePOPE
+   - Qwen adversarial
+   - InternVL popular
+   - InternVL popular + RePOPE
+   - InternVL adversarial
+2. Structure comparison:
+   - full MIND (object bank)
+   - full MIND (shared bank)
+   - drift-only
+   - no-manifold
+   - linear probe
+3. Object transfer boundary:
+   - full MIND (object bank)
+   - full MIND (shared bank)
+   - linear probe
 
 ## Writing Direction
 
@@ -161,4 +176,5 @@ Use this framing:
 - The first version of MIND was held back by a signal-definition mistake.
 - Once raw magnitude was preserved and the bank was cleaned, the geometry signal became clearly useful.
 - The strongest final claim is not raw performance supremacy.
-- The strongest final claim is that object hallucination leaves an interpretable pre-answer geometric trace that can be compressed into a stable low-dimensional detector.
+- The strongest final claim is that object hallucination leaves an interpretable pre-answer geometric trace that can be compressed into a stable low-dimensional early-warning signal.
+- The next-paper question is shared cross-object geometry, not a larger detector head.

@@ -20,6 +20,37 @@ All corrected outputs live under:
 - `outputs/correction_phase/reports/`
 - `outputs/correction_phase/plots/`
 
+## Closeout Follow-up: 2026-03-31
+
+Closeout scope in this phase:
+
+- keep `image_grouped` as the only primary protocol
+- add the shared-bank control
+- relabel the same corrected popular predictions with RePOPE
+- add corrected adversarial reruns
+- export a script-generated paper package
+
+Already completed in the closeout phase:
+
+- RePOPE relabel on the corrected popular predictions
+  - Qwen popular + RePOPE:
+    - `ROC-AUC 0.888700`
+    - `PR-AUC 0.257797`
+    - `TPR@1%FPR 0.130081`
+  - InternVL popular + RePOPE:
+    - `ROC-AUC 0.882635`
+    - `PR-AUC 0.488681`
+    - `TPR@1%FPR 0.208904`
+- shared-bank control code path and paper-package export code path
+
+Current blocker:
+
+- the fresh InternVL adversarial extraction is blocked by the machine CUDA state, not by the repo logic
+- the observed live failure is:
+  - `nvidia-smi`: `Unable to determine the device handle for GPU1`
+  - fresh PyTorch under `mind-py311`: `torch.cuda.device_count() == 0`
+- the CPU-side closeout jobs are still valid and continue to run, but the final adversarial InternVL row cannot be completed until the bad card or driver state is recovered again
+
 ## Primary Protocol: `image_grouped`
 
 ### Qwen Popular
