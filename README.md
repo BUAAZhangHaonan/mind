@@ -1,6 +1,6 @@
 # MIND
 
-MIND is a detection-only research codebase for multimodal object hallucination. The method builds local visual-grounded manifolds from grounded reference states, measures cross-layer drift at the final pre-generation token, and applies Haar wavelet features to that 16-layer drift curve before training a lightweight detector.
+MIND stands for `Multi-scale Internal Normal-residual Drift`. It is a detection-only research codebase for multimodal object hallucination. The corrected method builds local visual-grounded manifolds from grounded reference states, preserves the raw normal-residual magnitude, calibrates cross-layer drift with cleaned reference-bank statistics, and applies Haar wavelet features only to the calibrated 16-layer drift curve before training a lightweight detector.
 
 The scope is fixed:
 
@@ -50,7 +50,8 @@ make test
 What has been verified in this session:
 
 - `PYTHONWARNINGS=ignore conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
-- `73 passed`
+- `83 passed`
+- if you switch branches or worktrees, rerun `make install` so the editable package points at the active checkout
 - `scripts/verify_env.py` succeeded for:
   - `Qwen/Qwen3-VL-8B-Instruct`
   - `OpenGVLab/InternVL3_5-8B-HF`
@@ -134,52 +135,60 @@ Canonical artifact layout:
 - `outputs/reports/<experiment>/metrics.json`
 - `outputs/reports/<experiment>/results.csv`
 - `outputs/plots/<experiment>/*.png`
+- corrected signal-evaluation reruns in this phase were written under `outputs/correction_phase/`
 
 ## Current Status
 
-Implemented and tested:
+Implemented and verified:
 
 - typed config loading and experiment presets
 - POPE, RePOPE, and H-POPE loader surface
 - Qwen and InternVL model wrappers
 - pre-generation hidden-state extraction
 - grounded reference record expansion and cache writing
-- local manifold construction
-- drift and Haar wavelet feature extraction
-- logistic detector training
-- evaluation and RePOPE relabel support
-- visualization scripts
-- synthetic end-to-end integration coverage
-- experiment command planning
+- local manifold construction with cleaned reference-bank stats
+- corrected drift and Haar wavelet feature extraction
+- grouped evaluation protocols: `row`, `image_grouped`, and `object_heldout`
+- logistic detector training, baseline comparison, and plotting
+- synthetic end-to-end integration coverage and corrected full test suite
 
-Completed experiment checkpoints:
+Correction-phase experiment checkpoints completed on the existing popular caches:
 
-- real smoke run with `Qwen/Qwen3-VL-4B-Instruct` on a `200`-sample POPE popular slice
-- smoke plots written under `outputs/plots/smoke-qwen3-vl-4b-popular/`
-- corrected full popular run with `Qwen/Qwen3-VL-8B-Instruct`
-- full main-stage Qwen runs on POPE `popular`, `random`, and `adversarial`
-- RePOPE relabel evaluation for all completed Qwen subsets
-- baseline and ablation reports for the corrected popular run
-- layer-range ablation showing `late > middle > early` on the corrected popular split
-- completed cross-family popular run with `OpenGVLab/InternVL3_5-8B-HF`
-- cross-family RePOPE relabel evaluation, baselines, and plots written under `outputs/reports/cross-internvl3.5-8b-popular*/` and `outputs/plots/cross-internvl3.5-8b-popular/`
+- cleaned reference banks rebuilt for `qwen3-vl-8b` and `internvl3.5-8b`
+- corrected Qwen popular rerun under `image_grouped`
+- corrected Qwen popular rerun under legacy `row`
+- corrected Qwen popular rerun under `object_heldout`
+- corrected InternVL popular rerun under `image_grouped`
+- corrected InternVL popular rerun under legacy `row`
+- corrected InternVL popular rerun under `object_heldout`
+- grouped comparison figure written to `outputs/correction_phase/plots/correction_summary_protocols.png`
 
-Key Qwen results:
+Primary corrected findings:
 
-- popular MIND ROC-AUC: `0.6737`
-- popular RePOPE ROC-AUC: `0.6443`
-- random MIND ROC-AUC: `0.5820`
-- random RePOPE ROC-AUC: `0.6410`
-- adversarial MIND ROC-AUC: `0.7079`
-- adversarial RePOPE ROC-AUC: `0.7048`
-- InternVL popular MIND ROC-AUC: `0.8367`
-- InternVL popular RePOPE ROC-AUC: `0.8112`
-- direct hidden-state linear probe outperformed MIND on the completed Qwen runs
-- InternVL improved the popular cross-family ROC-AUC over Qwen on the same benchmark, but the direct hidden-state linear probe still remained strongest within the InternVL run too
+- `Qwen/Qwen3-VL-8B-Instruct`, `image_grouped`:
+  - full MIND: `ROC-AUC 0.9171`, `PR-AUC 0.2839`, `TPR@1%FPR 0.1441`
+  - drift-only: `ROC-AUC 0.8497`, `PR-AUC 0.1253`
+  - no-manifold: `ROC-AUC 0.8385`, `PR-AUC 0.1983`
+  - linear probe: `ROC-AUC 0.9161`, `PR-AUC 0.3803`
+- `OpenGVLab/InternVL3_5-8B-HF`, `image_grouped`:
+  - full MIND: `ROC-AUC 0.9142`, `PR-AUC 0.5438`, `TPR@1%FPR 0.2539`
+  - drift-only: `ROC-AUC 0.8802`, `PR-AUC 0.4270`
+  - no-manifold: `ROC-AUC 0.8559`, `PR-AUC 0.4033`
+  - linear probe: `ROC-AUC 0.9367`, `PR-AUC 0.6551`
+- `object_heldout` is mixed:
+  - Qwen drops to `ROC-AUC 0.7244`, `PR-AUC 0.0638`
+  - InternVL holds at `ROC-AUC 0.8398`, `PR-AUC 0.4097`
 
-Remaining open items:
+Current paper-safe interpretation:
 
-- the fourth physical GPU is still faulty, but the recovered `3 x RTX 3090` runtime is healthy and verified
-- H-POPE remains blocked because the public benchmark package was not found
+- the corrected MIND signal is real and materially stronger than corrected drift-only and corrected no-manifold on the primary grouped protocol for both model families
+- the direct hidden-state linear probe still keeps a clear PR-AUC advantage on the primary grouped protocol, so the repo should not claim strongest overall detector performance
+- the strongest current framing is low-dimensional geometry-aware early warning, interpretability, calibration, and cross-model stability
 
-See `docs/results_summary.md` for the compact result tables, `docs/runbooks/experiments.md` for the staged run procedure, `journal/progress.md` for the command log, and `docs/paper_outline.md` for the writing scaffold.
+Current environment note:
+
+- as of `2026-03-30`, `nvidia-smi` and PyTorch both report `4 x RTX 3090 24GB` visible again on this machine
+- older `3 GPU` notes in the journal are historical incident notes, not the current state
+- H-POPE remains blocked because the public benchmark package was not found in a directly usable release
+
+See `docs/results_summary.md` for the corrected tables, `docs/runbooks/experiments.md` for the staged and corrected commands, `journal/progress.md` for the full command log, and `docs/paper_outline.md` for the revised writing direction.
