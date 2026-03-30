@@ -514,4 +514,10 @@ Completed output roots from this session:
 - the public COCO assets are present locally
 - `Qwen/Qwen3-VL-4B-Instruct`, `Qwen/Qwen3-VL-8B-Instruct`, and `OpenGVLab/InternVL3_5-8B-HF` config or processor checks were verified through `HF_ENDPOINT=https://hf-mirror.com`
 - H-POPE public assets were not found in a directly usable release package
-- earlier GPU instability remains worth remembering as an incident pattern, but the current machine check on 2026-03-30 reports `4 x RTX 3090`
+- the machine state changed again on `2026-03-31`:
+  - `nvidia-smi` reports `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
+  - fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == False`
+  - fresh `mind-py311` PyTorch processes report `torch.cuda.device_count() == 0`
+- this blocks:
+  - the fresh InternVL adversarial extraction
+  - the pooled shared-bank closeout control, because the exact pooled reference-bank stats are not practical on CPU alone at the current per-layer support size

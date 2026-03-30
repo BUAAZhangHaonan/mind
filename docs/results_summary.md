@@ -41,15 +41,22 @@ Already completed in the closeout phase:
     - `ROC-AUC 0.882635`
     - `PR-AUC 0.488681`
     - `TPR@1%FPR 0.208904`
+- corrected Qwen adversarial rerun under `image_grouped`
+  - `ROC-AUC 0.870756`
+  - `PR-AUC 0.265281`
+  - `TPR@1%FPR 0.070175`
 - shared-bank control code path and paper-package export code path
 
 Current blocker:
 
+- the pooled shared-bank closeout control is still waiting on a usable CUDA state
+  - exact pooled leave-one-out stats on `4652` to `4842` cleaned references per layer are not practical on CPU alone
 - the fresh InternVL adversarial extraction is blocked by the machine CUDA state, not by the repo logic
 - the observed live failure is:
-  - `nvidia-smi`: `Unable to determine the device handle for GPU1`
+  - `nvidia-smi`: `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
+  - fresh PyTorch under `mind-py311`: `torch.cuda.is_available() == False`
   - fresh PyTorch under `mind-py311`: `torch.cuda.device_count() == 0`
-- the CPU-side closeout jobs are still valid and continue to run, but the final adversarial InternVL row cannot be completed until the bad card or driver state is recovered again
+- the CPU-side closeout jobs still completed the RePOPE rows and the corrected Qwen adversarial row, but the remaining shared-bank rows and the final InternVL adversarial row cannot be completed until the bad card or driver state is recovered again
 
 ## Primary Protocol: `image_grouped`
 

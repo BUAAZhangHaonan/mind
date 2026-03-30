@@ -459,13 +459,22 @@
       - PR-AUC: `0.4886808909829917`
       - TPR@1%FPR: `0.2089041095890411`
 - Runtime execution state for the remaining closeout experiments:
-  - active shared-bank builds:
-    - `outputs/correction_phase/reference_banks_shared/qwen3-vl-8b/__shared__/`
-    - `outputs/correction_phase/reference_banks_shared/internvl3.5-8b/__shared__/`
-  - active Qwen adversarial rerun:
-    - feature target: `outputs/correction_phase/features/correction-qwen3-vl-8b-adversarial/`
-    - report target: `outputs/correction_phase/reports/correction-qwen3-vl-8b-adversarial/`
-  - chained follow-up scripts are waiting to launch the shared-bank popular and shared-bank object-heldout detector runs as soon as the shared-bank `stats.pt` artifacts land
+  - completed Qwen adversarial rerun under the corrected `image_grouped` pipeline:
+    - outputs:
+      - `outputs/correction_phase/features/correction-qwen3-vl-8b-adversarial/adversarial.parquet`
+      - `outputs/correction_phase/reports/correction-qwen3-vl-8b-adversarial/`
+      - `outputs/correction_phase/plots/correction-qwen3-vl-8b-adversarial/`
+    - metrics:
+      - `ROC-AUC 0.8707558929136202`
+      - `PR-AUC 0.2652810851300244`
+      - `TPR@1%FPR 0.07017543859649122`
+  - the remaining unfinished closeout rows are now:
+    - shared-bank popular for Qwen
+    - shared-bank popular for InternVL
+    - shared-bank `object_heldout` for Qwen
+    - shared-bank `object_heldout` for InternVL
+    - InternVL adversarial
+  - these all depend on the machine recovering a usable CUDA state again
 - Current blocker on InternVL adversarial is external and hardware-facing:
   - the first retry hit repeated Hugging Face connection resets, so the run was retried through:
     - `HF_ENDPOINT=https://hf-mirror.com`
@@ -477,5 +486,6 @@
     - fresh `mind-py311` PyTorch processes returned `torch.cuda.device_count() == 0`
   - current judgment:
     - the remaining InternVL adversarial extraction is blocked by the machine CUDA state, not by a repository logic bug
-    - the CPU-side closeout jobs can continue
-    - the GPU-side InternVL adversarial rerun needs the bad card or driver state to be recovered again before the extraction can complete
+    - the exact pooled shared-bank control is also blocked now, because the pooled reference-bank stats are too large to finish on CPU alone in a practical closeout window
+    - the CPU-side closeout jobs did still complete the RePOPE rows and the corrected Qwen adversarial row
+    - the GPU-side InternVL adversarial rerun and the pooled shared-bank control both need the bad card or driver state to be recovered again before the closeout package can be completed

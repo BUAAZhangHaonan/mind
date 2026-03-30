@@ -168,6 +168,10 @@ Correction-phase experiment checkpoints completed on the existing popular caches
 - corrected popular RePOPE relabel reports written for both model families:
   - `correction-qwen3-vl-8b-popular-repope`
   - `correction-internvl3.5-8b-popular-repope`
+- corrected Qwen adversarial rerun completed under `image_grouped`:
+  - `ROC-AUC 0.8708`
+  - `PR-AUC 0.2653`
+  - `TPR@1%FPR 0.0702`
 
 Primary corrected findings:
 
@@ -195,9 +199,10 @@ Current paper-safe interpretation:
 Current environment note:
 
 - as of `2026-03-31`, the machine has an intermittent GPU-side failure mode:
-  - `nvidia-smi` can fall back to `Unable to determine the device handle for GPU1`
-  - once that happens, fresh `mind-py311` PyTorch processes can report `torch.cuda.device_count() == 0`
-  - this is the current blocker on the fresh InternVL adversarial extraction
+  - `nvidia-smi` can fall back to `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
+  - once that happens, fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == False`
+  - once that happens, fresh `mind-py311` PyTorch processes report `torch.cuda.device_count() == 0`
+  - this currently blocks both the pooled shared-bank closeout control and the fresh InternVL adversarial extraction
 - older `3 GPU` notes in the journal remain historical incident notes, but the live state is now less stable than the recovered `4 GPU` snapshot from `2026-03-30`
 - H-POPE remains blocked because the public benchmark package was not found in a directly usable release
 
