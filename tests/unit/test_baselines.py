@@ -79,8 +79,18 @@ def test_build_no_manifold_feature_frame_builds_wavelet_features() -> None:
         reference_bank=reference_bank,
         reference_stats={
             "dog": {
-                8: {"residual_mean": 0.1, "residual_std": 0.2},
-                13: {"residual_mean": 0.1, "residual_std": 0.2},
+                8: {
+                    "residual_mean": 0.1,
+                    "residual_std": 0.2,
+                    "neighbor_residual_mean": 0.1,
+                    "neighbor_residual_std": 0.2,
+                },
+                13: {
+                    "residual_mean": 0.1,
+                    "residual_std": 0.2,
+                    "neighbor_residual_mean": 0.1,
+                    "neighbor_residual_std": 0.2,
+                },
             }
         },
     )
@@ -126,7 +136,12 @@ def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverag
         reference_bank=reference_bank,
         reference_stats={
             "dog": {
-                8: {"residual_mean": 0.1, "residual_std": 0.2},
+                8: {
+                    "residual_mean": 0.1,
+                    "residual_std": 0.2,
+                    "neighbor_residual_mean": 0.1,
+                    "neighbor_residual_std": 0.2,
+                },
             }
         },
     )

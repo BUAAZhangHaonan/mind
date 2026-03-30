@@ -48,6 +48,8 @@ def calibrate_drift_curve(
     *,
     selected_layers: list[int],
     layer_stats: dict[int, dict[str, float]],
+    mean_key: str = "residual_mean",
+    std_key: str = "residual_std",
 ) -> np.ndarray:
     curve = np.asarray(curve, dtype=np.float32)
     if curve.shape[0] != len(selected_layers):
@@ -57,8 +59,8 @@ def calibrate_drift_curve(
         if int(layer_index) not in layer_stats:
             raise KeyError(f"Missing calibration stats for layer {layer_index}")
         stats = layer_stats[int(layer_index)]
-        std = max(float(stats["residual_std"]), 1e-8)
-        calibrated.append((float(value) - float(stats["residual_mean"])) / std)
+        std = max(float(stats[std_key]), 1e-8)
+        calibrated.append((float(value) - float(stats[mean_key])) / std)
     return np.asarray(calibrated, dtype=np.float32)
 
 

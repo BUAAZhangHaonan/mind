@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pandas as pd
 import torch
 
 
@@ -82,6 +83,95 @@ def test_load_cache_entries_supports_directory_inputs(tmp_path: Path) -> None:
 
     assert [entry["sample_id"] for entry in manifold_entries] == ["sample-1", "sample-2"]
     assert [entry["sample_id"] for entry in drift_entries] == ["sample-1", "sample-2"]
+
+
+def test_save_reference_bank_writes_stats_and_counts_report(tmp_path: Path) -> None:
+    written_paths = build_manifolds.save_reference_bank(
+        entries=[
+            {
+                "sample_id": "yes-1",
+                "parsed_answer": 1,
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.0, 0.0, 0.0]]),
+            },
+            {
+                "sample_id": "yes-2",
+                "parsed_answer": 1,
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[1.0, 0.0, 0.0]]),
+            },
+            {
+                "sample_id": "no-1",
+                "parsed_answer": 0,
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[9.0, 9.0, 9.0]]),
+            },
+        ],
+        output_root=tmp_path,
+        model_name="qwen3-vl-8b",
+        k_neighbors=2,
+    )
+
+    stats_path = tmp_path / "qwen3-vl-8b" / "dog" / "stats.pt"
+    counts_path = tmp_path / "qwen3-vl-8b" / "reference_counts.csv"
+
+    assert tmp_path / "qwen3-vl-8b" / "dog" / "layer-08.pt" in written_paths
+    assert stats_path.exists()
+    assert counts_path.exists()
+    stats = torch.load(stats_path, weights_only=False)
+    counts = pd.read_csv(counts_path)
+    assert stats[8]["count"] == 2
+    assert counts.loc[0, "object_name"] == "dog"
+    assert counts.loc[0, "count"] == 2
+
+
+def test_build_feature_frame_skips_entries_without_reference_coverage(tmp_path: Path) -> None:
+    reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "dog"
+    reference_root.mkdir(parents=True)
+    torch.save(
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]
+        ),
+        reference_root / "layer-08.pt",
+    )
+    torch.save({8: {"residual_mean": 0.1, "residual_std": 0.2}}, reference_root / "stats.pt")
+
+    frame = compute_drift.build_feature_frame(
+        cache_entries=[
+            {
+                "sample_id": "covered",
+                "image_id": 101,
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+            },
+            {
+                "sample_id": "missing",
+                "image_id": 102,
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "cat",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+            },
+        ],
+        reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
+        reference_stats=compute_drift.load_reference_stats(tmp_path / "reference_banks", "qwen3-vl-8b"),
+    )
+
+    assert list(frame["sample_id"]) == ["covered"]
 
 
 def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path) -> None:
