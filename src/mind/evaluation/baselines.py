@@ -11,6 +11,7 @@ from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
 from mind.detectors import fit_logistic_detector
 from mind.drift import build_drift_features, calibrate_drift_curve
+from mind.manifolds import resolve_reference_scope_key
 
 from .metrics import compute_binary_metrics, compute_object_hallucination_label
 
@@ -32,21 +33,39 @@ GROUP_COLUMN_BY_STRATEGY = {
 }
 
 
-def load_reference_bank(reference_root: Path, model_name: str) -> dict[str, dict[int, torch.Tensor]]:
+def load_reference_bank(
+    reference_root: Path,
+    model_name: str,
+    *,
+    bank_scope: str = "object",
+) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, torch.Tensor]] = {}
     model_root = reference_root / model_name
     for layer_path in model_root.glob("*/layer-*.pt"):
         object_name = layer_path.parent.name
+        if bank_scope == "object" and object_name == "__shared__":
+            continue
+        if bank_scope == "shared" and object_name != "__shared__":
+            continue
         layer_index = int(layer_path.stem.split("-")[-1])
         bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
     return bank
 
 
-def load_reference_stats(reference_root: Path, model_name: str) -> dict[str, dict[int, dict[str, float]]]:
+def load_reference_stats(
+    reference_root: Path,
+    model_name: str,
+    *,
+    bank_scope: str = "object",
+) -> dict[str, dict[int, dict[str, float]]]:
     stats_map: dict[str, dict[int, dict[str, float]]] = {}
     model_root = reference_root / model_name
     for stats_path in model_root.glob("*/stats.pt"):
         object_name = stats_path.parent.name
+        if bank_scope == "object" and object_name == "__shared__":
+            continue
+        if bank_scope == "shared" and object_name != "__shared__":
+            continue
         payload = torch.load(stats_path, weights_only=False)
         stats_map[object_name] = {
             int(layer_index): {str(key): float(value) for key, value in layer_stats.items()}
@@ -123,26 +142,28 @@ def build_no_manifold_feature_frame(
     cache_entries: Sequence[dict[str, object]],
     reference_bank: dict[str, dict[int, torch.Tensor]],
     reference_stats: dict[str, dict[int, dict[str, float]]],
+    bank_scope: str = "object",
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for entry in cache_entries:
         object_name = str(entry["object_name"])
-        if object_name not in reference_bank or object_name not in reference_stats:
+        bank_key = resolve_reference_scope_key(object_name, bank_scope)
+        if bank_key not in reference_bank or bank_key not in reference_stats:
             continue
         selected_layers = [int(layer_index) for layer_index in entry["selected_layers"]]
-        if any(layer_index not in reference_bank[object_name] for layer_index in selected_layers):
+        if any(layer_index not in reference_bank[bank_key] for layer_index in selected_layers):
             continue
         raw_curve = [
             _normalized_neighbor_residual(
                 entry["layer_vectors"][offset],
-                reference_bank[object_name][layer_index],
+                reference_bank[bank_key][layer_index],
             )
             for offset, layer_index in enumerate(selected_layers)
         ]
         calibrated_curve = calibrate_drift_curve(
             raw_curve,
             selected_layers=selected_layers,
-            layer_stats=reference_stats[object_name],
+            layer_stats=reference_stats[bank_key],
             mean_key="neighbor_residual_mean",
             std_key="neighbor_residual_std",
         )

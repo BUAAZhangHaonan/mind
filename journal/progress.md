@@ -1,5 +1,36 @@
 # MIND Progress Log
 
+## 2026-03-31
+
+- Started the paper closeout branch in the repo-local worktree:
+  - worktree: `/home/d7049/zhanghaonan/mind/.worktrees/feat-mind-paper-closeout`
+  - branch: `feat/mind-paper-closeout`
+- Added the planned shared-bank control without changing the main object-bank default:
+  - new public switch: `bank_scope = object | shared`
+  - shared mode pools reference states by `model + layer` only
+  - object mode keeps the original per-object reference bank behavior
+- Threaded the shared-bank switch through the runnable closeout path:
+  - `src/mind/manifolds/local_pca.py`
+  - `scripts/build_manifolds.py`
+  - `src/mind/drift/features.py`
+  - `scripts/compute_drift.py`
+  - `src/mind/evaluation/baselines.py`
+  - `scripts/compute_baselines.py`
+- Added explicit tests for the new control:
+  - shared-bank manifold pooling and stats
+  - shared-bank manifold artifact writing
+  - shared-bank drift feature construction
+  - shared-bank no-manifold baseline construction
+- Verified the shared-bank checkpoint:
+  - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit/test_local_manifold.py tests/unit/test_pipeline_scripts.py tests/unit/test_baselines.py tests/integration/test_synthetic_pipeline.py`
+  - result: `28 passed`
+  - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
+  - result: `89 passed`
+- Closeout interpretation at this checkpoint:
+  - shared-bank is now a clean control baseline, not a new method branch
+  - the main paper path still stays on the object-conditioned bank
+  - the next closeout step is export tooling plus the remaining corrected runs: RePOPE, adversarial, and shared-bank reports
+
 ## 2026-03-30
 
 - Re-checked the machine state before the correction reruns:

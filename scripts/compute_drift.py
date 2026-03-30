@@ -11,6 +11,7 @@ import torch
 
 from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
 from mind.evaluation import compute_object_hallucination_label
+from mind.manifolds import resolve_reference_scope_key
 
 
 def build_feature_output_path(
@@ -22,21 +23,39 @@ def build_feature_output_path(
     return output_root / experiment_name / f"{split}.parquet"
 
 
-def load_reference_bank(reference_root: Path, model_name: str) -> dict[str, dict[int, torch.Tensor]]:
+def load_reference_bank(
+    reference_root: Path,
+    model_name: str,
+    *,
+    bank_scope: str = "object",
+) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, torch.Tensor]] = {}
     model_root = reference_root / model_name
     for layer_path in model_root.glob("*/layer-*.pt"):
         object_name = layer_path.parent.name
+        if bank_scope == "object" and object_name == "__shared__":
+            continue
+        if bank_scope == "shared" and object_name != "__shared__":
+            continue
         layer_index = int(layer_path.stem.split("-")[-1])
         bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
     return bank
 
 
-def load_reference_stats(reference_root: Path, model_name: str) -> dict[str, dict[int, dict[str, float]]]:
+def load_reference_stats(
+    reference_root: Path,
+    model_name: str,
+    *,
+    bank_scope: str = "object",
+) -> dict[str, dict[int, dict[str, float]]]:
     stats_map: dict[str, dict[int, dict[str, float]]] = {}
     model_root = reference_root / model_name
     for stats_path in model_root.glob("*/stats.pt"):
         object_name = stats_path.parent.name
+        if bank_scope == "object" and object_name == "__shared__":
+            continue
+        if bank_scope == "shared" and object_name != "__shared__":
+            continue
         payload = torch.load(stats_path, weights_only=False)
         stats_map[object_name] = {
             int(layer_index): {str(key): float(value) for key, value in layer_stats.items()}
@@ -59,25 +78,28 @@ def build_feature_frame(
     cache_entries: list[dict[str, object]],
     reference_bank: dict[str, dict[int, torch.Tensor]],
     reference_stats: dict[str, dict[int, dict[str, float]]],
+    bank_scope: str = "object",
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for entry in cache_entries:
         selected_layers = [int(layer) for layer in entry["selected_layers"]]
         object_name = str(entry["object_name"])
-        if object_name not in reference_bank or object_name not in reference_stats:
+        bank_key = resolve_reference_scope_key(object_name, bank_scope)
+        if bank_key not in reference_bank or bank_key not in reference_stats:
             continue
-        if any(layer_index not in reference_bank[object_name] for layer_index in selected_layers):
+        if any(layer_index not in reference_bank[bank_key] for layer_index in selected_layers):
             continue
         raw_curve = compute_drift_curve(
             layer_vectors=entry["layer_vectors"],
             selected_layers=selected_layers,
             object_name=object_name,
             reference_bank=reference_bank,
+            bank_scope=bank_scope,
         )
         calibrated_curve = calibrate_drift_curve(
             raw_curve,
             selected_layers=selected_layers,
-            layer_stats=reference_stats[object_name],
+            layer_stats=reference_stats[bank_key],
         )
         features = build_drift_features(
             raw_curve=raw_curve,
@@ -111,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--split", required=True)
+    parser.add_argument("--bank-scope", choices=["object", "shared"], default="object")
     return parser
 
 
@@ -126,12 +149,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     cache_entries = load_cache_entries(args.cache_path)
-    reference_bank = load_reference_bank(args.reference_root, args.model_name)
-    reference_stats = load_reference_stats(args.reference_root, args.model_name)
+    reference_bank = load_reference_bank(args.reference_root, args.model_name, bank_scope=args.bank_scope)
+    reference_stats = load_reference_stats(args.reference_root, args.model_name, bank_scope=args.bank_scope)
     frame = build_feature_frame(
         cache_entries=cache_entries,
         reference_bank=reference_bank,
         reference_stats=reference_stats,
+        bank_scope=args.bank_scope,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(output_path, index=False)

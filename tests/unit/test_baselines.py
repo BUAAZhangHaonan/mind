@@ -150,6 +150,60 @@ def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverag
     assert list(frame["sample_id"]) == ["covered"]
 
 
+def test_build_no_manifold_feature_frame_can_use_shared_bank() -> None:
+    reference_bank = {
+        "__shared__": {
+            8: torch.tensor(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                ]
+            ),
+        }
+    }
+
+    frame = build_no_manifold_feature_frame(
+        cache_entries=[
+            {
+                "sample_id": "dog-sample",
+                "image_id": 21,
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.2, 0.1, 0.0]]),
+            },
+            {
+                "sample_id": "cat-sample",
+                "image_id": 22,
+                "label": 0,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "cat",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.4, 0.2, 0.3]]),
+            },
+        ],
+        reference_bank=reference_bank,
+        reference_stats={
+            "__shared__": {
+                8: {
+                    "residual_mean": 0.1,
+                    "residual_std": 0.2,
+                    "neighbor_residual_mean": 0.1,
+                    "neighbor_residual_std": 0.2,
+                },
+            }
+        },
+        bank_scope="shared",
+    )
+
+    assert sorted(frame["sample_id"].tolist()) == ["cat-sample", "dog-sample"]
+    assert "raw_drift_0" in frame.columns
+
+
 def test_evaluate_feature_frame_uses_image_grouped_out_of_fold_results() -> None:
     frame = pd.DataFrame(
         [

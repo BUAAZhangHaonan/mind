@@ -9,6 +9,9 @@ import numpy as np
 import torch
 
 
+SHARED_BANK_KEY = "__shared__"
+
+
 @dataclass
 class LocalPCAManifold:
     mean: torch.Tensor
@@ -94,14 +97,23 @@ def clean_reference_entries(entries: Sequence[dict[str, object]]) -> list[dict[s
     return [entry for entry in entries if entry.get("parsed_answer") == 1]
 
 
+def resolve_reference_scope_key(object_name: str, bank_scope: str) -> str:
+    if bank_scope == "object":
+        return object_name
+    if bank_scope == "shared":
+        return SHARED_BANK_KEY
+    raise ValueError(f"Unsupported bank scope: {bank_scope}")
+
+
 def build_reference_bank(
     entries: Sequence[dict[str, object]],
     *,
     min_points: int = 0,
+    bank_scope: str = "object",
 ) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, list[torch.Tensor]]] = {}
     for entry in entries:
-        object_name = str(entry["object_name"])
+        object_name = resolve_reference_scope_key(str(entry["object_name"]), bank_scope)
         layer_vectors = entry["layer_vectors"]
         selected_layers = entry["selected_layers"]
         bank.setdefault(object_name, {})
@@ -123,8 +135,9 @@ def compute_reference_bank_stats(
     entries: Sequence[dict[str, object]],
     *,
     k_neighbors: int = 32,
+    bank_scope: str = "object",
 ) -> dict[str, dict[int, dict[str, float]]]:
-    bank = build_reference_bank(entries)
+    bank = build_reference_bank(entries, bank_scope=bank_scope)
     stats_map: dict[str, dict[int, dict[str, float]]] = {}
     for object_name, layer_map in bank.items():
         stats_map[object_name] = {}

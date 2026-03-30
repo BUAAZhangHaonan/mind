@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--test-size", type=float, default=0.3)
     parser.add_argument("--random-state", type=int, default=13)
+    parser.add_argument("--bank-scope", choices=["object", "shared"], default="object")
     parser.add_argument(
         "--split-strategy",
         choices=["row", "image_grouped", "object_heldout"],
@@ -53,12 +54,21 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     features = pd.read_parquet(args.features_path)
     cache_entries = load_cache_entries(args.cache_path)
-    reference_bank = load_reference_bank(args.reference_root, args.model_name)
-    reference_stats = load_reference_stats(args.reference_root, args.model_name)
+    reference_bank = load_reference_bank(
+        args.reference_root,
+        args.model_name,
+        bank_scope=args.bank_scope,
+    )
+    reference_stats = load_reference_stats(
+        args.reference_root,
+        args.model_name,
+        bank_scope=args.bank_scope,
+    )
     no_manifold_frame = build_no_manifold_feature_frame(
         cache_entries=cache_entries,
         reference_bank=reference_bank,
         reference_stats=reference_stats,
+        bank_scope=args.bank_scope,
     )
     linear_probe_frame = build_linear_probe_frame(cache_entries)
 
@@ -101,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     baselines["no_manifold"] = no_manifold_metrics
     baselines["linear_probe"] = linear_probe_metrics
     baselines["raw_model_yes_no"] = build_raw_model_yes_no_baseline(cache_entries)
+    baselines["bank_scope"] = args.bank_scope
 
     ablations = pd.DataFrame(
         [

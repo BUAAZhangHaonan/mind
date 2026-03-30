@@ -9,7 +9,11 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from mind.manifolds import build_reference_bank, clean_reference_entries, compute_reference_bank_stats
+from mind.manifolds import (
+    build_reference_bank,
+    clean_reference_entries,
+    compute_reference_bank_stats,
+)
 
 
 def build_output_path(
@@ -41,10 +45,19 @@ def save_reference_bank(
     output_root: Path,
     model_name: str,
     k_neighbors: int = 32,
+    bank_scope: str = "object",
 ) -> list[Path]:
     cleaned_entries = clean_reference_entries(entries)
-    stats_map = compute_reference_bank_stats(cleaned_entries, k_neighbors=k_neighbors)
-    bank = build_reference_bank(cleaned_entries, min_points=k_neighbors)
+    stats_map = compute_reference_bank_stats(
+        cleaned_entries,
+        k_neighbors=k_neighbors,
+        bank_scope=bank_scope,
+    )
+    bank = build_reference_bank(
+        cleaned_entries,
+        min_points=k_neighbors,
+        bank_scope=bank_scope,
+    )
     written_paths: list[Path] = []
     for object_name, layer_map in bank.items():
         for layer_index, tensor in layer_map.items():
@@ -70,6 +83,7 @@ def save_reference_bank(
         for layer_index, stats in sorted(layer_stats.items()):
             count_rows.append(
                 {
+                    "bank_scope": bank_scope,
                     "object_name": object_name,
                     "layer_index": int(layer_index),
                     "count": int(stats["count"]),
@@ -103,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--object-name", default="")
     parser.add_argument("--layer-index", type=int, default=0)
     parser.add_argument("--k-neighbors", type=int, default=32)
+    parser.add_argument("--bank-scope", choices=["object", "shared"], default="object")
     return parser
 
 
@@ -125,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         output_root=args.output_root,
         model_name=args.model_name,
         k_neighbors=args.k_neighbors,
+        bank_scope=args.bank_scope,
     ):
         print(path)
     return 0

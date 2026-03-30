@@ -108,6 +108,27 @@ def test_build_reference_bank_groups_vectors_by_object_and_layer() -> None:
     assert bank["dog"][8].shape == (2, 2)
 
 
+def test_build_reference_bank_pools_vectors_by_layer_when_scope_shared() -> None:
+    entries = [
+        {
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[1.0, 2.0]]),
+        },
+        {
+            "object_name": "cat",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[3.0, 4.0]]),
+        },
+    ]
+
+    bank = build_reference_bank(entries, bank_scope="shared")
+
+    assert sorted(bank) == ["__shared__"]
+    assert sorted(bank["__shared__"]) == [8]
+    assert bank["__shared__"][8].shape == (2, 2)
+
+
 def test_clean_reference_entries_keeps_only_parsed_yes_rows() -> None:
     cleaned = clean_reference_entries(
         [
@@ -185,6 +206,39 @@ def test_compute_reference_bank_stats_returns_layerwise_counts_and_radius_summar
     assert "neighbor_radius_q10" in stats["dog"][8]
     assert "neighbor_radius_q50" in stats["dog"][8]
     assert "neighbor_radius_q90" in stats["dog"][8]
+
+
+def test_compute_reference_bank_stats_pools_counts_when_scope_shared() -> None:
+    entries = [
+        {
+            "sample_id": "sample-1",
+            "parsed_answer": 1,
+            "object_name": "dog",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.0, 0.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-2",
+            "parsed_answer": 1,
+            "object_name": "cat",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[1.0, 0.0, 0.0]]),
+        },
+        {
+            "sample_id": "sample-3",
+            "parsed_answer": 1,
+            "object_name": "cat",
+            "selected_layers": [8],
+            "layer_vectors": torch.tensor([[0.0, 1.0, 0.0]]),
+        },
+    ]
+
+    stats = compute_reference_bank_stats(entries, k_neighbors=2, bank_scope="shared")
+
+    assert sorted(stats) == ["__shared__"]
+    assert stats["__shared__"][8]["count"] == 3
+    assert "residual_mean" in stats["__shared__"][8]
+    assert "neighbor_radius_mean" in stats["__shared__"][8]
 
 
 def test_build_output_path_uses_object_and_layer_subdirectories(tmp_path: Path) -> None:

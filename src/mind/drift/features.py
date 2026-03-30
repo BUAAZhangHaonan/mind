@@ -5,7 +5,11 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from mind.manifolds import fit_local_pca_manifold, normalized_normal_residual
+from mind.manifolds import (
+    fit_local_pca_manifold,
+    normalized_normal_residual,
+    resolve_reference_scope_key,
+)
 from mind.wavelets import extract_wavelet_features
 
 
@@ -15,15 +19,17 @@ def compute_drift_curve(
     selected_layers: list[int],
     object_name: str,
     reference_bank: dict[str, dict[int, torch.Tensor]],
+    bank_scope: str = "object",
     k_neighbors: int = 32,
 ) -> np.ndarray:
-    if object_name not in reference_bank:
+    bank_key = resolve_reference_scope_key(object_name, bank_scope)
+    if bank_key not in reference_bank:
         raise KeyError(f"Missing reference bank for object {object_name}")
     if layer_vectors.shape[0] != len(selected_layers):
         raise ValueError("layer_vectors and selected_layers must align")
 
     scores = []
-    object_bank = reference_bank[object_name]
+    object_bank = reference_bank[bank_key]
     for offset, layer_index in enumerate(selected_layers):
         reference_vectors = object_bank[int(layer_index)]
         manifold = fit_local_pca_manifold(
