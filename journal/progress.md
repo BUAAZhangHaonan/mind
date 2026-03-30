@@ -1,5 +1,76 @@
 # MIND Progress Log
 
+## 2026-03-30
+
+- Re-checked the machine state before the correction reruns:
+  - `nvidia-smi` now reports `4` visible `RTX 3090 24GB` cards again
+  - `conda run --no-capture-output -n mind-py311 python -c "import torch; ..."` reports:
+    - `torch 2.6.0+cu124`
+    - `torch.cuda.is_available() == True`
+    - `torch.cuda.device_count() == 4`
+  - the earlier `3 GPU` notes remain useful as incident history, but they are no longer the current hardware state
+- Found one real execution trap while working from the repo-local worktree:
+  - the editable install in `mind-py311` still pointed at the main checkout
+  - direct script runs from the worktree therefore imported stale code until `PYTHONPATH=<worktree>/src` was set
+  - correction-phase reruns used that explicit `PYTHONPATH`
+  - after merging this branch, the clean fix is simply `make install`
+- Implemented the approved signal and evaluation correction plan:
+  - removed per-sample drift z-score normalization from the active path
+  - kept raw normal-residual magnitude as the primary geometric signal
+  - added calibrated drift curves from cleaned reference-bank statistics
+  - restricted Haar features to calibrated curves only
+  - cleaned reference banks with the strict rule `parsed_answer == 1`
+  - added grouped evaluation protocols: `row`, `image_grouped`, and `object_heldout`
+  - added `pr_auc` and `tpr_at_fpr_0.01` to the metric surface
+- Verified the correction code before reruns:
+  - `conda run --no-capture-output -n mind-py311 python -m pytest -q`
+  - result: `83 passed`
+- Rebuilt corrected reference banks from the existing popular-phase reference caches:
+  - Qwen reference cache: `4652 / 5056` rows kept after cleaning
+  - InternVL reference cache: `4842 / 5056` rows kept after cleaning
+  - with `k_neighbors = 32`, both corrected banks had full support:
+    - `1264 / 1264` object-layer rows support manifold scoring for Qwen
+    - `1264 / 1264` object-layer rows support manifold scoring for InternVL
+- Wrote the corrected popular artifacts under `outputs/correction_phase/`:
+  - reference banks: `outputs/correction_phase/reference_banks/`
+  - features: `outputs/correction_phase/features/`
+  - reports: `outputs/correction_phase/reports/`
+  - plots: `outputs/correction_phase/plots/`
+- Completed the first deciding run on existing `Qwen/Qwen3-VL-8B-Instruct` popular caches with `image_grouped` evaluation:
+  - full MIND: `ROC-AUC 0.9171`, `PR-AUC 0.2839`, `TPR@1%FPR 0.1441`
+  - drift-only: `ROC-AUC 0.8497`, `PR-AUC 0.1253`
+  - no-manifold: `ROC-AUC 0.8385`, `PR-AUC 0.1983`
+  - linear probe: `ROC-AUC 0.9161`, `PR-AUC 0.3803`
+  - judgment:
+    - the signal repair worked
+    - full MIND now clearly beats drift-only and no-manifold
+    - MIND now matches the linear probe in ROC-AUC on Qwen popular, but still trails it on PR-AUC
+- Completed the matching cross-family run on existing `OpenGVLab/InternVL3_5-8B-HF` popular caches with `image_grouped` evaluation:
+  - full MIND: `ROC-AUC 0.9142`, `PR-AUC 0.5438`, `TPR@1%FPR 0.2539`
+  - drift-only: `ROC-AUC 0.8802`, `PR-AUC 0.4270`
+  - no-manifold: `ROC-AUC 0.8559`, `PR-AUC 0.4033`
+  - linear probe: `ROC-AUC 0.9367`, `PR-AUC 0.6551`
+  - judgment:
+    - full MIND again beats drift-only and no-manifold
+    - the linear probe still remains stronger overall on the primary grouped protocol
+- Added the protocol checks required for the correction phase:
+  - corrected legacy `row` split for both model families
+  - corrected `object_heldout` split for both model families
+  - `object_heldout` at `5` folds was not class-feasible on these corrected popular labels
+  - the largest shared valid setting across both families was `2` folds, so that is the object-heldout protocol used here
+- Object-heldout findings:
+  - Qwen full MIND dropped to `ROC-AUC 0.7244`, `PR-AUC 0.0638`
+  - InternVL full MIND held up better at `ROC-AUC 0.8398`, `PR-AUC 0.4097`
+  - InternVL object-heldout full MIND also beat the InternVL linear probe on both ROC-AUC and PR-AUC
+- Wrote a compact corrected comparison table and figure:
+  - `outputs/correction_phase/reports/correction_summary.csv`
+  - `outputs/correction_phase/plots/correction_summary_protocols.png`
+- Paper-position decision after the correction phase:
+  - do not claim that MIND is the strongest detector overall
+  - do claim that a real pre-answer geometry signal exists and survives stricter grouped evaluation
+  - position MIND around low-dimensional geometry-aware early warning, interpretability, calibration, and cross-model stability
+  - retire the old middle-layer claim; the safe wording is now `selected pre-answer layers`, with the earlier late-layer result still standing as an empirical fact on the historical Qwen popular run
+
 ## 2026-03-29
 
 - Re-checked machine health after the earlier CUDA crash:

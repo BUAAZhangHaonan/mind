@@ -1,80 +1,144 @@
 # MIND Results Summary
 
-## Runtime State
+## Correction Phase
 
-- Machine used for the completed runs: `3 x RTX 3090 24GB`
-- One fourth card remains faulty and is still not visible to `nvidia-smi` or PyTorch.
-- Canonical environment: `mind-py311`
-- Hugging Face mirror used when needed: `HF_ENDPOINT=https://hf-mirror.com`
+This file now treats the 2026-03-30 correction phase as the main result set for the paper decision.
 
-## Completed Qwen Runs
+What changed in this phase:
 
-### Smoke Stage
+- removed per-sample drift-curve normalization
+- kept raw manifold magnitude features
+- calibrated drift curves from cleaned reference-bank statistics
+- applied Haar only to calibrated curves
+- cleaned reference banks with `parsed_answer == 1`
+- switched the primary evaluation protocol from row-wise splitting to `image_grouped`
 
-- Model: `Qwen/Qwen3-VL-4B-Instruct`
-- Data: `200` examples from POPE popular
-- Purpose: verify the full path from data loading to plots
+All corrected outputs live under:
 
-Smoke result:
+- `outputs/correction_phase/reference_banks/`
+- `outputs/correction_phase/features/`
+- `outputs/correction_phase/reports/`
+- `outputs/correction_phase/plots/`
 
-- detector ROC-AUC: `0.4237`
-- note: the held-out fold contained only `1` hallucination positive, so this run only validates the pipeline and does not support a meaningful detector claim
+## Primary Protocol: `image_grouped`
 
-### Main Qwen Summary
-
-Model: `Qwen/Qwen3-VL-8B-Instruct`
-
-| Subset | MIND ROC-AUC | RePOPE ROC-AUC | Raw yes/no accuracy | Linear probe ROC-AUC | Drift-only ROC-AUC | No-manifold ROC-AUC |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| popular | 0.673692 | 0.644327 | 0.889000 | 0.924120 | 0.665059 | 0.611303 |
-| random | 0.581979 | 0.640958 | 0.916667 | 0.814462 | 0.569647 | 0.544002 |
-| adversarial | 0.707938 | 0.704809 | 0.869000 | 0.783459 | 0.696552 | 0.671147 |
-
-Observations:
-
-- MIND produced a usable ranking signal on all three POPE subsets.
-- RePOPE lowered the popular ROC-AUC but raised the random ROC-AUC relative to the original POPE labels.
-- In this implementation, the direct hidden-state linear probe was stronger than MIND on all finished Qwen runs.
-
-### Popular Ablations
+### Qwen Popular
 
 Model: `Qwen/Qwen3-VL-8B-Instruct`
 
-| Variant | ROC-AUC |
-| --- | ---: |
-| early layers | 0.569641 |
-| middle layers | 0.673692 |
-| late layers | 0.861207 |
+| Variant | ROC-AUC | PR-AUC | TPR@1%FPR | F1 |
+| --- | ---: | ---: | ---: | ---: |
+| full MIND | 0.917113 | 0.283927 | 0.144144 | 0.000000 |
+| drift-only | 0.849675 | 0.125340 | 0.036036 | 0.000000 |
+| no-manifold | 0.838508 | 0.198308 | 0.081081 | 0.000000 |
+| linear probe | 0.916075 | 0.380287 | 0.252252 | 0.417476 |
 
-Interpretation:
+Takeaways:
 
-- The corrected popular run supports `late > middle > early`, not the earlier middle-layer story.
-- Wavelet features helped slightly over raw drift on popular.
-- The manifold term helped on popular relative to the no-manifold variant.
+- The corrected full MIND signal clearly beats corrected drift-only and corrected no-manifold.
+- The ROC-AUC gap to the linear probe is effectively closed on Qwen popular.
+- The PR-AUC gap is still large enough that MIND should not be written up as the strongest detector.
 
-## Cross-Family InternVL Result
+### InternVL Popular
 
 Model: `OpenGVLab/InternVL3_5-8B-HF`
 
-| Setting | MIND ROC-AUC | Accuracy | F1 | Raw yes/no accuracy | Linear probe ROC-AUC | Drift-only ROC-AUC | No-manifold ROC-AUC |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| POPE popular | 0.836676 | 0.912222 | 0.024691 | 0.873000 | 0.908870 | 0.835256 | 0.723454 |
-| RePOPE popular | 0.811205 | 0.898889 | 0.021505 | - | - | - | - |
+| Variant | ROC-AUC | PR-AUC | TPR@1%FPR | F1 |
+| --- | ---: | ---: | ---: | ---: |
+| full MIND | 0.914178 | 0.543810 | 0.253906 | 0.373938 |
+| drift-only | 0.880153 | 0.427028 | 0.167969 | 0.113879 |
+| no-manifold | 0.855884 | 0.403316 | 0.164062 | 0.247678 |
+| linear probe | 0.936664 | 0.655071 | 0.320312 | 0.636054 |
 
-Observations:
+Takeaways:
 
-- InternVL was clearly stronger than Qwen on the popular split in ROC-AUC.
-- Within the InternVL run, MIND only slightly improved over drift-only features.
-- The direct hidden-state linear probe was still stronger than MIND, so the current evidence supports MIND more as an interpretable geometry-aware detector than as the strongest raw predictor in this codebase.
+- The corrected full MIND signal again beats corrected drift-only and corrected no-manifold.
+- InternVL remains stronger than Qwen on the same corrected popular split in PR-AUC.
+- The linear probe still leads on the primary grouped protocol.
 
-Output roots:
+## Legacy Comparison: `row`
 
-- `outputs/reports/cross-internvl3.5-8b-popular/`
-- `outputs/reports/cross-internvl3.5-8b-popular-repope/`
-- `outputs/plots/cross-internvl3.5-8b-popular/`
+The row split is now legacy mode only. It stays here for continuity with older repo outputs.
 
-## H-POPE Status
+| Model | Variant | ROC-AUC | PR-AUC |
+| --- | --- | ---: | ---: |
+| Qwen | full MIND | 0.884625 | 0.315199 |
+| Qwen | drift-only | 0.815491 | 0.118222 |
+| Qwen | no-manifold | 0.797421 | 0.158706 |
+| Qwen | linear probe | 0.924120 | 0.479551 |
+| InternVL | full MIND | 0.904515 | 0.548230 |
+| InternVL | drift-only | 0.879535 | 0.422068 |
+| InternVL | no-manifold | 0.849947 | 0.423549 |
+| InternVL | linear probe | 0.908870 | 0.625761 |
 
-- Loader and config surface are present in the repo.
-- Public benchmark assets were not found in a directly usable downloadable package during this execution window.
-- H-POPE remains documented as blocked until a public asset release is actually reachable.
+Takeaways:
+
+- The corrected grouped results do not collapse to random.
+- Qwen actually improves in ROC-AUC under `image_grouped` relative to corrected `row`, which supports the claim that the earlier weakness came from the signal definition more than from the stricter protocol itself.
+- InternVL changes little between corrected `row` and corrected `image_grouped`, which is a good sign for stability.
+
+## Secondary Check: `object_heldout`
+
+`object_heldout` at `5` folds was not class-feasible on these corrected popular labels. The largest shared valid setting across both model families was `2` folds, so that is the protocol used here.
+
+### Qwen Popular, `object_heldout`
+
+| Variant | ROC-AUC | PR-AUC | TPR@1%FPR |
+| --- | ---: | ---: | ---: |
+| full MIND | 0.724419 | 0.063808 | 0.000000 |
+| drift-only | 0.780095 | 0.080777 | 0.027027 |
+| no-manifold | 0.656304 | 0.072021 | 0.036036 |
+| linear probe | 0.743235 | 0.123253 | 0.036036 |
+
+Takeaway:
+
+- Qwen does not hold up well under object-held-out transfer.
+
+### InternVL Popular, `object_heldout`
+
+| Variant | ROC-AUC | PR-AUC | TPR@1%FPR |
+| --- | ---: | ---: | ---: |
+| full MIND | 0.839763 | 0.409716 | 0.218750 |
+| drift-only | 0.834840 | 0.305181 | 0.082031 |
+| no-manifold | 0.776749 | 0.266311 | 0.078125 |
+| linear probe | 0.782977 | 0.270688 | 0.082031 |
+
+Takeaway:
+
+- InternVL holds up much better than Qwen under object-held-out transfer.
+- On this secondary protocol, full MIND even beats the InternVL linear probe.
+
+## Reference-Bank Cleaning Result
+
+Cleaning was strict:
+
+- kept only `parsed_answer == 1`
+- dropped all `parsed_answer == 0`
+- dropped unparsed rows
+
+Corrected reference support at `k_neighbors = 32`:
+
+| Model | Kept reference rows | Supported object-layer rows | Low-support rows |
+| --- | ---: | ---: | ---: |
+| Qwen | 4652 / 5056 | 1264 / 1264 | 0 |
+| InternVL | 4842 / 5056 | 1264 / 1264 | 0 |
+
+That means the cleaned-bank correction did not create a support cliff on this dataset.
+
+## Paper Decision Gate
+
+Current decision:
+
+- keep the project alive
+- stop short of claiming strongest overall detector
+- center the paper on low-dimensional geometry-aware early warning
+
+Reason:
+
+- The corrected signal clearly beats corrected drift-only and corrected no-manifold on the primary grouped protocol for both model families.
+- The linear probe still keeps a clear PR-AUC advantage on the primary grouped protocol for both model families.
+- The signal is therefore real and useful, but the best paper position is interpretability, compression, calibration, and cross-model behavior rather than pure leaderboard superiority.
+
+## Historical Note
+
+Older Qwen runs on POPE `random`, `popular`, and `adversarial`, plus the earlier layer-range ablation, remain in the repo and journal as historical context. They are still useful for understanding the late-layer pattern, but the correction-phase popular runs above are the current source of truth for the paper decision.

@@ -1,6 +1,6 @@
 # Experiment Runbook
 
-This runbook matches the repo state that has actually been verified on the recovered `3 x RTX 3090 24GB` machine in this session.
+This runbook matches the repo state that has actually been verified on the current machine state in this session.
 
 ## 1. Environment
 
@@ -14,13 +14,141 @@ make test
 
 Verified result in this session:
 
-- `scripts/verify_env.py` currently sees the 3 usable RTX 3090 GPUs on this machine
+- `scripts/verify_env.py` and direct PyTorch checks now see `4 x RTX 3090 24GB`
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
 - the full unit and integration suite passed
 - the project now uses one canonical environment only: `mind-py311`
 - the answer prompt was tightened to one-word yes/no output and the extraction scripts now run with `--max-new-tokens 1`
+- if you switch branches or worktrees, run `make install` again so the editable package points at the active checkout
 
-## 2. Normalize POPE and RePOPE
+## 2. Correction-Phase Reruns From Existing Popular Caches
+
+These are the correction-phase commands that were actually run on 2026-03-30. They do not re-extract model states. They reuse the existing popular caches and rebuild only the corrected signal path and corrected evaluation protocol.
+
+Output root used in this phase:
+
+- `outputs/correction_phase/`
+
+### Rebuild cleaned reference banks
+
+Qwen:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/qwen3-vl-8b/pope-reference-64/train \
+  --output-root outputs/correction_phase/reference_banks \
+  --model-name qwen3-vl-8b \
+  --k-neighbors 32
+```
+
+InternVL:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/internvl3.5-8b/pope-reference-64/train \
+  --output-root outputs/correction_phase/reference_banks \
+  --model-name internvl3.5-8b \
+  --k-neighbors 32
+```
+
+### Recompute corrected features
+
+Qwen:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-qwen3-vl-8b-popular \
+  --split popular
+```
+
+InternVL:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/internvl3.5-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name internvl3.5-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-internvl3.5-8b-popular \
+  --split popular
+```
+
+### Primary protocol: `image_grouped`
+
+Qwen:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-qwen3-vl-8b-popular/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py \
+  --features-path outputs/correction_phase/features/correction-qwen3-vl-8b-popular/popular.parquet \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+InternVL:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-popular/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py \
+  --features-path outputs/correction_phase/features/correction-internvl3.5-8b-popular/popular.parquet \
+  --cache-path outputs/cache/internvl3.5-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name internvl3.5-8b \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+### Legacy comparison: `row`
+
+Use the same commands with:
+
+- `--split-strategy row`
+- experiment names:
+  - `correction-qwen3-vl-8b-popular-row`
+  - `correction-internvl3.5-8b-popular-row`
+
+### Secondary protocol: `object_heldout`
+
+Use the same commands with:
+
+- `--split-strategy object_heldout`
+- `--num-folds 2`
+
+`2` folds were used because it was the largest shared valid setting across both model families that preserved both classes in every held-out fold.
+
+### Correction-phase summary outputs
+
+- `outputs/correction_phase/reports/correction_summary.csv`
+- `outputs/correction_phase/plots/correction_summary_protocols.png`
+
+## 3. Normalize POPE and RePOPE
 
 POPE:
 
@@ -51,7 +179,7 @@ done
 
 These normalized files already exist locally.
 
-## 3. Build Reference Candidates
+## 4. Build Reference Candidates
 
 This step needs MSCOCO train annotations.
 
@@ -70,7 +198,7 @@ Notes:
 - the current repo keeps reference candidates separate from evaluation records
 - the final grounded reference bank is built from cached hidden states, not directly from this JSON
 
-## 4. Plan Experiment Commands
+## 5. Plan Experiment Commands
 
 Preview the commands for a preset without running them:
 
@@ -82,7 +210,7 @@ conda run --no-capture-output -n mind-py311 python scripts/run_experiment.py \
 
 Use `--execute` only after the required assets are in place.
 
-## 5. Manual Stage Commands
+## 6. Manual Stage Commands
 
 ### Reference cache
 
@@ -151,10 +279,18 @@ The cache input can be a single shard or a shard directory.
 conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
   --train-path outputs/features/medium-qwen3-vl-8b-popular/popular.parquet \
   --output-root outputs/reports \
-  --experiment-name medium-qwen3-vl-8b-popular
+  --experiment-name medium-qwen3-vl-8b-popular \
+  --split-strategy image_grouped \
+  --num-folds 5
 ```
 
-This command performs its own reproducible stratified split when `--eval-path` is omitted.
+This command now supports:
+
+- `row`
+- `image_grouped`
+- `object_heldout`
+
+Use `image_grouped` as the primary protocol and keep `row` only for historical comparison.
 
 ### Evaluate
 
@@ -195,7 +331,9 @@ conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py 
   --reference-root outputs/reference_banks \
   --model-name qwen3-vl-8b \
   --output-root outputs/reports \
-  --experiment-name medium-qwen3-vl-8b-popular
+  --experiment-name medium-qwen3-vl-8b-popular \
+  --split-strategy image_grouped \
+  --num-folds 5
 ```
 
 ### Cross-family InternVL popular run
@@ -217,7 +355,7 @@ Completed output roots from this session:
 - `outputs/reports/cross-internvl3.5-8b-popular-repope/`
 - `outputs/plots/cross-internvl3.5-8b-popular/`
 
-## 6. Intended Stage Order
+## 7. Intended Stage Order
 
 1. Smoke: `configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml`
 2. Medium: `configs/experiments/medium/qwen3_vl_8b_pope_popular.yaml`
@@ -227,9 +365,9 @@ Completed output roots from this session:
 6. InternVL cross-family comparison
 7. H-POPE only if the public files become available
 
-## 7. Current External Blockers
+## 8. Current External Blockers
 
 - the public COCO assets are present locally
 - `Qwen/Qwen3-VL-4B-Instruct`, `Qwen/Qwen3-VL-8B-Instruct`, and `OpenGVLab/InternVL3_5-8B-HF` config or processor checks were verified through `HF_ENDPOINT=https://hf-mirror.com`
-- the fourth GPU remains faulty and unavailable, but the sequential `3 x RTX 3090` path is working
 - H-POPE public assets were not found in a directly usable release package
+- earlier GPU instability remains worth remembering as an incident pattern, but the current machine check on 2026-03-30 reports `4 x RTX 3090`
