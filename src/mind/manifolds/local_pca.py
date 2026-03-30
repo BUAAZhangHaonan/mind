@@ -101,7 +101,8 @@ def _compute_layer_statistics(
     max_components: int = 32,
     batch_size: int = 64,
 ) -> dict[str, float]:
-    vectors = vectors.to(dtype=torch.float32)
+    compute_device = torch.device("cuda" if torch.cuda.is_available() and vectors.shape[0] >= 256 else "cpu")
+    vectors = vectors.to(device=compute_device, dtype=torch.float32)
     count = int(vectors.shape[0])
     if count <= 1:
         return {
@@ -139,30 +140,39 @@ def _compute_layer_statistics(
         neighbors = vectors[batch_indices]
         means = neighbors.mean(dim=1)
         centered_neighbors = neighbors - means.unsqueeze(1)
-        _, singular_values, vh = torch.linalg.svd(centered_neighbors, full_matrices=False)
-        variances = singular_values.square()
+        gram = centered_neighbors @ centered_neighbors.transpose(1, 2)
+        eigenvalues, eigenvectors = torch.linalg.eigh(gram)
+        variances = torch.flip(eigenvalues.clamp_min(0.0), dims=[1])
+        left_vectors = torch.flip(eigenvectors, dims=[2])
         variance_ratio = variances / variances.sum(dim=1, keepdim=True).clamp_min(1e-8)
         cumulative = torch.cumsum(variance_ratio, dim=1)
         component_count = (cumulative < variance_threshold).sum(dim=1) + 1
-        component_count = component_count.clamp(max=min(max_components, vh.shape[1]))
-        component_mask = (
-            torch.arange(vh.shape[1], device=vh.device).unsqueeze(0)
-            < component_count.unsqueeze(1)
-        ).to(dtype=vh.dtype)
-        components = vh * component_mask.unsqueeze(-1)
-
+        component_count = component_count.clamp(max=min(max_components, left_vectors.shape[2]))
         centered_queries = queries - means
-        coefficients = torch.einsum("bkd,bd->bk", components, centered_queries)
-        projection = torch.einsum("bkd,bk->bd", components, coefficients)
-        residual = centered_queries - projection
         manifold_radii = torch.norm(centered_neighbors, dim=2).mean(dim=1).clamp_min(1e-8)
-
-        residual_batches.append(torch.norm(residual, dim=1) / manifold_radii)
+        squared_query_norm = centered_queries.square().sum(dim=1)
+        batch_residuals = []
+        for batch_offset in range(stop - start):
+            component_limit = int(component_count[batch_offset].item())
+            basis_left = left_vectors[batch_offset, :, :component_limit]
+            singular_values = variances[batch_offset, :component_limit].sqrt().clamp_min(1e-8)
+            projected_coefficients = (
+                basis_left.transpose(0, 1)
+                @ (centered_neighbors[batch_offset] @ centered_queries[batch_offset])
+            ) / singular_values
+            projection_norm = projected_coefficients.square().sum()
+            residual_norm = torch.sqrt(
+                (squared_query_norm[batch_offset] - projection_norm).clamp_min(0.0)
+            )
+            batch_residuals.append(residual_norm / manifold_radii[batch_offset])
+        residual_batches.append(torch.stack(batch_residuals))
         neighbor_radii.append(neighbor_distances[start:stop].mean(dim=1))
 
-    residual_array = torch.cat(residual_batches).cpu().numpy().astype(np.float32)
-    neighbor_residual_array = neighbor_residuals.cpu().numpy().astype(np.float32)
-    radius_array = torch.cat(neighbor_radii).cpu().numpy().astype(np.float32)
+    residual_array = torch.cat(residual_batches).detach().cpu().numpy().astype(np.float32)
+    neighbor_residual_array = neighbor_residuals.detach().cpu().numpy().astype(np.float32)
+    radius_array = torch.cat(neighbor_radii).detach().cpu().numpy().astype(np.float32)
+    if compute_device.type == "cuda":
+        torch.cuda.empty_cache()
 
     return {
         "count": float(count),
