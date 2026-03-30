@@ -22,6 +22,8 @@ env/
 
 .env
 .env.local
+.conda-pkgs-mind
+.vscode
 
 *.pt
 *.pth
