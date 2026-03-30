@@ -1,6 +1,7 @@
 """Evaluation helpers for MIND."""
 
 from .baselines import (
+    build_train_eval_splits,
     build_linear_probe_frame,
     build_no_manifold_feature_frame,
     build_raw_model_yes_no_baseline,
@@ -22,6 +23,7 @@ __all__ = [
     "build_linear_probe_frame",
     "build_no_manifold_feature_frame",
     "build_raw_model_yes_no_baseline",
+    "build_train_eval_splits",
     "compute_binary_metrics",
     "compute_object_hallucination_label",
     "drift_only_columns",

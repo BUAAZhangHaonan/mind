@@ -26,6 +26,8 @@ def test_compute_binary_metrics_returns_expected_keys() -> None:
     assert metrics["accuracy"] == 1.0
     assert metrics["f1"] == 1.0
     assert metrics["roc_auc"] == 1.0
+    assert metrics["pr_auc"] == 1.0
+    assert metrics["tpr_at_fpr_0.01"] == 1.0
     assert metrics["false_positive_rate"] == 0.0
 
 
