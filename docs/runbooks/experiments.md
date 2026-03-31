@@ -28,8 +28,9 @@ Current machine note for the closeout phase:
   - `nvidia-smi`: `Unable to determine the device handle for GPU1`
   - fresh `mind-py311` PyTorch: `torch.cuda.device_count() == 0`
 - that means:
-  - CPU-only closeout stages can continue
+  - the CPU-only shared-bank closeout stages can still complete
   - the fresh InternVL adversarial extraction cannot complete until the GPU state is recovered again
+  - the final paper-package export still waits on that missing InternVL adversarial report
 
 ## 2. Correction-Phase Reruns From Existing Popular Caches
 
@@ -217,6 +218,13 @@ conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
   --bank-scope shared
 ```
 
+Completed closeout outputs now present:
+
+- `outputs/correction_phase/reports/correction-qwen3-vl-8b-popular-shared/metrics.json`
+- `outputs/correction_phase/reports/correction-qwen3-vl-8b-popular-shared-object-heldout/metrics.json`
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-popular-shared/metrics.json`
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-popular-shared-object-heldout/metrics.json`
+
 ```bash
 conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
   --cache-path outputs/cache/internvl3.5-8b/pope/popular \
@@ -291,6 +299,10 @@ conda run --no-capture-output -n mind-py311 python scripts/export_paper_package.
   --reports-root outputs/correction_phase/reports \
   --output-root artifacts/paper_closeout
 ```
+
+This final export is still blocked until:
+
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
 
 ## 3. Normalize POPE and RePOPE
 

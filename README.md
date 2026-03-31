@@ -172,6 +172,19 @@ Correction-phase experiment checkpoints completed on the existing popular caches
   - `ROC-AUC 0.8708`
   - `PR-AUC 0.2653`
   - `TPR@1%FPR 0.0702`
+- shared-bank closeout controls completed on the corrected popular cache:
+  - Qwen popular shared bank:
+    - `ROC-AUC 0.8979`
+    - `PR-AUC 0.1986`
+  - InternVL popular shared bank:
+    - `ROC-AUC 0.8667`
+    - `PR-AUC 0.3409`
+  - Qwen shared bank improves `object_heldout` transfer to:
+    - `ROC-AUC 0.8624`
+    - `PR-AUC 0.1319`
+  - InternVL shared bank still trails the object-conditioned bank under `object_heldout`:
+    - `ROC-AUC 0.8307`
+    - `PR-AUC 0.2544`
 
 Primary corrected findings:
 
@@ -195,6 +208,10 @@ Current paper-safe interpretation:
 - the direct hidden-state linear probe still keeps a clear PR-AUC advantage on the primary grouped protocol, so the repo should not claim strongest overall detector performance
 - the strongest current framing is low-dimensional geometry-aware early warning, interpretability, and cross-model stability
 - the closeout control question is now object-conditioned bank versus shared bank, not detector-head escalation
+- the shared-bank result is mixed in a useful way:
+  - it hurts popular accuracy on both models
+  - it partially rescues Qwen object transfer
+  - it does not rescue InternVL, which suggests InternVL's object-conditioned bank is already carrying more stable grounding than Qwen's
 
 Current environment note:
 
@@ -202,7 +219,8 @@ Current environment note:
   - `nvidia-smi` can fall back to `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
   - once that happens, fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == False`
   - once that happens, fresh `mind-py311` PyTorch processes report `torch.cuda.device_count() == 0`
-  - this currently blocks both the pooled shared-bank closeout control and the fresh InternVL adversarial extraction
+  - the pooled shared-bank closeout control was still completed on CPU, but the fresh InternVL adversarial extraction remains blocked
+  - the final `scripts/export_paper_package.py` run still waits on the missing InternVL adversarial report
 - older `3 GPU` notes in the journal remain historical incident notes, but the live state is now less stable than the recovered `4 GPU` snapshot from `2026-03-30`
 - H-POPE remains blocked because the public benchmark package was not found in a directly usable release
 

@@ -45,18 +45,63 @@ Already completed in the closeout phase:
   - `ROC-AUC 0.870756`
   - `PR-AUC 0.265281`
   - `TPR@1%FPR 0.070175`
-- shared-bank control code path and paper-package export code path
+- shared-bank control on corrected popular and corrected `object_heldout`
+  - Qwen popular + shared bank:
+    - `ROC-AUC 0.897876`
+    - `PR-AUC 0.198559`
+    - `TPR@1%FPR 0.117117`
+  - InternVL popular + shared bank:
+    - `ROC-AUC 0.866674`
+    - `PR-AUC 0.340905`
+    - `TPR@1%FPR 0.101562`
+  - Qwen `object_heldout` + shared bank:
+    - `ROC-AUC 0.862392`
+    - `PR-AUC 0.131936`
+    - `TPR@1%FPR 0.036036`
+  - InternVL `object_heldout` + shared bank:
+    - `ROC-AUC 0.830655`
+    - `PR-AUC 0.254406`
+    - `TPR@1%FPR 0.050781`
+- paper-package export code path
 
 Current blocker:
 
-- the pooled shared-bank closeout control is still waiting on a usable CUDA state
-  - exact pooled leave-one-out stats on `4652` to `4842` cleaned references per layer are not practical on CPU alone
 - the fresh InternVL adversarial extraction is blocked by the machine CUDA state, not by the repo logic
 - the observed live failure is:
   - `nvidia-smi`: `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
   - fresh PyTorch under `mind-py311`: `torch.cuda.is_available() == False`
   - fresh PyTorch under `mind-py311`: `torch.cuda.device_count() == 0`
-- the CPU-side closeout jobs still completed the RePOPE rows and the corrected Qwen adversarial row, but the remaining shared-bank rows and the final InternVL adversarial row cannot be completed until the bad card or driver state is recovered again
+- the CPU-side closeout jobs did complete the shared-bank rows, the RePOPE rows, and the corrected Qwen adversarial row
+- the remaining blocked items are:
+  - the final InternVL adversarial row
+  - the final script-generated paper package, which still waits on that InternVL adversarial report
+
+## Shared-Bank Control
+
+### Popular, `image_grouped`
+
+| Model | Object Bank ROC-AUC | Shared Bank ROC-AUC | Object Bank PR-AUC | Shared Bank PR-AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen | 0.917113 | 0.897876 | 0.283927 | 0.198559 |
+| InternVL | 0.914178 | 0.866674 | 0.543810 | 0.340905 |
+
+Takeaways:
+
+- On the primary grouped protocol, the shared bank hurts both model families.
+- The object-conditioned bank is therefore carrying useful signal on popular, not just memorized structure.
+
+### Popular, `object_heldout`
+
+| Model | Object Bank ROC-AUC | Shared Bank ROC-AUC | Object Bank PR-AUC | Shared Bank PR-AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen | 0.724419 | 0.862392 | 0.063808 | 0.131936 |
+| InternVL | 0.839763 | 0.830655 | 0.409716 | 0.254406 |
+
+Takeaways:
+
+- On Qwen, the shared bank improves held-out object transfer substantially.
+- On InternVL, the shared bank still hurts both ROC-AUC and PR-AUC.
+- The safer paper reading is that object conditioning buys popular accuracy for both models, but it weakens transfer much more sharply for Qwen than for InternVL.
 
 ## Primary Protocol: `image_grouped`
 

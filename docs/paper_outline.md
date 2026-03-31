@@ -126,11 +126,17 @@ Takeaway:
 
 - On both model families, full MIND beats drift-only and no-manifold on the primary grouped protocol.
 - The correction therefore repaired a real signal, not just a reporting issue.
+- The shared-bank control hurts popular performance on both model families:
+  - Qwen falls from `ROC-AUC 0.9171` and `PR-AUC 0.2839` to `ROC-AUC 0.8979` and `PR-AUC 0.1986`
+  - InternVL falls from `ROC-AUC 0.9142` and `PR-AUC 0.5438` to `ROC-AUC 0.8667` and `PR-AUC 0.3409`
 
 #### 5.3 Held-out object behavior
 
 - Qwen drops sharply under `object_heldout`.
 - InternVL stays much stronger and full MIND even beats the InternVL linear probe on that secondary protocol.
+- The shared-bank control changes the transfer story:
+  - on Qwen, shared bank improves `object_heldout` to `ROC-AUC 0.8624`, `PR-AUC 0.1319`
+  - on InternVL, shared bank is still worse than the object-conditioned bank under `object_heldout`
 
 ### 6. Discussion
 
@@ -142,6 +148,10 @@ Takeaway:
   - it is not the strongest detector in every setting
 - The old middle-layer story should be removed.
 - The safer wording is `selected pre-answer layers`, with late-layer strength treated as an empirical result rather than a fixed theoretical claim.
+- The bank-scope control now gives a sharper interpretation:
+  - object conditioning buys accuracy on popular for both models
+  - Qwen pays a much larger transfer penalty for that object conditioning than InternVL
+  - the next-paper question is therefore shared cross-object geometry, not a larger detector head
 
 ## Core Figures
 
