@@ -25,11 +25,12 @@ Verified result in this session:
 Current machine note for the closeout phase:
 
 - the migration blocker is gone on `2026-04-01`
-- the remaining closeout dependency is the active `InternVL adversarial` rerun, not environment recovery
-- the exact follow-up order stays the same:
-  - finish the cache extraction
-  - run corrected drift, detector training, evaluation, and plots
-  - export `artifacts/paper_closeout/`
+- the missing `InternVL adversarial` rerun has completed
+- the final paper package export has completed
+- the closeout outputs now include:
+  - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
+  - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv`
+  - `artifacts/paper_closeout/`
 
 ## 2. Correction-Phase Reruns From Existing Popular Caches
 
@@ -289,7 +290,61 @@ conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
   --split adversarial
 ```
 
-InternVL needs a fresh adversarial extraction first, and that is the step currently blocked by the machine CUDA state described above.
+InternVL completed the fresh adversarial closeout on the A100 server with these commands:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/extract_eval_states.py \
+  --records outputs/normalized/pope/adversarial.jsonl \
+  --model-config configs/models/internvl3_5_8b.yaml \
+  --output-root outputs/cache \
+  --dataset-name pope \
+  --split adversarial \
+  --image-root data/coco/val2014 \
+  --device cuda \
+  --selected-layers 16 \
+  --layer-range middle \
+  --batch-size 4
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/internvl3.5-8b/pope/adversarial \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name internvl3.5-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-internvl3.5-8b-adversarial \
+  --split adversarial
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-adversarial/adversarial.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-adversarial \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
+  --input-path outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-adversarial
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/plot_results.py \
+  --features-path outputs/correction_phase/features/correction-internvl3.5-8b-adversarial/adversarial.parquet \
+  --results-path outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv \
+  --output-root outputs/correction_phase/plots \
+  --experiment-name correction-internvl3.5-8b-adversarial
+```
+
+Completed InternVL adversarial metrics:
+
+- `ROC-AUC 0.859557`
+- `PR-AUC 0.443024`
+- `TPR@1%FPR 0.142857`
 
 ### Export the paper package
 
@@ -299,9 +354,11 @@ conda run --no-capture-output -n mind-py311 python scripts/export_paper_package.
   --output-root artifacts/paper_closeout
 ```
 
-This final export is still blocked until:
+Completed export targets:
 
-- `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
+- `artifacts/paper_closeout/tables/`
+- `artifacts/paper_closeout/figures/`
+- `artifacts/paper_closeout/figure_manifest.json`
 
 ## 3. Normalize POPE and RePOPE
 

@@ -20,7 +20,7 @@ All corrected outputs live under:
 - `outputs/correction_phase/reports/`
 - `outputs/correction_phase/plots/`
 
-## Closeout Follow-up: 2026-03-31
+## Closeout Follow-up: 2026-04-01
 
 Closeout scope in this phase:
 
@@ -45,6 +45,10 @@ Already completed in the closeout phase:
   - `ROC-AUC 0.870756`
   - `PR-AUC 0.265281`
   - `TPR@1%FPR 0.070175`
+- corrected InternVL adversarial rerun under `image_grouped`
+  - `ROC-AUC 0.859557`
+  - `PR-AUC 0.443024`
+  - `TPR@1%FPR 0.142857`
 - shared-bank control on corrected popular and corrected `object_heldout`
   - Qwen popular + shared bank:
     - `ROC-AUC 0.897876`
@@ -62,19 +66,21 @@ Already completed in the closeout phase:
     - `ROC-AUC 0.830655`
     - `PR-AUC 0.254406`
     - `TPR@1%FPR 0.050781`
-- paper-package export code path
+- script-generated paper package export
+  - `artifacts/paper_closeout/tables/`
+  - `artifacts/paper_closeout/figures/`
+  - `artifacts/paper_closeout/figure_manifest.json`
 
-Current blocker:
+Closeout completion:
 
-- the fresh InternVL adversarial extraction is blocked by the machine CUDA state, not by the repo logic
-- the observed live failure is:
-  - `nvidia-smi`: `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
-  - fresh PyTorch under `mind-py311`: `torch.cuda.is_available() == False`
-  - fresh PyTorch under `mind-py311`: `torch.cuda.device_count() == 0`
-- the CPU-side closeout jobs did complete the shared-bank rows, the RePOPE rows, and the corrected Qwen adversarial row
-- the remaining blocked items are:
-  - the final InternVL adversarial row
-  - the final script-generated paper package, which still waits on that InternVL adversarial report
+- the A100 environment was verified healthy before the rerun:
+  - `2 x NVIDIA A100 80GB PCIe`
+  - `torch.cuda.is_available() == True`
+  - `make test` passed with `93` tests
+- the final missing InternVL adversarial cache completed with:
+  - `24` shards
+  - `3000` cached entries
+- the full closeout export is no longer blocked
 
 ## Shared-Bank Control
 
@@ -138,6 +144,19 @@ Takeaways:
 - The corrected full MIND signal again beats corrected drift-only and corrected no-manifold.
 - InternVL remains stronger than Qwen on the same corrected popular split in PR-AUC.
 - The linear probe still leads on the primary grouped protocol.
+
+## Adversarial Check: `image_grouped`
+
+| Model | ROC-AUC | PR-AUC | TPR@1%FPR | F1 |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen adversarial | 0.870756 | 0.265281 | 0.070175 | 0.000000 |
+| InternVL adversarial | 0.859557 | 0.443024 | 0.142857 | 0.230216 |
+
+Takeaways:
+
+- The adversarial split is harder than popular for both families.
+- InternVL keeps a large PR-AUC advantage on adversarial even though Qwen keeps a slightly higher ROC-AUC.
+- The final paper package now has all six grouped closeout rows.
 
 ## Legacy Comparison: `row`
 

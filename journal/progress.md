@@ -41,8 +41,34 @@
     - split: `adversarial-smoke4`
     - result: success
   - full missing run:
-    - `InternVL adversarial` extraction restarted on the A100 server from `outputs/normalized/pope/adversarial.jsonl`
-    - follow-up corrected drift, detector, evaluation, plots, and export remain queued behind that active extraction
+    - `InternVL adversarial` extraction completed on the A100 server from `outputs/normalized/pope/adversarial.jsonl`
+    - cache result:
+      - `24` shards
+      - `3000` cached entries
+- Closed the last method-path reliability risk before the final rerun:
+  - changed `scripts/compute_drift.py` and `src/mind/evaluation/baselines.py` to fail fast on missing reference coverage instead of silently dropping rows
+  - removed the dead public export of the retired drift-normalization helper
+  - verified with:
+    - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit/test_pipeline_scripts.py tests/unit/test_baselines.py`
+    - result: `17 passed`
+- Completed the missing InternVL adversarial closeout chain:
+  - features:
+    - `outputs/correction_phase/features/correction-internvl3.5-8b-adversarial/adversarial.parquet`
+  - reports:
+    - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
+    - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv`
+  - plots:
+    - `outputs/correction_phase/plots/correction-internvl3.5-8b-adversarial/drift_curves.png`
+    - `outputs/correction_phase/plots/correction-internvl3.5-8b-adversarial/roc_curve.png`
+    - `outputs/correction_phase/plots/correction-internvl3.5-8b-adversarial/wavelet_heatmap.png`
+  - metrics:
+    - `ROC-AUC 0.8595568557010416`
+    - `PR-AUC 0.44302381623074466`
+    - `TPR@1%FPR 0.14285714285714285`
+- Exported the final paper closeout package:
+  - `artifacts/paper_closeout/tables/`
+  - `artifacts/paper_closeout/figures/`
+  - `artifacts/paper_closeout/figure_manifest.json`
 
 ## 2026-03-31
 
@@ -529,10 +555,10 @@
       - `ROC-AUC 0.8306546670007289`
       - `PR-AUC 0.25440601380061273`
       - `TPR@1%FPR 0.05078125`
-  - remaining unfinished closeout rows are now:
+  - at that checkpoint, the remaining unfinished closeout rows were:
     - InternVL adversarial
     - final `scripts/export_paper_package.py` run, which still waits on the InternVL adversarial report
-- Current blocker on InternVL adversarial is external and hardware-facing:
+- At that checkpoint, the blocker on InternVL adversarial was external and hardware-facing:
   - the first retry hit repeated Hugging Face connection resets, so the run was retried through:
     - `HF_ENDPOINT=https://hf-mirror.com`
   - the mirror-backed retry got past model loading but failed during CUDA use in extraction with:
@@ -541,7 +567,7 @@
     - `nvidia-smi` returned `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
     - fresh `mind-py311` PyTorch processes returned `torch.cuda.is_available() == False`
     - fresh `mind-py311` PyTorch processes returned `torch.cuda.device_count() == 0`
-  - current judgment:
+  - judgment at that checkpoint:
     - the remaining InternVL adversarial extraction is blocked by the machine CUDA state, not by a repository logic bug
     - the CPU-side closeout jobs did complete the pooled shared-bank control, the RePOPE rows, and the corrected Qwen adversarial row
     - shared-bank interpretation after completion:
