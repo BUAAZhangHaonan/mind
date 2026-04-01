@@ -83,6 +83,16 @@ def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
     return list(torch.load(cache_path, weights_only=False))
 
 
+def _format_missing_reference_coverage(missing_entries: list[dict[str, object]]) -> str:
+    preview = ", ".join(
+        f"{entry['sample_id']}[{entry['reason']}]"
+        for entry in missing_entries[:5]
+    )
+    if len(missing_entries) > 5:
+        preview += f", ... (+{len(missing_entries) - 5} more)"
+    return f"Missing reference coverage for {len(missing_entries)} cache entries: {preview}"
+
+
 def feature_columns(frame: pd.DataFrame) -> list[str]:
     return [column for column in frame.columns if column not in METADATA_COLUMNS]
 
@@ -145,13 +155,36 @@ def build_no_manifold_feature_frame(
     bank_scope: str = "object",
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
+    missing_entries: list[dict[str, object]] = []
     for entry in cache_entries:
         object_name = str(entry["object_name"])
         bank_key = resolve_reference_scope_key(object_name, bank_scope)
-        if bank_key not in reference_bank or bank_key not in reference_stats:
+        if bank_key not in reference_bank:
+            missing_entries.append(
+                {"sample_id": entry["sample_id"], "reason": f"missing bank:{bank_key}"}
+            )
+            continue
+        if bank_key not in reference_stats:
+            missing_entries.append(
+                {"sample_id": entry["sample_id"], "reason": f"missing stats:{bank_key}"}
+            )
             continue
         selected_layers = [int(layer_index) for layer_index in entry["selected_layers"]]
-        if any(layer_index not in reference_bank[bank_key] for layer_index in selected_layers):
+        missing_bank_layers = [
+            layer_index for layer_index in selected_layers if layer_index not in reference_bank[bank_key]
+        ]
+        missing_stats_layers = [
+            layer_index for layer_index in selected_layers if layer_index not in reference_stats[bank_key]
+        ]
+        if missing_bank_layers or missing_stats_layers:
+            reason_parts = []
+            if missing_bank_layers:
+                reason_parts.append(f"missing bank layers:{missing_bank_layers}")
+            if missing_stats_layers:
+                reason_parts.append(f"missing stats layers:{missing_stats_layers}")
+            missing_entries.append(
+                {"sample_id": entry["sample_id"], "reason": "; ".join(reason_parts)}
+            )
             continue
         raw_curve = [
             _normalized_neighbor_residual(
@@ -188,6 +221,8 @@ def build_no_manifold_feature_frame(
                 **features,
             }
         )
+    if missing_entries:
+        raise ValueError(_format_missing_reference_coverage(missing_entries))
     return pd.DataFrame(rows)
 
 

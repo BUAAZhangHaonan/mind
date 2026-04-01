@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 import torch
 
 from mind.evaluation.baselines import (
@@ -104,50 +105,49 @@ def test_build_no_manifold_feature_frame_builds_wavelet_features() -> None:
     assert frame.loc[0, "object_name"] == "dog"
 
 
-def test_build_no_manifold_feature_frame_skips_entries_without_reference_coverage() -> None:
+def test_build_no_manifold_feature_frame_raises_on_entries_without_reference_coverage() -> None:
     reference_bank = {
         "dog": {
             8: torch.tensor([[0.0, 0.0], [1.0, 0.0]]),
         }
     }
 
-    frame = build_no_manifold_feature_frame(
-        cache_entries=[
-            {
-                "sample_id": "covered",
-                "image_id": 21,
-                "label": 1,
-                "parsed_answer": 1,
-                "subset": "popular",
-                "object_name": "dog",
-                "selected_layers": [8],
-                "layer_vectors": torch.tensor([[0.2, 0.1]]),
-            },
-            {
-                "sample_id": "missing",
-                "image_id": 22,
-                "label": 1,
-                "parsed_answer": 1,
-                "subset": "popular",
-                "object_name": "cat",
-                "selected_layers": [8],
-                "layer_vectors": torch.tensor([[0.2, 0.1]]),
-            },
-        ],
-        reference_bank=reference_bank,
-        reference_stats={
-            "dog": {
-                8: {
-                    "residual_mean": 0.1,
-                    "residual_std": 0.2,
-                    "neighbor_residual_mean": 0.1,
-                    "neighbor_residual_std": 0.2,
+    with pytest.raises(ValueError, match="Missing reference coverage"):
+        build_no_manifold_feature_frame(
+            cache_entries=[
+                {
+                    "sample_id": "covered",
+                    "image_id": 21,
+                    "label": 1,
+                    "parsed_answer": 1,
+                    "subset": "popular",
+                    "object_name": "dog",
+                    "selected_layers": [8],
+                    "layer_vectors": torch.tensor([[0.2, 0.1]]),
                 },
-            }
-        },
-    )
-
-    assert list(frame["sample_id"]) == ["covered"]
+                {
+                    "sample_id": "missing",
+                    "image_id": 22,
+                    "label": 1,
+                    "parsed_answer": 1,
+                    "subset": "popular",
+                    "object_name": "cat",
+                    "selected_layers": [8],
+                    "layer_vectors": torch.tensor([[0.2, 0.1]]),
+                },
+            ],
+            reference_bank=reference_bank,
+            reference_stats={
+                "dog": {
+                    8: {
+                        "residual_mean": 0.1,
+                        "residual_std": 0.2,
+                        "neighbor_residual_mean": 0.1,
+                        "neighbor_residual_std": 0.2,
+                    },
+                }
+            },
+        )
 
 
 def test_build_no_manifold_feature_frame_can_use_shared_bank() -> None:

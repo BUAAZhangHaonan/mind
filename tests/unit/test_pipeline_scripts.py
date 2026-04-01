@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import torch
 
 
@@ -162,7 +163,7 @@ def test_save_reference_bank_writes_shared_bank_artifacts(tmp_path: Path) -> Non
     assert counts.loc[0, "count"] == 2
 
 
-def test_build_feature_frame_skips_entries_without_reference_coverage(tmp_path: Path) -> None:
+def test_build_feature_frame_raises_on_entries_without_reference_coverage(tmp_path: Path) -> None:
     reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "dog"
     reference_root.mkdir(parents=True)
     torch.save(
@@ -178,34 +179,36 @@ def test_build_feature_frame_skips_entries_without_reference_coverage(tmp_path: 
     )
     torch.save({8: {"residual_mean": 0.1, "residual_std": 0.2}}, reference_root / "stats.pt")
 
-    frame = compute_drift.build_feature_frame(
-        cache_entries=[
-            {
-                "sample_id": "covered",
-                "image_id": 101,
-                "label": 1,
-                "parsed_answer": 1,
-                "subset": "popular",
-                "object_name": "dog",
-                "selected_layers": [8],
-                "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
-            },
-            {
-                "sample_id": "missing",
-                "image_id": 102,
-                "label": 1,
-                "parsed_answer": 1,
-                "subset": "popular",
-                "object_name": "cat",
-                "selected_layers": [8],
-                "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
-            },
-        ],
-        reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
-        reference_stats=compute_drift.load_reference_stats(tmp_path / "reference_banks", "qwen3-vl-8b"),
-    )
-
-    assert list(frame["sample_id"]) == ["covered"]
+    with pytest.raises(ValueError, match="Missing reference coverage"):
+        compute_drift.build_feature_frame(
+            cache_entries=[
+                {
+                    "sample_id": "covered",
+                    "image_id": 101,
+                    "label": 1,
+                    "parsed_answer": 1,
+                    "subset": "popular",
+                    "object_name": "dog",
+                    "selected_layers": [8],
+                    "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+                },
+                {
+                    "sample_id": "missing",
+                    "image_id": 102,
+                    "label": 1,
+                    "parsed_answer": 1,
+                    "subset": "popular",
+                    "object_name": "cat",
+                    "selected_layers": [8],
+                    "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+                },
+            ],
+            reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
+            reference_stats=compute_drift.load_reference_stats(
+                tmp_path / "reference_banks",
+                "qwen3-vl-8b",
+            ),
+        )
 
 
 def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path) -> None:

@@ -41,14 +41,6 @@ def compute_drift_curve(
     return np.asarray(scores, dtype=np.float32)
 
 
-def standardize_drift_curve(curve: np.ndarray) -> np.ndarray:
-    curve = np.asarray(curve, dtype=np.float32)
-    std = curve.std()
-    if std < 1e-8:
-        return np.zeros_like(curve)
-    return (curve - curve.mean()) / std
-
-
 def calibrate_drift_curve(
     curve: np.ndarray,
     *,
