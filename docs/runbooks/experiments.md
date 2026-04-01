@@ -14,23 +14,22 @@ make test
 
 Verified result in this session:
 
-- `scripts/verify_env.py` and direct PyTorch checks did see `4 x RTX 3090 24GB` after the earlier recovery
+- `scripts/verify_env.py` and direct PyTorch checks see `2 x NVIDIA A100 80GB PCIe`
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
-- the full unit and integration suite passed
+- the full unit and integration suite passed with `93` tests
 - the project now uses one canonical environment only: `mind-py311`
 - the answer prompt was tightened to one-word yes/no output and the extraction scripts now run with `--max-new-tokens 1`
 - if you switch branches or worktrees, run `make install` again so the editable package points at the active checkout
+- the local `/home/team/lvshuyang/Models/InternVL3_5-8B` folder is the GitHub-format release, so the active pipeline uses the exact `OpenGVLab/InternVL3_5-8B-HF` snapshot downloaded through the mirror
 
 Current machine note for the closeout phase:
 
-- the fresh InternVL adversarial rerun hit a recurring machine-level failure on `2026-03-31`
-- observed state after the failed retry:
-  - `nvidia-smi`: `Unable to determine the device handle for GPU1`
-  - fresh `mind-py311` PyTorch: `torch.cuda.device_count() == 0`
-- that means:
-  - the CPU-only shared-bank closeout stages can still complete
-  - the fresh InternVL adversarial extraction cannot complete until the GPU state is recovered again
-  - the final paper-package export still waits on that missing InternVL adversarial report
+- the migration blocker is gone on `2026-04-01`
+- the remaining closeout dependency is the active `InternVL adversarial` rerun, not environment recovery
+- the exact follow-up order stays the same:
+  - finish the cache extraction
+  - run corrected drift, detector training, evaluation, and plots
+  - export `artifacts/paper_closeout/`
 
 ## 2. Correction-Phase Reruns From Existing Popular Caches
 

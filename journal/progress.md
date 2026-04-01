@@ -1,5 +1,49 @@
 # MIND Progress Log
 
+## 2026-04-01
+
+- Restarted the closeout branch from the verified closeout tip:
+  - base branch: `feat/mind-paper-closeout`
+  - worktree: `/home/team/zhanghaonan/mind/.worktrees/feat-mind-paper-closeout`
+  - execution note: `docs/plans/2026-04-01-mind-paper-closeout-completion.md`
+- Recreated the canonical runtime on the target server:
+  - env: `mind-py311`
+  - Python: `3.11`
+  - commands:
+    - `make env`
+    - `make verify-env`
+    - `make install`
+    - `make test`
+  - verified runtime:
+    - `torch==2.6.0+cu124`
+    - `torch.cuda.is_available() == True`
+    - `torch.cuda.device_count() == 2`
+    - GPU names:
+      - `NVIDIA A100 80GB PCIe`
+      - `NVIDIA A100 80GB PCIe`
+  - full test result:
+    - `93 passed`
+- Re-verified the current model surface:
+  - `make verify-model MODEL_ID=Qwen/Qwen3-VL-8B-Instruct`
+  - `make verify-model MODEL_ID=OpenGVLab/InternVL3_5-8B-HF`
+- Found one real model-path mismatch while landing on the new server:
+  - `/home/team/lvshuyang/Models/Qwen3-VL-8B-Instruct` is compatible with the current wrapper path
+  - `/home/team/lvshuyang/Models/InternVL3_5-8B` is the GitHub-format release, not the exact Hugging Face `OpenGVLab/InternVL3_5-8B-HF` layout
+  - the current repo integration expects the Hugging Face format because it loads through `AutoProcessor` plus `AutoModelForImageTextToText`
+- Resolved the InternVL loading mismatch without changing the method or widening scope:
+  - exported `HF_ENDPOINT=https://hf-mirror.com`
+  - downloaded the exact `OpenGVLab/InternVL3_5-8B-HF` snapshot into the local Hugging Face cache
+  - removed the temporary fake cache symlink once the real snapshot was present
+- Re-checked the missing closeout path on real hardware:
+  - smoke run:
+    - `scripts/extract_eval_states.py`
+    - model: `internvl3.5-8b`
+    - split: `adversarial-smoke4`
+    - result: success
+  - full missing run:
+    - `InternVL adversarial` extraction restarted on the A100 server from `outputs/normalized/pope/adversarial.jsonl`
+    - follow-up corrected drift, detector, evaluation, plots, and export remain queued behind that active extraction
+
 ## 2026-03-31
 
 - Started the paper closeout branch in the repo-local worktree:

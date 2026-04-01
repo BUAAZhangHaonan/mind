@@ -313,6 +313,16 @@ The repo itself does not require a new software stack just because the GPUs are 
 
 The important part is that the new server’s NVIDIA driver must be compatible with the installed PyTorch CUDA wheel stack. The current environment is built around PyTorch CUDA 12.4 wheels.
 
+### Landing update on 2026-04-01
+
+The target server verification did succeed.
+
+- `make env`, `make verify-env`, `make install`, and `make test` now pass on `2 x NVIDIA A100 80GB PCIe`
+- `make verify-model MODEL_ID=Qwen/Qwen3-VL-8B-Instruct` succeeds
+- `make verify-model MODEL_ID=OpenGVLab/InternVL3_5-8B-HF` also succeeds, but the exact Hugging Face snapshot is required for the current wrapper path
+- the local `/home/team/lvshuyang/Models/InternVL3_5-8B` folder is the GitHub-format release, so it is not a drop-in replacement for the current `AutoProcessor` path
+- after the exact HF snapshot was mirrored locally, a smoke `InternVL adversarial` extraction succeeded and the full rerun was restarted on the A100 server
+
 ## 8. Git Requirements for the New Server
 
 ### Minimum git setup

@@ -49,12 +49,19 @@ make test
 
 What has been verified in this session:
 
+- `make env`
+- `make verify-env`
+- `make install`
+- `make test`
 - `PYTHONWARNINGS=ignore conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
-- `83 passed`
+- `93 passed`
+- `scripts/verify_env.py` sees `2 x NVIDIA A100 80GB PCIe` with `torch==2.6.0+cu124`
 - if you switch branches or worktrees, rerun `make install` so the editable package points at the active checkout
 - `scripts/verify_env.py` succeeded for:
   - `Qwen/Qwen3-VL-8B-Instruct`
   - `OpenGVLab/InternVL3_5-8B-HF`
+- the current `OpenGVLab/InternVL3_5-8B-HF` path uses the exact Hugging Face snapshot downloaded through `HF_ENDPOINT=https://hf-mirror.com`
+- the local folder `/home/team/lvshuyang/Models/InternVL3_5-8B` is the GitHub-format release, which is useful model data but not the same processor layout the current wrapper expects
 
 If Hugging Face access is slow, export `HF_ENDPOINT=https://hf-mirror.com`.
 
@@ -215,13 +222,11 @@ Current paper-safe interpretation:
 
 Current environment note:
 
-- as of `2026-03-31`, the machine has an intermittent GPU-side failure mode:
-  - `nvidia-smi` can fall back to `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
-  - once that happens, fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == False`
-  - once that happens, fresh `mind-py311` PyTorch processes report `torch.cuda.device_count() == 0`
-  - the pooled shared-bank closeout control was still completed on CPU, but the fresh InternVL adversarial extraction remains blocked
-  - the final `scripts/export_paper_package.py` run still waits on the missing InternVL adversarial report
-- older `3 GPU` notes in the journal remain historical incident notes, but the live state is now less stable than the recovered `4 GPU` snapshot from `2026-03-30`
+- as of `2026-04-01`, the target closeout server is healthy:
+  - `nvidia-smi` reports `2 x NVIDIA A100 80GB PCIe`
+  - fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == True`
+  - the missing `InternVL3.5-8B` adversarial rerun has been restarted from this environment
+- older `3 GPU` and `4 GPU` notes in the journal remain historical incident notes from the previous server
 - H-POPE remains blocked because the public benchmark package was not found in a directly usable release
 
 See `docs/results_summary.md` for the corrected tables, `docs/runbooks/experiments.md` for the staged and corrected commands, `journal/progress.md` for the full command log, and `docs/paper_outline.md` for the revised writing direction.
