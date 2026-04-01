@@ -195,27 +195,28 @@ The evidence now supports this reading:
 - Linear probe is still stronger on PR-AUC, so the paper should not claim strongest detector.
 - The paper should stay centered on low-dimensional geometry-aware early warning.
 
-## 4. What Is Still Missing
+## 4. Handoff Gap And Final Resolution
 
-Only two items are still incomplete.
-
-### Missing experiment
+At handoff time, two items were still missing:
 
 - `InternVL adversarial` under the corrected pipeline
+- the final `artifacts/paper_closeout/` export
 
-Expected missing report:
+Both were completed on `2026-04-01` on the A100 server.
+
+Completed closeout outputs:
 
 - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
-
-### Missing final export
-
-The final paper package export is not complete because it depends on the missing InternVL adversarial report.
-
-Expected export target:
-
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv`
 - `artifacts/paper_closeout/`
 
-## 5. Why Migration Is Needed
+Final InternVL adversarial result:
+
+- `ROC-AUC 0.859557`
+- `PR-AUC 0.443024`
+- `TPR@1%FPR 0.142857`
+
+## 5. Why Migration Was Needed
 
 The current server has a hardware/runtime failure.
 
@@ -313,6 +314,16 @@ The repo itself does not require a new software stack just because the GPUs are 
 
 The important part is that the new server’s NVIDIA driver must be compatible with the installed PyTorch CUDA wheel stack. The current environment is built around PyTorch CUDA 12.4 wheels.
 
+### Landing update on 2026-04-01
+
+The target server verification did succeed.
+
+- `make env`, `make verify-env`, `make install`, and `make test` now pass on `2 x NVIDIA A100 80GB PCIe`
+- `make verify-model MODEL_ID=Qwen/Qwen3-VL-8B-Instruct` succeeds
+- `make verify-model MODEL_ID=OpenGVLab/InternVL3_5-8B-HF` also succeeds, but the exact Hugging Face snapshot is required for the current wrapper path
+- the local `/home/team/lvshuyang/Models/InternVL3_5-8B` folder is the GitHub-format release, so it is not a drop-in replacement for the current `AutoProcessor` path
+- after the exact HF snapshot was mirrored locally, the full InternVL adversarial rerun completed and the paper package was exported
+
 ## 8. Git Requirements for the New Server
 
 ### Minimum git setup
@@ -353,7 +364,7 @@ You should see `feat/mind-paper-closeout` at the latest closeout doc checkpoint.
 
 ## 9. Immediate Future Plan on the A100 Server
 
-This is the exact recommended order.
+This was the exact recommended order at handoff. It has now been completed.
 
 ### Step 1: Verify the new machine
 
@@ -385,16 +396,19 @@ make test
 
 ### Step 3: Resume only the missing experiment
 
-Run the missing InternVL adversarial extraction first, then the corrected feature, detector, evaluation, and plot path.
+This step completed on `2026-04-01`.
 
-Use the existing runbook and follow-up scripts as the source of truth:
+Use `docs/runbooks/experiments.md` as the versioned source of truth for the exact commands.
 
-- [docs/runbooks/experiments.md](/home/d7049/zhanghaonan/mind/docs/runbooks/experiments.md)
-- [logs/paper_closeout/internvl_adversarial_followup.sh](/home/d7049/zhanghaonan/mind/logs/paper_closeout/internvl_adversarial_followup.sh)
+Completed runtime facts:
+
+- `24` adversarial cache shards
+- `3000` cached entries
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
 
 ### Step 4: Export the final paper package
 
-Once the missing InternVL adversarial report exists, run:
+This step also completed on `2026-04-01`:
 
 ```bash
 conda run --no-capture-output -n mind-py311 python scripts/export_paper_package.py \
@@ -402,7 +416,7 @@ conda run --no-capture-output -n mind-py311 python scripts/export_paper_package.
   --output-root artifacts/paper_closeout
 ```
 
-Expected completion target:
+Completed export target:
 
 - `artifacts/paper_closeout/tables/`
 - `artifacts/paper_closeout/figures/`
@@ -427,13 +441,8 @@ On the new A100 server:
 
 ## 11. Short Status Summary
 
-The project is close to done.
+The migration goal is complete.
 
-The method, corrected evaluation, shared-bank control, RePOPE relabeling, Qwen adversarial rerun, documentation, and paper framing are already in place.
+The method, corrected evaluation, shared-bank control, RePOPE relabeling, both adversarial reruns, documentation, and paper-package export are all in place.
 
-The only real remaining task is:
-
-- finish `InternVL adversarial`
-- then run the final exporter
-
-That is why migration to the A100 server is the right next move.
+Migration was the right move because it removed the final hardware blocker without changing the method or widening scope.

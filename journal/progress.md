@@ -1,5 +1,106 @@
 # MIND Progress Log
 
+## 2026-04-01
+
+- Restarted the closeout branch from the verified closeout tip:
+  - base branch: `feat/mind-paper-closeout`
+  - worktree: `/home/team/zhanghaonan/mind/.worktrees/feat-mind-paper-closeout`
+  - execution note: `docs/plans/2026-04-01-mind-paper-closeout-completion.md`
+- Recreated the canonical runtime on the target server:
+  - env: `mind-py311`
+  - Python: `3.11`
+  - commands:
+    - `make env`
+    - `make verify-env`
+    - `make install`
+    - `make test`
+  - verified runtime:
+    - `torch==2.6.0+cu124`
+    - `torch.cuda.is_available() == True`
+    - `torch.cuda.device_count() == 2`
+    - GPU names:
+      - `NVIDIA A100 80GB PCIe`
+      - `NVIDIA A100 80GB PCIe`
+  - full test result:
+    - `93 passed`
+- Re-verified the current model surface:
+  - `make verify-model MODEL_ID=Qwen/Qwen3-VL-8B-Instruct`
+  - `make verify-model MODEL_ID=OpenGVLab/InternVL3_5-8B-HF`
+- Found one real model-path mismatch while landing on the new server:
+  - `/home/team/lvshuyang/Models/Qwen3-VL-8B-Instruct` is compatible with the current wrapper path
+  - `/home/team/lvshuyang/Models/InternVL3_5-8B` is the GitHub-format release, not the exact Hugging Face `OpenGVLab/InternVL3_5-8B-HF` layout
+  - the current repo integration expects the Hugging Face format because it loads through `AutoProcessor` plus `AutoModelForImageTextToText`
+- Resolved the InternVL loading mismatch without changing the method or widening scope:
+  - exported `HF_ENDPOINT=https://hf-mirror.com`
+  - downloaded the exact `OpenGVLab/InternVL3_5-8B-HF` snapshot into the local Hugging Face cache
+  - removed the temporary fake cache symlink once the real snapshot was present
+- Re-checked the missing closeout path on real hardware:
+  - smoke run:
+    - `scripts/extract_eval_states.py`
+    - model: `internvl3.5-8b`
+    - split: `adversarial-smoke4`
+    - result: success
+  - full missing run:
+    - `InternVL adversarial` extraction completed on the A100 server from `outputs/normalized/pope/adversarial.jsonl`
+    - cache result:
+      - `24` shards
+      - `3000` cached entries
+- Closed the last method-path reliability risk before the final rerun:
+  - changed `scripts/compute_drift.py` and `src/mind/evaluation/baselines.py` to fail fast on missing reference coverage instead of silently dropping rows
+  - removed the dead public export of the retired drift-normalization helper
+  - verified with:
+    - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit/test_pipeline_scripts.py tests/unit/test_baselines.py`
+    - result: `17 passed`
+- Completed the missing InternVL adversarial closeout chain:
+  - features:
+    - `outputs/correction_phase/features/correction-internvl3.5-8b-adversarial/adversarial.parquet`
+  - reports:
+    - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
+    - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv`
+  - plots:
+    - `outputs/correction_phase/plots/correction-internvl3.5-8b-adversarial/drift_curves.png`
+    - `outputs/correction_phase/plots/correction-internvl3.5-8b-adversarial/roc_curve.png`
+    - `outputs/correction_phase/plots/correction-internvl3.5-8b-adversarial/wavelet_heatmap.png`
+  - metrics:
+    - `ROC-AUC 0.8595568557010416`
+    - `PR-AUC 0.44302381623074466`
+    - `TPR@1%FPR 0.14285714285714285`
+- Exported the final paper closeout package:
+  - `artifacts/paper_closeout/tables/`
+  - `artifacts/paper_closeout/figures/`
+  - `artifacts/paper_closeout/figure_manifest.json`
+
+## 2026-03-31
+
+- Started the paper closeout branch in the repo-local worktree:
+  - worktree: `/home/d7049/zhanghaonan/mind/.worktrees/feat-mind-paper-closeout`
+  - branch: `feat/mind-paper-closeout`
+- Added the planned shared-bank control without changing the main object-bank default:
+  - new public switch: `bank_scope = object | shared`
+  - shared mode pools reference states by `model + layer` only
+  - object mode keeps the original per-object reference bank behavior
+- Threaded the shared-bank switch through the runnable closeout path:
+  - `src/mind/manifolds/local_pca.py`
+  - `scripts/build_manifolds.py`
+  - `src/mind/drift/features.py`
+  - `scripts/compute_drift.py`
+  - `src/mind/evaluation/baselines.py`
+  - `scripts/compute_baselines.py`
+- Added explicit tests for the new control:
+  - shared-bank manifold pooling and stats
+  - shared-bank manifold artifact writing
+  - shared-bank drift feature construction
+  - shared-bank no-manifold baseline construction
+- Verified the shared-bank checkpoint:
+  - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit/test_local_manifold.py tests/unit/test_pipeline_scripts.py tests/unit/test_baselines.py tests/integration/test_synthetic_pipeline.py`
+  - result: `28 passed`
+  - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
+  - result: `89 passed`
+- Closeout interpretation at this checkpoint:
+  - shared-bank is now a clean control baseline, not a new method branch
+  - the main paper path still stays on the object-conditioned bank
+  - the next closeout step is export tooling plus the remaining corrected runs: RePOPE, adversarial, and shared-bank reports
+
 ## 2026-03-30
 
 - Re-checked the machine state before the correction reruns:
@@ -371,3 +472,107 @@
   - result: `torch.cuda.is_available() == True`, `device_count == 3`
   - `PYTHONWARNINGS=ignore make test`
   - result: `73 passed`
+
+## 2026-03-31 Closeout Phase
+
+- Started the paper-closeout implementation in the dedicated repo-local worktree:
+  - worktree: `/home/d7049/zhanghaonan/mind/.worktrees/feat-mind-paper-closeout`
+  - branch: `feat/mind-paper-closeout`
+- Added the shared-bank control end to end and kept the rest of the method body fixed:
+  - public switch: `bank_scope = object | shared`
+  - touched the manifold build path, drift feature path, no-manifold baseline path, and experiment planner
+  - validated with:
+    - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
+    - result after the shared-bank change: `89 passed`
+  - commit:
+    - `ba5d5ee feat: add shared bank control`
+- Added the paper export CLI and tightened the RePOPE relabel invariants:
+  - new script: `scripts/export_paper_package.py`
+  - new coverage:
+    - RePOPE relabel keeps predictions, scores, and fold assignments unchanged
+    - paper export writes the three closeout tables and the three paper figures from saved artifacts
+  - validated with:
+    - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
+    - result after the export tooling change: `92 passed`
+  - commit:
+    - `1bd94ce feat: add paper export and relabel tooling`
+- Hit a practical bottleneck on the shared-bank reference stats pass:
+  - the exact leave-one-out stats on the pooled shared bank are much larger than the object-conditioned bank
+  - reference scale at the selected layers:
+    - Qwen shared bank cleaned references per layer: `4652`
+    - InternVL shared bank cleaned references per layer: `4842`
+  - the original exact Python loop was too slow for the closeout control run
+- Replaced that hotspot with a faster but still exact batched implementation:
+  - batched pairwise neighbor search
+  - batched SVD over the local `k`-neighbor neighborhoods
+  - no change to the geometric definition itself
+  - added a regression test that compares the batched stats to the original reference loop on a small layer bank
+  - validated with:
+    - `conda run --no-capture-output -n mind-py311 python -m pytest -q tests/unit tests/integration`
+    - result after the stats optimization: `93 passed`
+  - commit:
+    - `1dbf52b perf: batch exact reference bank stats`
+- RePOPE closeout relabel results were completed on the corrected popular predictions:
+  - command surface:
+    - `scripts/evaluate.py --input-path .../correction-qwen3-vl-8b-popular/results.csv --label-overrides .../outputs/normalized/repope/popular.jsonl`
+    - `scripts/evaluate.py --input-path .../correction-internvl3.5-8b-popular/results.csv --label-overrides .../outputs/normalized/repope/popular.jsonl`
+  - outputs:
+    - `outputs/correction_phase/reports/correction-qwen3-vl-8b-popular-repope/`
+    - `outputs/correction_phase/reports/correction-internvl3.5-8b-popular-repope/`
+  - metrics:
+    - Qwen popular + RePOPE:
+      - ROC-AUC: `0.8886995543573788`
+      - PR-AUC: `0.25779740869204865`
+      - TPR@1%FPR: `0.13008130081300814`
+    - InternVL popular + RePOPE:
+      - ROC-AUC: `0.8826346593553348`
+      - PR-AUC: `0.4886808909829917`
+      - TPR@1%FPR: `0.2089041095890411`
+- Runtime execution state for the remaining closeout experiments:
+  - completed Qwen adversarial rerun under the corrected `image_grouped` pipeline:
+    - outputs:
+      - `outputs/correction_phase/features/correction-qwen3-vl-8b-adversarial/adversarial.parquet`
+      - `outputs/correction_phase/reports/correction-qwen3-vl-8b-adversarial/`
+      - `outputs/correction_phase/plots/correction-qwen3-vl-8b-adversarial/`
+    - metrics:
+      - `ROC-AUC 0.8707558929136202`
+      - `PR-AUC 0.2652810851300244`
+      - `TPR@1%FPR 0.07017543859649122`
+  - completed pooled shared-bank controls on CPU after the exact stats optimization:
+    - Qwen shared bank popular:
+      - `ROC-AUC 0.897876069215633`
+      - `PR-AUC 0.19855863067582966`
+      - `TPR@1%FPR 0.11711711711711711`
+    - Qwen shared bank `object_heldout`:
+      - `ROC-AUC 0.8623919870025789`
+      - `PR-AUC 0.13193580639896613`
+      - `TPR@1%FPR 0.036036036036036036`
+    - InternVL shared bank popular:
+      - `ROC-AUC 0.8666735946610787`
+      - `PR-AUC 0.34090492606116`
+      - `TPR@1%FPR 0.1015625`
+    - InternVL shared bank `object_heldout`:
+      - `ROC-AUC 0.8306546670007289`
+      - `PR-AUC 0.25440601380061273`
+      - `TPR@1%FPR 0.05078125`
+  - at that checkpoint, the remaining unfinished closeout rows were:
+    - InternVL adversarial
+    - final `scripts/export_paper_package.py` run, which still waits on the InternVL adversarial report
+- At that checkpoint, the blocker on InternVL adversarial was external and hardware-facing:
+  - the first retry hit repeated Hugging Face connection resets, so the run was retried through:
+    - `HF_ENDPOINT=https://hf-mirror.com`
+  - the mirror-backed retry got past model loading but failed during CUDA use in extraction with:
+    - `RuntimeError: CUDA error: unspecified launch failure`
+  - after that failure, fresh checks on this machine showed:
+    - `nvidia-smi` returned `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
+    - fresh `mind-py311` PyTorch processes returned `torch.cuda.is_available() == False`
+    - fresh `mind-py311` PyTorch processes returned `torch.cuda.device_count() == 0`
+  - judgment at that checkpoint:
+    - the remaining InternVL adversarial extraction is blocked by the machine CUDA state, not by a repository logic bug
+    - the CPU-side closeout jobs did complete the pooled shared-bank control, the RePOPE rows, and the corrected Qwen adversarial row
+    - shared-bank interpretation after completion:
+      - on popular, the shared bank hurts both model families relative to the object-conditioned bank
+      - on Qwen, the shared bank materially improves held-out object transfer
+      - on InternVL, the shared bank still hurts both popular and held-out transfer relative to the object-conditioned bank
+    - the only remaining runtime blocker is the GPU-side InternVL adversarial rerun
+    - until that report exists, the final paper package export also remains blocked

@@ -14,12 +14,23 @@ make test
 
 Verified result in this session:
 
-- `scripts/verify_env.py` and direct PyTorch checks now see `4 x RTX 3090 24GB`
+- `scripts/verify_env.py` and direct PyTorch checks see `2 x NVIDIA A100 80GB PCIe`
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
-- the full unit and integration suite passed
+- the full unit and integration suite passed with `93` tests
 - the project now uses one canonical environment only: `mind-py311`
 - the answer prompt was tightened to one-word yes/no output and the extraction scripts now run with `--max-new-tokens 1`
 - if you switch branches or worktrees, run `make install` again so the editable package points at the active checkout
+- the local `/home/team/lvshuyang/Models/InternVL3_5-8B` folder is the GitHub-format release, so the active pipeline uses the exact `OpenGVLab/InternVL3_5-8B-HF` snapshot downloaded through the mirror
+
+Current machine note for the closeout phase:
+
+- the migration blocker is gone on `2026-04-01`
+- the missing `InternVL adversarial` rerun has completed
+- the final paper package export has completed
+- the closeout outputs now include:
+  - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/metrics.json`
+  - `outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv`
+  - `artifacts/paper_closeout/`
 
 ## 2. Correction-Phase Reruns From Existing Popular Caches
 
@@ -147,6 +158,207 @@ Use the same commands with:
 
 - `outputs/correction_phase/reports/correction_summary.csv`
 - `outputs/correction_phase/plots/correction_summary_protocols.png`
+
+## 2A. Paper-Closeout Follow-up
+
+These are the additional closeout commands layered on top of the correction phase.
+
+### RePOPE relabel on the corrected popular predictions
+
+Qwen:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
+  --input-path outputs/correction_phase/reports/correction-qwen3-vl-8b-popular/results.csv \
+  --label-overrides outputs/normalized/repope/popular.jsonl \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular-repope
+```
+
+InternVL:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
+  --input-path outputs/correction_phase/reports/correction-internvl3.5-8b-popular/results.csv \
+  --label-overrides outputs/normalized/repope/popular.jsonl \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular-repope
+```
+
+### Shared-bank control
+
+Build shared banks:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/qwen3-vl-8b/pope-reference-64/train \
+  --output-root outputs/correction_phase/reference_banks_shared \
+  --model-name qwen3-vl-8b \
+  --bank-scope shared
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/build_manifolds.py \
+  --reference-cache outputs/cache/internvl3.5-8b/pope-reference-64/train \
+  --output-root outputs/correction_phase/reference_banks_shared \
+  --model-name internvl3.5-8b \
+  --bank-scope shared
+```
+
+Compute shared-bank popular features:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks_shared \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-qwen3-vl-8b-popular-shared \
+  --split popular \
+  --bank-scope shared
+```
+
+Completed closeout outputs now present:
+
+- `outputs/correction_phase/reports/correction-qwen3-vl-8b-popular-shared/metrics.json`
+- `outputs/correction_phase/reports/correction-qwen3-vl-8b-popular-shared-object-heldout/metrics.json`
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-popular-shared/metrics.json`
+- `outputs/correction_phase/reports/correction-internvl3.5-8b-popular-shared-object-heldout/metrics.json`
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/internvl3.5-8b/pope/popular \
+  --reference-root outputs/correction_phase/reference_banks_shared \
+  --model-name internvl3.5-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-internvl3.5-8b-popular-shared \
+  --split popular \
+  --bank-scope shared
+```
+
+Popular `image_grouped` detector runs:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-qwen3-vl-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular-shared \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular-shared \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+Popular `object_heldout` detector runs:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-qwen3-vl-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-qwen3-vl-8b-popular-shared-object-heldout \
+  --split-strategy object_heldout \
+  --num-folds 2
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-popular-shared/popular.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-popular-shared-object-heldout \
+  --split-strategy object_heldout \
+  --num-folds 2
+```
+
+### Adversarial closeout reruns
+
+Qwen can reuse the existing adversarial cache:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/qwen3-vl-8b/pope/adversarial \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name qwen3-vl-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-qwen3-vl-8b-adversarial \
+  --split adversarial
+```
+
+InternVL completed the fresh adversarial closeout on the A100 server with these commands:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/extract_eval_states.py \
+  --records outputs/normalized/pope/adversarial.jsonl \
+  --model-config configs/models/internvl3_5_8b.yaml \
+  --output-root outputs/cache \
+  --dataset-name pope \
+  --split adversarial \
+  --image-root data/coco/val2014 \
+  --device cuda \
+  --selected-layers 16 \
+  --layer-range middle \
+  --batch-size 4
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/compute_drift.py \
+  --cache-path outputs/cache/internvl3.5-8b/pope/adversarial \
+  --reference-root outputs/correction_phase/reference_banks \
+  --model-name internvl3.5-8b \
+  --output-root outputs/correction_phase/features \
+  --experiment-name correction-internvl3.5-8b-adversarial \
+  --split adversarial
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/train_detector.py \
+  --train-path outputs/correction_phase/features/correction-internvl3.5-8b-adversarial/adversarial.parquet \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-adversarial \
+  --split-strategy image_grouped \
+  --num-folds 5
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/evaluate.py \
+  --input-path outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv \
+  --output-root outputs/correction_phase/reports \
+  --experiment-name correction-internvl3.5-8b-adversarial
+```
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/plot_results.py \
+  --features-path outputs/correction_phase/features/correction-internvl3.5-8b-adversarial/adversarial.parquet \
+  --results-path outputs/correction_phase/reports/correction-internvl3.5-8b-adversarial/results.csv \
+  --output-root outputs/correction_phase/plots \
+  --experiment-name correction-internvl3.5-8b-adversarial
+```
+
+Completed InternVL adversarial metrics:
+
+- `ROC-AUC 0.859557`
+- `PR-AUC 0.443024`
+- `TPR@1%FPR 0.142857`
+
+### Export the paper package
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/export_paper_package.py \
+  --reports-root outputs/correction_phase/reports \
+  --output-root artifacts/paper_closeout
+```
+
+Completed export targets:
+
+- `artifacts/paper_closeout/tables/`
+- `artifacts/paper_closeout/figures/`
+- `artifacts/paper_closeout/figure_manifest.json`
 
 ## 3. Normalize POPE and RePOPE
 
@@ -370,4 +582,10 @@ Completed output roots from this session:
 - the public COCO assets are present locally
 - `Qwen/Qwen3-VL-4B-Instruct`, `Qwen/Qwen3-VL-8B-Instruct`, and `OpenGVLab/InternVL3_5-8B-HF` config or processor checks were verified through `HF_ENDPOINT=https://hf-mirror.com`
 - H-POPE public assets were not found in a directly usable release package
-- earlier GPU instability remains worth remembering as an incident pattern, but the current machine check on 2026-03-30 reports `4 x RTX 3090`
+- the machine state changed again on `2026-03-31`:
+  - `nvidia-smi` reports `Unable to determine the device handle for GPU1: 0000:3B:00.0: Unknown Error`
+  - fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == False`
+  - fresh `mind-py311` PyTorch processes report `torch.cuda.device_count() == 0`
+- this blocks:
+  - the fresh InternVL adversarial extraction
+  - the pooled shared-bank closeout control, because the exact pooled reference-bank stats are not practical on CPU alone at the current per-layer support size

@@ -20,6 +20,95 @@ All corrected outputs live under:
 - `outputs/correction_phase/reports/`
 - `outputs/correction_phase/plots/`
 
+## Closeout Follow-up: 2026-04-01
+
+Closeout scope in this phase:
+
+- keep `image_grouped` as the only primary protocol
+- add the shared-bank control
+- relabel the same corrected popular predictions with RePOPE
+- add corrected adversarial reruns
+- export a script-generated paper package
+
+Already completed in the closeout phase:
+
+- RePOPE relabel on the corrected popular predictions
+  - Qwen popular + RePOPE:
+    - `ROC-AUC 0.888700`
+    - `PR-AUC 0.257797`
+    - `TPR@1%FPR 0.130081`
+  - InternVL popular + RePOPE:
+    - `ROC-AUC 0.882635`
+    - `PR-AUC 0.488681`
+    - `TPR@1%FPR 0.208904`
+- corrected Qwen adversarial rerun under `image_grouped`
+  - `ROC-AUC 0.870756`
+  - `PR-AUC 0.265281`
+  - `TPR@1%FPR 0.070175`
+- corrected InternVL adversarial rerun under `image_grouped`
+  - `ROC-AUC 0.859557`
+  - `PR-AUC 0.443024`
+  - `TPR@1%FPR 0.142857`
+- shared-bank control on corrected popular and corrected `object_heldout`
+  - Qwen popular + shared bank:
+    - `ROC-AUC 0.897876`
+    - `PR-AUC 0.198559`
+    - `TPR@1%FPR 0.117117`
+  - InternVL popular + shared bank:
+    - `ROC-AUC 0.866674`
+    - `PR-AUC 0.340905`
+    - `TPR@1%FPR 0.101562`
+  - Qwen `object_heldout` + shared bank:
+    - `ROC-AUC 0.862392`
+    - `PR-AUC 0.131936`
+    - `TPR@1%FPR 0.036036`
+  - InternVL `object_heldout` + shared bank:
+    - `ROC-AUC 0.830655`
+    - `PR-AUC 0.254406`
+    - `TPR@1%FPR 0.050781`
+- script-generated paper package export
+  - `artifacts/paper_closeout/tables/`
+  - `artifacts/paper_closeout/figures/`
+  - `artifacts/paper_closeout/figure_manifest.json`
+
+Closeout completion:
+
+- the A100 environment was verified healthy before the rerun:
+  - `2 x NVIDIA A100 80GB PCIe`
+  - `torch.cuda.is_available() == True`
+  - `make test` passed with `93` tests
+- the final missing InternVL adversarial cache completed with:
+  - `24` shards
+  - `3000` cached entries
+- the full closeout export is no longer blocked
+
+## Shared-Bank Control
+
+### Popular, `image_grouped`
+
+| Model | Object Bank ROC-AUC | Shared Bank ROC-AUC | Object Bank PR-AUC | Shared Bank PR-AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen | 0.917113 | 0.897876 | 0.283927 | 0.198559 |
+| InternVL | 0.914178 | 0.866674 | 0.543810 | 0.340905 |
+
+Takeaways:
+
+- On the primary grouped protocol, the shared bank hurts both model families.
+- The object-conditioned bank is therefore carrying useful signal on popular, not just memorized structure.
+
+### Popular, `object_heldout`
+
+| Model | Object Bank ROC-AUC | Shared Bank ROC-AUC | Object Bank PR-AUC | Shared Bank PR-AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen | 0.724419 | 0.862392 | 0.063808 | 0.131936 |
+| InternVL | 0.839763 | 0.830655 | 0.409716 | 0.254406 |
+
+Takeaways:
+
+- On Qwen, the shared bank improves held-out object transfer substantially.
+- On InternVL, the shared bank still hurts both ROC-AUC and PR-AUC.
+- The safer paper reading is that object conditioning buys popular accuracy for both models, but it weakens transfer much more sharply for Qwen than for InternVL.
+
 ## Primary Protocol: `image_grouped`
 
 ### Qwen Popular
@@ -55,6 +144,19 @@ Takeaways:
 - The corrected full MIND signal again beats corrected drift-only and corrected no-manifold.
 - InternVL remains stronger than Qwen on the same corrected popular split in PR-AUC.
 - The linear probe still leads on the primary grouped protocol.
+
+## Adversarial Check: `image_grouped`
+
+| Model | ROC-AUC | PR-AUC | TPR@1%FPR | F1 |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen adversarial | 0.870756 | 0.265281 | 0.070175 | 0.000000 |
+| InternVL adversarial | 0.859557 | 0.443024 | 0.142857 | 0.230216 |
+
+Takeaways:
+
+- The adversarial split is harder than popular for both families.
+- InternVL keeps a large PR-AUC advantage on adversarial even though Qwen keeps a slightly higher ROC-AUC.
+- The final paper package now has all six grouped closeout rows.
 
 ## Legacy Comparison: `row`
 

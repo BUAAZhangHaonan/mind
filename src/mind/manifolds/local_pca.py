@@ -9,6 +9,9 @@ import numpy as np
 import torch
 
 
+SHARED_BANK_KEY = "__shared__"
+
+
 @dataclass
 class LocalPCAManifold:
     mean: torch.Tensor
@@ -90,18 +93,123 @@ def _normalized_neighbor_residual(
     return float(neighbor_distances.min() / radius), float(radius)
 
 
+def _compute_layer_statistics(
+    vectors: torch.Tensor,
+    *,
+    k_neighbors: int,
+    variance_threshold: float = 0.9,
+    max_components: int = 32,
+    batch_size: int = 64,
+) -> dict[str, float]:
+    compute_device = torch.device("cuda" if torch.cuda.is_available() and vectors.shape[0] >= 256 else "cpu")
+    vectors = vectors.to(device=compute_device, dtype=torch.float32)
+    count = int(vectors.shape[0])
+    if count <= 1:
+        return {
+            "count": float(count),
+            "residual_mean": 0.0,
+            "residual_std": 0.0,
+            "neighbor_residual_mean": 0.0,
+            "neighbor_residual_std": 0.0,
+            "neighbor_radius_mean": 0.0,
+            "neighbor_radius_std": 0.0,
+            "neighbor_radius_q10": 0.0,
+            "neighbor_radius_q50": 0.0,
+            "neighbor_radius_q90": 0.0,
+            "supports_manifold": float(count >= k_neighbors),
+        }
+
+    neighbor_count = min(k_neighbors, count - 1)
+    distance_matrix = torch.cdist(vectors, vectors)
+    diagonal = torch.arange(count, device=distance_matrix.device)
+    distance_matrix[diagonal, diagonal] = torch.inf
+    neighbor_distances, neighbor_indices = torch.topk(
+        distance_matrix,
+        k=neighbor_count,
+        largest=False,
+        dim=1,
+    )
+    neighbor_residuals = neighbor_distances[:, 0] / neighbor_distances.mean(dim=1).clamp_min(1e-8)
+    residual_batches: list[torch.Tensor] = []
+    neighbor_radii: list[torch.Tensor] = []
+
+    for start in range(0, count, batch_size):
+        stop = min(start + batch_size, count)
+        batch_indices = neighbor_indices[start:stop]
+        queries = vectors[start:stop]
+        neighbors = vectors[batch_indices]
+        means = neighbors.mean(dim=1)
+        centered_neighbors = neighbors - means.unsqueeze(1)
+        gram = centered_neighbors @ centered_neighbors.transpose(1, 2)
+        eigenvalues, eigenvectors = torch.linalg.eigh(gram)
+        variances = torch.flip(eigenvalues.clamp_min(0.0), dims=[1])
+        left_vectors = torch.flip(eigenvectors, dims=[2])
+        variance_ratio = variances / variances.sum(dim=1, keepdim=True).clamp_min(1e-8)
+        cumulative = torch.cumsum(variance_ratio, dim=1)
+        component_count = (cumulative < variance_threshold).sum(dim=1) + 1
+        component_count = component_count.clamp(max=min(max_components, left_vectors.shape[2]))
+        centered_queries = queries - means
+        manifold_radii = torch.norm(centered_neighbors, dim=2).mean(dim=1).clamp_min(1e-8)
+        squared_query_norm = centered_queries.square().sum(dim=1)
+        batch_residuals = []
+        for batch_offset in range(stop - start):
+            component_limit = int(component_count[batch_offset].item())
+            basis_left = left_vectors[batch_offset, :, :component_limit]
+            singular_values = variances[batch_offset, :component_limit].sqrt().clamp_min(1e-8)
+            projected_coefficients = (
+                basis_left.transpose(0, 1)
+                @ (centered_neighbors[batch_offset] @ centered_queries[batch_offset])
+            ) / singular_values
+            projection_norm = projected_coefficients.square().sum()
+            residual_norm = torch.sqrt(
+                (squared_query_norm[batch_offset] - projection_norm).clamp_min(0.0)
+            )
+            batch_residuals.append(residual_norm / manifold_radii[batch_offset])
+        residual_batches.append(torch.stack(batch_residuals))
+        neighbor_radii.append(neighbor_distances[start:stop].mean(dim=1))
+
+    residual_array = torch.cat(residual_batches).detach().cpu().numpy().astype(np.float32)
+    neighbor_residual_array = neighbor_residuals.detach().cpu().numpy().astype(np.float32)
+    radius_array = torch.cat(neighbor_radii).detach().cpu().numpy().astype(np.float32)
+    if compute_device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    return {
+        "count": float(count),
+        "residual_mean": float(residual_array.mean()),
+        "residual_std": float(residual_array.std()),
+        "neighbor_residual_mean": float(neighbor_residual_array.mean()),
+        "neighbor_residual_std": float(neighbor_residual_array.std()),
+        "neighbor_radius_mean": float(radius_array.mean()),
+        "neighbor_radius_std": float(radius_array.std()),
+        "neighbor_radius_q10": float(np.quantile(radius_array, 0.10)),
+        "neighbor_radius_q50": float(np.quantile(radius_array, 0.50)),
+        "neighbor_radius_q90": float(np.quantile(radius_array, 0.90)),
+        "supports_manifold": float(count >= k_neighbors),
+    }
+
+
 def clean_reference_entries(entries: Sequence[dict[str, object]]) -> list[dict[str, object]]:
     return [entry for entry in entries if entry.get("parsed_answer") == 1]
+
+
+def resolve_reference_scope_key(object_name: str, bank_scope: str) -> str:
+    if bank_scope == "object":
+        return object_name
+    if bank_scope == "shared":
+        return SHARED_BANK_KEY
+    raise ValueError(f"Unsupported bank scope: {bank_scope}")
 
 
 def build_reference_bank(
     entries: Sequence[dict[str, object]],
     *,
     min_points: int = 0,
+    bank_scope: str = "object",
 ) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, list[torch.Tensor]]] = {}
     for entry in entries:
-        object_name = str(entry["object_name"])
+        object_name = resolve_reference_scope_key(str(entry["object_name"]), bank_scope)
         layer_vectors = entry["layer_vectors"]
         selected_layers = entry["selected_layers"]
         bank.setdefault(object_name, {})
@@ -123,51 +231,15 @@ def compute_reference_bank_stats(
     entries: Sequence[dict[str, object]],
     *,
     k_neighbors: int = 32,
+    bank_scope: str = "object",
 ) -> dict[str, dict[int, dict[str, float]]]:
-    bank = build_reference_bank(entries)
+    bank = build_reference_bank(entries, bank_scope=bank_scope)
     stats_map: dict[str, dict[int, dict[str, float]]] = {}
     for object_name, layer_map in bank.items():
         stats_map[object_name] = {}
         for layer_index, vectors in layer_map.items():
-            count = int(vectors.shape[0])
-            residuals: list[float] = []
-            neighbor_residuals: list[float] = []
-            neighbor_radii: list[float] = []
-            if count > 1:
-                for index in range(count):
-                    mask = [offset for offset in range(count) if offset != index]
-                    leave_one_out = vectors[mask]
-                    query = vectors[index]
-                    manifold = fit_local_pca_manifold(
-                        leave_one_out,
-                        query,
-                        k_neighbors=min(k_neighbors, leave_one_out.shape[0]),
-                    )
-                    residuals.append(normalized_normal_residual(query, manifold))
-                    neighbor_residual, neighbor_radius = _normalized_neighbor_residual(
-                        query,
-                        leave_one_out,
-                        k_neighbors=min(k_neighbors, leave_one_out.shape[0]),
-                    )
-                    neighbor_residuals.append(neighbor_residual)
-                    neighbor_radii.append(neighbor_radius)
-            radius_array = np.asarray(neighbor_radii if neighbor_radii else [0.0], dtype=np.float32)
-            residual_array = np.asarray(residuals if residuals else [0.0], dtype=np.float32)
-            neighbor_residual_array = np.asarray(
-                neighbor_residuals if neighbor_residuals else [0.0],
-                dtype=np.float32,
+            stats_map[object_name][int(layer_index)] = _compute_layer_statistics(
+                vectors,
+                k_neighbors=k_neighbors,
             )
-            stats_map[object_name][int(layer_index)] = {
-                "count": float(count),
-                "residual_mean": float(residual_array.mean()),
-                "residual_std": float(residual_array.std()),
-                "neighbor_residual_mean": float(neighbor_residual_array.mean()),
-                "neighbor_residual_std": float(neighbor_residual_array.std()),
-                "neighbor_radius_mean": float(radius_array.mean()),
-                "neighbor_radius_std": float(radius_array.std()),
-                "neighbor_radius_q10": float(np.quantile(radius_array, 0.10)),
-                "neighbor_radius_q50": float(np.quantile(radius_array, 0.50)),
-                "neighbor_radius_q90": float(np.quantile(radius_array, 0.90)),
-                "supports_manifold": float(count >= k_neighbors),
-            }
     return stats_map

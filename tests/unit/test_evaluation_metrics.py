@@ -127,6 +127,75 @@ def test_apply_label_overrides_accepts_jsonl_path(tmp_path: Path) -> None:
     assert list(relabeled["label"]) == [1, 0]
 
 
+def test_apply_label_overrides_keeps_predictions_scores_and_folds_intact() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-1",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 1,
+                "score": 0.9,
+                "fold": 0,
+            },
+            {
+                "sample_id": "sample-2",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 0,
+                "score": 0.2,
+                "fold": 1,
+            },
+        ]
+    )
+    overrides = pd.DataFrame([{"sample_id": "sample-1", "label": 0}])
+
+    relabeled = evaluate.apply_label_overrides(frame, overrides)
+
+    assert list(relabeled["prediction"]) == [1, 0]
+    assert list(relabeled["score"]) == [0.9, 0.2]
+    assert list(relabeled["fold"]) == [0, 1]
+
+
+def test_apply_label_overrides_preserves_predictions_scores_and_folds() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-1",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 1,
+                "score": 0.9,
+                "fold": 2,
+            },
+            {
+                "sample_id": "sample-2",
+                "subset": "popular",
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "prediction": 0,
+                "score": 0.2,
+                "fold": 3,
+            },
+        ]
+    )
+    overrides = pd.DataFrame([{"sample_id": "sample-1", "label": 0}])
+
+    relabeled = evaluate.apply_label_overrides(frame, overrides)
+
+    assert list(relabeled["ground_truth_label"]) == [0, 1]
+    assert list(relabeled["prediction"]) == [1, 0]
+    assert list(relabeled["score"]) == [0.9, 0.2]
+    assert list(relabeled["fold"]) == [2, 3]
+
+
 def test_run_evaluation_writes_metrics_and_results(tmp_path: Path) -> None:
     input_path = tmp_path / "predictions.parquet"
     frame = pd.DataFrame(

@@ -56,6 +56,7 @@ def load_experiment_spec(config_path: Path) -> dict[str, object]:
     payload.setdefault("reference_instances_json", "data/coco/annotations/instances_train2017.json")
     payload.setdefault("reference_image_root", "data/coco/train2017")
     payload.setdefault("reference_max_images_per_object", 64)
+    payload.setdefault("bank_scope", "object")
     return payload
 
 
@@ -95,6 +96,7 @@ def build_stage_commands(
     selected_layers = str(experiment["selected_layers"])
     layer_range = str(experiment["layer_range"])
     limit = str(experiment["limit"])
+    bank_scope = str(experiment["bank_scope"])
     dataset_source = "repope" if dataset.name == "repope" else dataset.name
 
     commands: dict[str, list[str]] = {}
@@ -189,6 +191,8 @@ def build_stage_commands(
                 "outputs/reference_banks",
                 "--model-name",
                 model.name,
+                "--bank-scope",
+                bank_scope,
             ]
         elif stage == "compute_drift":
             command = [
@@ -206,6 +210,8 @@ def build_stage_commands(
                 str(experiment["name"]),
                 "--split",
                 subset,
+                "--bank-scope",
+                bank_scope,
             ]
         elif stage == "train_detector":
             command = [

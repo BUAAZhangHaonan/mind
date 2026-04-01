@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import torch
 
 
@@ -128,8 +129,90 @@ def test_save_reference_bank_writes_stats_and_counts_report(tmp_path: Path) -> N
     assert counts.loc[0, "count"] == 2
 
 
-def test_build_feature_frame_skips_entries_without_reference_coverage(tmp_path: Path) -> None:
+def test_save_reference_bank_writes_shared_bank_artifacts(tmp_path: Path) -> None:
+    written_paths = build_manifolds.save_reference_bank(
+        entries=[
+            {
+                "sample_id": "yes-1",
+                "parsed_answer": 1,
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.0, 0.0, 0.0]]),
+            },
+            {
+                "sample_id": "yes-2",
+                "parsed_answer": 1,
+                "object_name": "cat",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[1.0, 0.0, 0.0]]),
+            },
+        ],
+        output_root=tmp_path,
+        model_name="qwen3-vl-8b",
+        k_neighbors=2,
+        bank_scope="shared",
+    )
+
+    stats_path = tmp_path / "qwen3-vl-8b" / "__shared__" / "stats.pt"
+    counts_path = tmp_path / "qwen3-vl-8b" / "reference_counts.csv"
+
+    assert tmp_path / "qwen3-vl-8b" / "__shared__" / "layer-08.pt" in written_paths
+    assert stats_path.exists()
+    counts = pd.read_csv(counts_path)
+    assert counts.loc[0, "object_name"] == "__shared__"
+    assert counts.loc[0, "count"] == 2
+
+
+def test_build_feature_frame_raises_on_entries_without_reference_coverage(tmp_path: Path) -> None:
     reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "dog"
+    reference_root.mkdir(parents=True)
+    torch.save(
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]
+        ),
+        reference_root / "layer-08.pt",
+    )
+    torch.save({8: {"residual_mean": 0.1, "residual_std": 0.2}}, reference_root / "stats.pt")
+
+    with pytest.raises(ValueError, match="Missing reference coverage"):
+        compute_drift.build_feature_frame(
+            cache_entries=[
+                {
+                    "sample_id": "covered",
+                    "image_id": 101,
+                    "label": 1,
+                    "parsed_answer": 1,
+                    "subset": "popular",
+                    "object_name": "dog",
+                    "selected_layers": [8],
+                    "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+                },
+                {
+                    "sample_id": "missing",
+                    "image_id": 102,
+                    "label": 1,
+                    "parsed_answer": 1,
+                    "subset": "popular",
+                    "object_name": "cat",
+                    "selected_layers": [8],
+                    "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+                },
+            ],
+            reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
+            reference_stats=compute_drift.load_reference_stats(
+                tmp_path / "reference_banks",
+                "qwen3-vl-8b",
+            ),
+        )
+
+
+def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path) -> None:
+    reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "__shared__"
     reference_root.mkdir(parents=True)
     torch.save(
         torch.tensor(
@@ -147,7 +230,7 @@ def test_build_feature_frame_skips_entries_without_reference_coverage(tmp_path: 
     frame = compute_drift.build_feature_frame(
         cache_entries=[
             {
-                "sample_id": "covered",
+                "sample_id": "dog-sample",
                 "image_id": 101,
                 "label": 1,
                 "parsed_answer": 1,
@@ -157,21 +240,31 @@ def test_build_feature_frame_skips_entries_without_reference_coverage(tmp_path: 
                 "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
             },
             {
-                "sample_id": "missing",
+                "sample_id": "cat-sample",
                 "image_id": 102,
-                "label": 1,
+                "label": 0,
                 "parsed_answer": 1,
                 "subset": "popular",
                 "object_name": "cat",
                 "selected_layers": [8],
-                "layer_vectors": torch.tensor([[0.3, 0.4, 0.0]]),
+                "layer_vectors": torch.tensor([[0.4, 0.3, 0.2]]),
             },
         ],
-        reference_bank=compute_drift.load_reference_bank(tmp_path / "reference_banks", "qwen3-vl-8b"),
-        reference_stats=compute_drift.load_reference_stats(tmp_path / "reference_banks", "qwen3-vl-8b"),
+        reference_bank=compute_drift.load_reference_bank(
+            tmp_path / "reference_banks",
+            "qwen3-vl-8b",
+            bank_scope="shared",
+        ),
+        reference_stats=compute_drift.load_reference_stats(
+            tmp_path / "reference_banks",
+            "qwen3-vl-8b",
+            bank_scope="shared",
+        ),
+        bank_scope="shared",
     )
 
-    assert list(frame["sample_id"]) == ["covered"]
+    assert sorted(frame["sample_id"].tolist()) == ["cat-sample", "dog-sample"]
+    assert "cal_drift_0" in frame.columns
 
 
 def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path) -> None:
@@ -288,3 +381,30 @@ def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -
     assert "outputs/normalized/pope/popular.jsonl" in commands["extract_eval"]
     assert "--image-root" in commands["extract_eval"]
     assert "data/coco/val2014" in commands["extract_eval"]
+
+
+def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_path: Path) -> None:
+    config_path = tmp_path / "experiment.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: smoke-qwen3.5-4b-popular-shared",
+                "model_config: configs/models/qwen3_5_4b.yaml",
+                "dataset_config: configs/data/pope.yaml",
+                "subset: popular",
+                "split: val",
+                "selected_layers: 16",
+                "bank_scope: shared",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["build_manifolds", "compute_drift"],
+    )
+
+    assert commands["build_manifolds"][-2:] == ["--bank-scope", "shared"]
+    assert commands["compute_drift"][-2:] == ["--bank-scope", "shared"]
