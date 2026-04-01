@@ -41,6 +41,9 @@ Result:
 - The linear probe still leads on PR-AUC on the primary grouped protocol.
 - InternVL is notably more stable than Qwen under `object_heldout`.
 - RePOPE popular relabeling preserves the main ordering on the corrected popular predictions.
+- Adversarial closeout also completed for both model families:
+  - Qwen adversarial: `ROC-AUC 0.8708`, `PR-AUC 0.2653`
+  - InternVL adversarial: `ROC-AUC 0.8596`, `PR-AUC 0.4430`
 
 Takeaway:
 
@@ -137,6 +140,17 @@ Takeaway:
 - The shared-bank control changes the transfer story:
   - on Qwen, shared bank improves `object_heldout` to `ROC-AUC 0.8624`, `PR-AUC 0.1319`
   - on InternVL, shared bank is still worse than the object-conditioned bank under `object_heldout`
+
+#### 5.4 Adversarial closeout
+
+- Qwen adversarial:
+  - full MIND: `ROC-AUC 0.8708`, `PR-AUC 0.2653`, `TPR@1%FPR 0.0702`
+- InternVL adversarial:
+  - full MIND: `ROC-AUC 0.8596`, `PR-AUC 0.4430`, `TPR@1%FPR 0.1429`
+- Readout:
+  - adversarial is harder than popular for both families
+  - InternVL keeps the stronger adversarial precision-recall profile
+  - the six-row grouped closeout table is now complete
 
 ### 6. Discussion
 
