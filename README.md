@@ -179,6 +179,10 @@ Correction-phase experiment checkpoints completed on the existing popular caches
   - `ROC-AUC 0.8708`
   - `PR-AUC 0.2653`
   - `TPR@1%FPR 0.0702`
+- corrected InternVL adversarial rerun completed under `image_grouped`:
+  - `ROC-AUC 0.8596`
+  - `PR-AUC 0.4430`
+  - `TPR@1%FPR 0.1429`
 - shared-bank closeout controls completed on the corrected popular cache:
   - Qwen popular shared bank:
     - `ROC-AUC 0.8979`
@@ -192,6 +196,10 @@ Correction-phase experiment checkpoints completed on the existing popular caches
   - InternVL shared bank still trails the object-conditioned bank under `object_heldout`:
     - `ROC-AUC 0.8307`
     - `PR-AUC 0.2544`
+- final paper closeout package exported:
+  - `artifacts/paper_closeout/tables/`
+  - `artifacts/paper_closeout/figures/`
+  - `artifacts/paper_closeout/figure_manifest.json`
 
 Primary corrected findings:
 
@@ -225,7 +233,8 @@ Current environment note:
 - as of `2026-04-01`, the target closeout server is healthy:
   - `nvidia-smi` reports `2 x NVIDIA A100 80GB PCIe`
   - fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == True`
-  - the missing `InternVL3.5-8B` adversarial rerun has been restarted from this environment
+  - the missing `InternVL3.5-8B` adversarial rerun completed from this environment
+  - the final `artifacts/paper_closeout/` package was exported from this environment
 - older `3 GPU` and `4 GPU` notes in the journal remain historical incident notes from the previous server
 - H-POPE remains blocked because the public benchmark package was not found in a directly usable release
 
