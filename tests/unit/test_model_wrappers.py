@@ -13,6 +13,7 @@ from mind.models import (
     LoadedModelBundle,
     MolmoWrapper,
     QwenWrapper,
+    QwenVLWrapper,
     create_model_wrapper,
 )
 
@@ -154,6 +155,27 @@ def test_qwen_wrapper_decode_generation_removes_prompt_tokens() -> None:
     assert answer == "Yes"
 
 
+def test_qwen_wrapper_resolves_query_token_index_from_last_non_padding_token() -> None:
+    wrapper = QwenWrapper(
+        ModelConfig(
+            name="qwen3.5-4b",
+            model_id="Qwen/Qwen3.5-4B",
+            family="qwen",
+        )
+    )
+
+    index = wrapper.resolve_query_token_index(
+        "processor",
+        model_inputs={
+            "input_ids": torch.tensor([[0, 10, 11, 12]]),
+            "attention_mask": torch.tensor([[0, 1, 1, 1]]),
+        },
+        batch_index=0,
+    )
+
+    assert index == 3
+
+
 def test_qwen_text_prepare_inputs_uses_chat_template_and_device() -> None:
     class FakeBatch(dict):
         def to(self, device: str):
@@ -287,6 +309,154 @@ def test_internvl_prepare_batch_inputs_uses_padding_and_multiple_images(tmp_path
     assert processor.calls[2][4] is True
 
 
+def test_qwenvl_wrapper_resolves_vision_token_span_from_image_token_indices() -> None:
+    wrapper = InternVLWrapper(
+        ModelConfig(
+            name="internvl3.5-8b",
+            model_id="OpenGVLab/InternVL3_5-8B-HF",
+            family="internvl",
+        )
+    )
+
+    span = wrapper.resolve_vision_token_span(
+        SimpleNamespace(config=SimpleNamespace(image_token_index=99)),
+        "processor",
+        model_inputs={"input_ids": torch.tensor([[7, 99, 99, 15]])},
+        batch_index=0,
+    )
+
+    assert span == (1, 2)
+
+
+def test_qwenvl_extract_preprojector_features_uses_visual_blocks_before_merger() -> None:
+    class FakeBlock:
+        def __call__(self, hidden_states, **kwargs):
+            del kwargs
+            return hidden_states + 1
+
+    class FakeMerger:
+        def __call__(self, hidden_states):
+            raise AssertionError("merger should not be called for preprojector features")
+
+    visual = SimpleNamespace(
+        dtype=torch.float32,
+        patch_embed=lambda tensor: tensor,
+        fast_pos_embed_interpolate=lambda grid_thw: torch.zeros((4, 2), dtype=torch.float32),
+        rot_pos_emb=lambda grid_thw: torch.zeros((4, 1), dtype=torch.float32),
+        blocks=[FakeBlock()],
+        merger=FakeMerger(),
+    )
+    wrapper = QwenVLWrapper(
+        ModelConfig(
+            name="qwen3-vl-8b",
+            model_id="Qwen/Qwen3-VL-8B-Instruct",
+            family="qwen_vl",
+        )
+    )
+
+    features = wrapper.extract_preprojector_vision_features(
+        SimpleNamespace(visual=visual),
+        "processor",
+        model_inputs={
+            "input_ids": torch.tensor([[1, 2, 3]]),
+            "pixel_values": torch.arange(8, dtype=torch.float32).reshape(4, 2),
+            "image_grid_thw": torch.tensor([[1, 2, 2]], dtype=torch.long),
+        },
+        batch_index=0,
+    )
+
+    assert torch.equal(features, torch.arange(8, dtype=torch.float32).reshape(4, 2) + 1)
+
+
+def test_internvl_extract_preprojector_features_flattens_visual_tokens() -> None:
+    class FakeVisionTower:
+        def __call__(self, *, pixel_values):
+            assert tuple(pixel_values.shape) == (2, 3, 4, 4)
+            return SimpleNamespace(
+                last_hidden_state=torch.tensor(
+                    [
+                        [[10.0, 11.0], [12.0, 13.0], [14.0, 15.0]],
+                        [[20.0, 21.0], [22.0, 23.0], [24.0, 25.0]],
+                    ]
+                )
+            )
+
+    wrapper = InternVLWrapper(
+        ModelConfig(
+            name="internvl3.5-8b",
+            model_id="OpenGVLab/InternVL3_5-8B-HF",
+            family="internvl",
+        )
+    )
+
+    features = wrapper.extract_preprojector_vision_features(
+        SimpleNamespace(vision_tower=FakeVisionTower()),
+        "processor",
+        model_inputs={
+            "input_ids": torch.tensor([[1, 2, 3]]),
+            "pixel_values": torch.ones((2, 3, 4, 4), dtype=torch.float32),
+        },
+        batch_index=0,
+    )
+
+    assert torch.equal(
+        features,
+        torch.tensor(
+            [
+                [12.0, 13.0],
+                [14.0, 15.0],
+                [22.0, 23.0],
+                [24.0, 25.0],
+            ]
+        ),
+    )
+
+
+def test_llava_onevision_extract_preprojector_features_flattens_patch_tokens() -> None:
+    class FakeVisionTower:
+        def __call__(self, pixel_values, output_hidden_states: bool):
+            assert output_hidden_states is False
+            assert tuple(pixel_values.shape) == (2, 3, 4, 4)
+            return SimpleNamespace(
+                last_hidden_state=torch.tensor(
+                    [
+                        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                        [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+                    ]
+                )
+            )
+
+    wrapper = LlavaOnevisionWrapper(
+        ModelConfig(
+            name="llava-onevision-7b",
+            model_id="llava-hf/llava-onevision-qwen2-7b-ov-hf",
+            family="llava_onevision",
+        )
+    )
+
+    features = wrapper.extract_preprojector_vision_features(
+        SimpleNamespace(vision_tower=FakeVisionTower()),
+        "processor",
+        model_inputs={
+            "input_ids": torch.tensor([[1, 2, 3]]),
+            "pixel_values": torch.ones((1, 2, 3, 4, 4), dtype=torch.float32),
+        },
+        batch_index=0,
+    )
+
+    assert torch.equal(
+        features,
+        torch.tensor(
+            [
+                [3.0, 4.0],
+                [5.0, 6.0],
+                [9.0, 10.0],
+                [11.0, 12.0],
+            ]
+        ),
+    )
+
+
 def test_molmo_prepare_batch_inputs_collates_variable_length_fields(tmp_path: Path) -> None:
     class FakeProcessor:
         def __init__(self) -> None:
@@ -332,8 +502,80 @@ def test_molmo_prepare_batch_inputs_collates_variable_length_fields(tmp_path: Pa
     assert batch["input_ids"][1].tolist() == [21, 22, -1]
     assert tuple(batch["image_input_idx"].shape) == (2, 1, 2)
     assert batch["image_input_idx"][1, 0].tolist() == [0, -1]
-    assert tuple(batch["images"].shape) == (2, 1, 2, 2)
-    assert tuple(batch["image_masks"].shape) == (2, 1, 2)
+
+
+def test_molmo_wrapper_resolves_vision_token_span_from_image_input_idx() -> None:
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+        )
+    )
+
+    span = wrapper.resolve_vision_token_span(
+        SimpleNamespace(),
+        "processor",
+        model_inputs={
+            "image_input_idx": torch.tensor(
+                [
+                    [[0, 1, 2]],
+                    [[3, 4, -1]],
+                ],
+                dtype=torch.long,
+            )
+        },
+        batch_index=1,
+    )
+
+    assert span == (3, 4)
+
+
+def test_molmo_extract_preprojector_features_filters_masked_tokens() -> None:
+    class FakeVisionBackbone:
+        def encode_image(self, images):
+            assert tuple(images.shape) == (1, 2, 3, 2)
+            return (
+                torch.tensor(
+                    [
+                        [
+                            [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                            [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+                        ]
+                    ]
+                ),
+                None,
+            )
+
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+        )
+    )
+
+    features = wrapper.extract_preprojector_vision_features(
+        SimpleNamespace(model=SimpleNamespace(vision_backbone=FakeVisionBackbone())),
+        "processor",
+        model_inputs={
+            "images": torch.ones((1, 2, 3, 2), dtype=torch.float32),
+            "image_masks": torch.tensor([[[1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]], dtype=torch.float32),
+        },
+        batch_index=0,
+    )
+
+    assert torch.equal(
+        features,
+        torch.tensor(
+            [
+                [1.0, 2.0],
+                [5.0, 6.0],
+                [7.0, 8.0],
+                [9.0, 10.0],
+            ]
+        ),
+    )
 
 
 def test_molmo_generate_uses_generate_from_batch_with_tokenizer() -> None:

@@ -8,12 +8,15 @@ import torch
 from mind.data import HallucinationRecord
 from mind.extractors import (
     build_prefill_cache_entry,
+    build_prefill_readout_entry,
     extract_prefill_entry,
     extract_prefill_entries,
+    extract_prefill_readout_entries,
     extract_prefill_vectors,
     save_prefill_cache_shard,
     select_layer_range,
     select_middle_layers,
+    stack_prefill_hidden_states,
 )
 
 
@@ -22,6 +25,12 @@ SPEC = importlib.util.spec_from_file_location("extract_eval_states", SCRIPT_PATH
 extract_eval_states = importlib.util.module_from_spec(SPEC)
 assert SPEC is not None and SPEC.loader is not None
 SPEC.loader.exec_module(extract_eval_states)
+
+READOUT_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "extract_readout_states.py"
+READOUT_SPEC = importlib.util.spec_from_file_location("extract_readout_states", READOUT_SCRIPT_PATH)
+extract_readout_states = importlib.util.module_from_spec(READOUT_SPEC)
+assert READOUT_SPEC is not None and READOUT_SPEC.loader is not None
+READOUT_SPEC.loader.exec_module(extract_readout_states)
 
 
 def test_select_middle_layers_picks_middle_half_evenly() -> None:
@@ -48,6 +57,19 @@ def test_extract_prefill_vectors_uses_last_prefill_token_from_selected_layers() 
     assert torch.equal(vectors[0], torch.tensor([1.0, 1.0]))
     assert torch.equal(vectors[1], torch.tensor([3.0, 3.0]))
     assert torch.equal(vectors[2], torch.tensor([4.0, 4.0]))
+
+
+def test_stack_prefill_hidden_states_keeps_full_prompt_sequence() -> None:
+    hidden_states = tuple(
+        torch.full((2, 3, 2), fill_value=float(index))
+        for index in range(5)
+    )
+
+    stacked = stack_prefill_hidden_states(hidden_states, batch_index=1)
+
+    assert stacked.shape == (4, 3, 2)
+    assert torch.equal(stacked[0], torch.full((3, 2), 1.0))
+    assert torch.equal(stacked[-1], torch.full((3, 2), 4.0))
 
 
 def test_build_prefill_cache_entry_captures_metadata_and_logits() -> None:
@@ -79,6 +101,37 @@ def test_build_prefill_cache_entry_captures_metadata_and_logits() -> None:
     assert torch.equal(entry["first_token_logits"], torch.tensor([0.2, 0.8]))
 
 
+def test_build_prefill_readout_entry_captures_boundaries_and_full_states() -> None:
+    record = HallucinationRecord(
+        sample_id="popular-1",
+        image_id=101,
+        image_path="COCO_val2014_000000000101.jpg",
+        question="Is there a dog in the image?",
+        label=1,
+        object_name="dog",
+        split="val",
+        subset="popular",
+        source_dataset="pope",
+    )
+
+    entry = build_prefill_readout_entry(
+        record=record,
+        answer_text="Yes",
+        parsed_answer=1,
+        full_hidden_states=torch.ones((4, 3, 2)),
+        query_token_index=2,
+        vision_token_span=(0, 1),
+        first_token_logits=torch.tensor([0.2, 0.8]),
+        vision_features=torch.tensor([1.0, 2.0]),
+    )
+
+    assert entry["sample_id"] == "popular-1"
+    assert entry["query_token_index"] == 2
+    assert entry["vision_token_span"] == [0, 1]
+    assert entry["full_hidden_states"].shape == (4, 3, 2)
+    assert torch.equal(entry["vision_features"], torch.tensor([1.0, 2.0]))
+
+
 def test_save_prefill_cache_shard_writes_torch_payload(tmp_path: Path) -> None:
     output_path = tmp_path / "shard-00000.pt"
     payload = [{"sample_id": "sample-1", "selected_layers": [1], "layer_vectors": torch.ones(1, 2)}]
@@ -99,6 +152,18 @@ def test_build_cache_output_path_uses_expected_layout(tmp_path: Path) -> None:
     )
 
     assert output_path == tmp_path / "qwen3-vl-8b" / "pope" / "popular" / "shard-00003.pt"
+
+
+def test_extract_readout_states_reuses_same_output_layout(tmp_path: Path) -> None:
+    output_path = extract_readout_states.build_cache_output_path(
+        output_root=tmp_path,
+        model_name="qwen3-vl-8b",
+        dataset_name="pope",
+        split="popular",
+        shard_index=4,
+    )
+
+    assert output_path == tmp_path / "qwen3-vl-8b" / "pope" / "popular" / "shard-00004.pt"
 
 
 def test_load_normalized_records_reads_jsonl_rows(tmp_path: Path) -> None:
@@ -360,3 +425,99 @@ def test_extract_prefill_entries_decode_each_sample_from_true_prompt_length() ->
     assert torch.equal(entries[1]["layer_vectors"][0], torch.tensor([221.0, 222.0]))
     assert torch.equal(entries[0]["first_token_logits"], torch.tensor([0.2, 0.8]))
     assert torch.equal(entries[1]["first_token_logits"], torch.tensor([0.7, 0.3]))
+
+
+def test_extract_prefill_readout_entries_capture_query_and_vision_boundaries() -> None:
+    class FakeBatch(dict):
+        def to(self, device: str):
+            self["device"] = device
+            return self
+
+    class FakeWrapper:
+        def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
+            assert processor == "processor"
+            assert questions == ["Q1"]
+            assert image_paths == ["a.jpg"]
+            return FakeBatch(
+                {
+                    "input_ids": torch.tensor([[10, 11, 12]]),
+                    "attention_mask": torch.tensor([[1, 1, 1]]),
+                }
+            ).to(device)
+
+        def resolve_query_token_index(self, processor, *, model_inputs, batch_index: int) -> int:
+            assert processor == "processor"
+            assert batch_index == 0
+            return 2
+
+        def resolve_vision_token_span(self, model, processor, *, model_inputs, batch_index: int):
+            assert processor == "processor"
+            assert batch_index == 0
+            return (0, 1)
+
+        def extract_preprojector_vision_features(self, model, processor, *, model_inputs, batch_index: int):
+            assert processor == "processor"
+            assert batch_index == 0
+            return torch.tensor([1.0, 2.0, 3.0])
+
+        def decode_generation(self, processor, *, generated_ids: torch.Tensor, prompt_input_ids: torch.Tensor) -> str:
+            assert processor == "processor"
+            assert torch.equal(prompt_input_ids, torch.tensor([[10, 11, 12]]))
+            assert torch.equal(generated_ids, torch.tensor([[10, 11, 12, 42]]))
+            return "Yes"
+
+        def generate(self, model, processor, *, model_inputs, max_new_tokens: int):
+            assert processor == "processor"
+            assert max_new_tokens == 1
+            return model.generate(
+                **model_inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                return_dict_in_generate=True,
+                output_scores=True,
+                output_hidden_states=True,
+            )
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            assert kwargs["max_new_tokens"] == 1
+            return type(
+                "FakeGenerationOutput",
+                (),
+                {
+                    "sequences": torch.tensor([[10, 11, 12, 42]]),
+                    "scores": [torch.tensor([[0.3, 0.7]], dtype=torch.float32)],
+                    "hidden_states": [
+                        tuple(
+                            torch.full((1, 3, 2), fill_value=float(index))
+                            for index in range(5)
+                        )
+                    ],
+                },
+            )()
+
+    record = HallucinationRecord(
+        sample_id="popular-1",
+        image_id=101,
+        image_path="a.jpg",
+        question="Q1",
+        label=1,
+        object_name="dog",
+        split="val",
+        subset="popular",
+        source_dataset="pope",
+    )
+
+    entries = extract_prefill_readout_entries(
+        model=FakeModel(),
+        processor="processor",
+        wrapper=FakeWrapper(),
+        records=[record],
+        device="cuda:0",
+    )
+
+    assert len(entries) == 1
+    assert entries[0]["query_token_index"] == 2
+    assert entries[0]["vision_token_span"] == [0, 1]
+    assert entries[0]["full_hidden_states"].shape == (4, 3, 2)
+    assert torch.equal(entries[0]["vision_features"], torch.tensor([1.0, 2.0, 3.0]))

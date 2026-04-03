@@ -13,6 +13,7 @@ from typing import Any
 from PIL import Image
 from huggingface_hub import snapshot_download
 import torch
+import torch.nn.functional as F
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForImageTextToText,
@@ -134,6 +135,23 @@ def load_molmo_processing_modules(model_id: str) -> tuple[Any, Any, Path]:
     return preprocessing_module, image_module, snapshot_path
 
 
+def _model_inputs_batch_size(model_inputs: Any) -> int:
+    if isinstance(model_inputs, dict):
+        input_ids = model_inputs.get("input_ids")
+        if hasattr(input_ids, "shape") and len(input_ids.shape) > 0:
+            return int(input_ids.shape[0])
+    return 1
+
+
+def _module_dtype(module: Any, fallback: torch.dtype = torch.float32) -> torch.dtype:
+    if hasattr(module, "dtype") and isinstance(module.dtype, torch.dtype):
+        return module.dtype
+    try:
+        return next(module.parameters()).dtype
+    except (AttributeError, StopIteration, TypeError):
+        return fallback
+
+
 @dataclass
 class BaseModelWrapper:
     """Base wrapper that normalizes model loading and prompt shape."""
@@ -174,6 +192,45 @@ class BaseModelWrapper:
     def parse_yes_no_response(self, text: str) -> int | None:
         cleaned = text.replace("<think>", " ").replace("</think>", " ").strip()
         return parse_yes_no_answer(cleaned)
+
+    def resolve_query_token_index(
+        self,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> int:
+        del processor
+        attention_mask = model_inputs.get("attention_mask") if isinstance(model_inputs, dict) else None
+        if attention_mask is not None:
+            nonzero = torch.nonzero(attention_mask[batch_index], as_tuple=False).flatten()
+            if len(nonzero) > 0:
+                return int(nonzero[-1].item())
+        if isinstance(model_inputs, dict) and "input_ids" in model_inputs:
+            return int(model_inputs["input_ids"][batch_index].shape[-1] - 1)
+        raise ValueError("Could not resolve query token index.")
+
+    def resolve_vision_token_span(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> tuple[int, int] | None:
+        del model, processor, model_inputs, batch_index
+        return None
+
+    def extract_preprojector_vision_features(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> torch.Tensor | None:
+        del model, processor, model_inputs, batch_index
+        return None
 
     def _move_batch_to_device(self, batch: Any, device: str) -> Any:
         if hasattr(batch, "to"):
@@ -315,6 +372,82 @@ class QwenWrapper(BaseModelWrapper):
 
 
 class QwenVLWrapper(QwenWrapper):
+    def resolve_vision_token_span(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> tuple[int, int] | None:
+        del processor
+        if not isinstance(model_inputs, dict) or "input_ids" not in model_inputs:
+            return None
+        image_token_id = getattr(getattr(model, "config", None), "image_token_index", None)
+        if image_token_id is None:
+            image_token_id = getattr(getattr(model, "config", None), "image_token_id", None)
+        if image_token_id is None:
+            return None
+        positions = torch.nonzero(model_inputs["input_ids"][batch_index] == int(image_token_id), as_tuple=False).flatten()
+        if len(positions) == 0:
+            return None
+        return int(positions[0].item()), int(positions[-1].item())
+
+    def extract_preprojector_vision_features(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> torch.Tensor | None:
+        del processor, batch_index
+        if not isinstance(model_inputs, dict):
+            return None
+        pixel_values = model_inputs.get("pixel_values")
+        image_grid_thw = model_inputs.get("image_grid_thw")
+        if pixel_values is None or image_grid_thw is None:
+            return None
+        if _model_inputs_batch_size(model_inputs) != 1 or int(image_grid_thw.shape[0]) != 1:
+            return None
+
+        visual = getattr(model, "visual", None)
+        if visual is None and hasattr(model, "model"):
+            visual = getattr(model.model, "visual", None)
+        if visual is None or not hasattr(visual, "merger"):
+            return None
+
+        hidden_states = pixel_values.to(dtype=_module_dtype(visual, pixel_values.dtype))
+        grid_thw = image_grid_thw.to(device=hidden_states.device)
+
+        hidden_states = visual.patch_embed(hidden_states)
+        pos_embeds = visual.fast_pos_embed_interpolate(grid_thw)
+        hidden_states = hidden_states + pos_embeds
+
+        rotary_pos_emb = visual.rot_pos_emb(grid_thw)
+        seq_len, _ = hidden_states.size()
+        hidden_states = hidden_states.reshape(seq_len, -1)
+        rotary_pos_emb = rotary_pos_emb.reshape(seq_len, -1)
+        emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
+        position_embeddings = (emb.cos(), emb.sin())
+
+        cu_seqlens = torch.repeat_interleave(
+            grid_thw[:, 1] * grid_thw[:, 2],
+            grid_thw[:, 0],
+        ).cumsum(
+            dim=0,
+            dtype=grid_thw.dtype if torch.jit.is_tracing() else torch.int32,
+        )
+        cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0)
+
+        for block in visual.blocks:
+            hidden_states = block(
+                hidden_states,
+                cu_seqlens=cu_seqlens,
+                position_embeddings=position_embeddings,
+            )
+        return hidden_states.detach().cpu()
+
     def prepare_batch_inputs(
         self,
         processor: Any,
@@ -429,12 +562,136 @@ class QwenTextWrapper(QwenWrapper):
 class InternVLWrapper(QwenVLWrapper):
     """InternVL shares the same high-level image+text message shape."""
 
+    def extract_preprojector_vision_features(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> torch.Tensor | None:
+        del processor
+        if not isinstance(model_inputs, dict):
+            return None
+        pixel_values = model_inputs.get("pixel_values")
+        if pixel_values is None:
+            return None
+        if _model_inputs_batch_size(model_inputs) != 1 or batch_index != 0:
+            return None
+
+        vision_tower = getattr(model, "vision_tower", None)
+        if vision_tower is None and hasattr(model, "model"):
+            vision_tower = getattr(model.model, "vision_tower", None)
+        if vision_tower is None:
+            return None
+
+        outputs = vision_tower(pixel_values=pixel_values.to(dtype=_module_dtype(vision_tower, pixel_values.dtype)))
+        vision_features = getattr(outputs, "last_hidden_state", None)
+        if vision_features is None:
+            return None
+        if vision_features.ndim == 2:
+            vision_features = vision_features.unsqueeze(0)
+        if vision_features.shape[1] > 1:
+            vision_features = vision_features[:, 1:, :]
+        return vision_features.reshape(-1, vision_features.shape[-1]).detach().cpu()
+
 
 class LlavaOnevisionWrapper(QwenVLWrapper):
     """LLaVA-OneVision uses the same image-plus-text chat template contract."""
 
+    def extract_preprojector_vision_features(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> torch.Tensor | None:
+        del processor
+        if not isinstance(model_inputs, dict):
+            return None
+        pixel_values = model_inputs.get("pixel_values")
+        if pixel_values is None:
+            return None
+
+        vision_tower = getattr(model, "vision_tower", None)
+        if vision_tower is None and hasattr(model, "model"):
+            vision_tower = getattr(model.model, "vision_tower", None)
+        if vision_tower is None:
+            return None
+
+        if pixel_values.ndim != 5:
+            return None
+        sample_pixel_values = pixel_values[batch_index]
+        outputs = vision_tower(
+            sample_pixel_values.to(dtype=_module_dtype(vision_tower, sample_pixel_values.dtype)),
+            output_hidden_states=False,
+        )
+        vision_features = getattr(outputs, "last_hidden_state", None)
+        if vision_features is None:
+            return None
+        if vision_features.ndim == 2:
+            vision_features = vision_features.unsqueeze(0)
+        if vision_features.shape[1] > 1:
+            vision_features = vision_features[:, 1:, :]
+        return vision_features.reshape(-1, vision_features.shape[-1]).detach().cpu()
+
 
 class MolmoWrapper(BaseModelWrapper):
+    def resolve_vision_token_span(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> tuple[int, int] | None:
+        del model, processor
+        if not isinstance(model_inputs, dict) or "image_input_idx" not in model_inputs:
+            return None
+        image_input_idx = model_inputs["image_input_idx"][batch_index].reshape(-1)
+        valid = image_input_idx[image_input_idx >= 0]
+        if len(valid) == 0:
+            return None
+        return int(valid.min().item()), int(valid.max().item())
+
+    def extract_preprojector_vision_features(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> torch.Tensor | None:
+        del processor
+        if not isinstance(model_inputs, dict):
+            return None
+        images = model_inputs.get("images")
+        if images is None:
+            return None
+
+        inner_model = getattr(model, "model", model)
+        vision_backbone = getattr(inner_model, "vision_backbone", None)
+        if vision_backbone is None or not hasattr(vision_backbone, "encode_image"):
+            return None
+
+        sample_images = images[batch_index : batch_index + 1].to(dtype=_module_dtype(vision_backbone, images.dtype))
+        encoded = vision_backbone.encode_image(sample_images)
+        if not isinstance(encoded, tuple) or not encoded:
+            return None
+        image_features = encoded[0]
+        if image_features is None:
+            return None
+
+        flat_features = image_features.reshape(-1, image_features.shape[-1])
+        image_masks = model_inputs.get("image_masks")
+        if image_masks is not None:
+            sample_mask = image_masks[batch_index : batch_index + 1]
+            mask = sample_mask.reshape(-1) > 0
+            if int(mask.sum().item()) > 0:
+                flat_features = flat_features[mask]
+        return flat_features.detach().cpu()
+
     def load_processor(self):
         preprocessing_module, image_module, snapshot_path = load_molmo_processing_modules(
             self.config.model_id
