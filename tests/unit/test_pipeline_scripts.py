@@ -603,13 +603,11 @@ def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: P
             [
                 "name: dash-b",
                 "root: data/dash_b",
-                "image_root: data/coco/val2014",
+                "image_root: data/dash_b",
                 "splits:",
                 "  - main",
-                "prompt_template: |",
-                "  Answer yes or no based only on the image.",
-                "  Question: {question}",
-                "question_template: Can you see a {object_name} in this image?",
+                "prompt_template: '{question}'",
+                "question_template: Can you see a {object_name} in this image? Please answer only with yes or no.",
             ]
         )
         + "\n",
@@ -640,7 +638,7 @@ def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: P
         "scripts/prepare_data.py",
         "normalize-object-yes-no",
         "--source",
-        "data/dash_b/main.jsonl",
+        "data/dash_b",
         "--output",
         "outputs/normalized/dash-b/main.jsonl",
         "--subset",
@@ -650,7 +648,7 @@ def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: P
         "--source-dataset",
         "dash-b",
         "--question-template",
-        "Can you see a {object_name} in this image?",
+        "Can you see a {object_name} in this image? Please answer only with yes or no.",
     ]
 
 

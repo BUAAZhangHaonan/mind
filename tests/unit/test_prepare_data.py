@@ -199,3 +199,45 @@ def test_prepare_data_normalize_object_yes_no_writes_canonical_jsonl(tmp_path: P
             "source_dataset": "dash-b",
         }
     ]
+
+
+def test_prepare_data_normalize_object_yes_no_supports_dash_b_directory(tmp_path: Path) -> None:
+    dash_b_root = tmp_path / "dash_b"
+    images_dir = dash_b_root / "images"
+    images_dir.mkdir(parents=True)
+    (images_dir / "dash_benchmark_neg.json").write_text(
+        json.dumps({"coco": {"toaster": ["COCO_val2014_000000000314.jpg"]}}),
+        encoding="utf-8",
+    )
+    (images_dir / "dash_benchmark_pos.json").write_text(
+        json.dumps({"coco": {"dog": ["COCO_val2014_000000000042.jpg"]}}),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "normalized.jsonl"
+
+    exit_code = prepare_data.main(
+        [
+            "normalize-object-yes-no",
+            "--source",
+            str(dash_b_root),
+            "--output",
+            str(output_path),
+            "--subset",
+            "main",
+            "--split",
+            "val",
+            "--source-dataset",
+            "dash-b",
+        ]
+    )
+
+    written = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    assert exit_code == 0
+    assert [row["image_path"] for row in written] == [
+        "images/neg/coco/toaster/COCO_val2014_000000000314.jpg",
+        "images/pos/coco/dog/COCO_val2014_000000000042.jpg",
+    ]
+    assert [row["question"] for row in written] == [
+        "Can you see a toaster in this image? Please answer only with yes or no.",
+        "Can you see a dog in this image? Please answer only with yes or no.",
+    ]

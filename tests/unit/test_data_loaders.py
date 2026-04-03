@@ -125,3 +125,43 @@ def test_load_object_yes_no_records_supports_generic_rows_without_questions(tmp_
     assert records[0].question == "Can you see a toaster in this image?"
     assert records[0].label == 0
     assert records[0].source_dataset == "dash-b"
+
+
+def test_load_object_yes_no_records_flattens_dash_b_directory_layout(tmp_path: Path) -> None:
+    dash_b_root = tmp_path / "dash_b"
+    images_dir = dash_b_root / "images"
+    images_dir.mkdir(parents=True)
+    (images_dir / "dash_benchmark_neg.json").write_text(
+        json.dumps(
+            {
+                "coco": {
+                    "toaster": ["COCO_val2014_000000000314.jpg"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (images_dir / "dash_benchmark_pos.json").write_text(
+        json.dumps(
+            {
+                "coco": {
+                    "dog": ["COCO_val2014_000000000042.jpg"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = load_object_yes_no_records(
+        dash_b_root,
+        subset="main",
+        split="val",
+        source_dataset="dash-b",
+    )
+
+    assert [record.object_name for record in records] == ["toaster", "dog"]
+    assert [record.label for record in records] == [0, 1]
+    assert records[0].image_path == "images/neg/coco/toaster/COCO_val2014_000000000314.jpg"
+    assert records[1].image_path == "images/pos/coco/dog/COCO_val2014_000000000042.jpg"
+    assert records[0].question == "Can you see a toaster in this image? Please answer only with yes or no."
+    assert records[1].question == "Can you see a dog in this image? Please answer only with yes or no."

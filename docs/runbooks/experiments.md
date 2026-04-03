@@ -175,12 +175,11 @@ Example:
 ```bash
 conda run --no-capture-output -n mind-py311 python scripts/prepare_data.py \
   normalize-object-yes-no \
-  --source data/dash_b/main.jsonl \
-  --output outputs/normalized/dash-b/main.jsonl \
+  --source data/dash_b \
+  --output outputs/round2_2026_04/normalized/dash-b/main.jsonl \
   --subset main \
   --split val \
-  --source-dataset dash-b \
-  --question-template "Can you see a {object_name} in this image?"
+  --source-dataset dash-b
 ```
 
 Config files added for this next round:

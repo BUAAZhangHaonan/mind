@@ -15,6 +15,13 @@ _OBJECT_FROM_QUESTION_PATTERN = re.compile(
     r"^\s*is there\s+(?:a|an)\s+(?P<object>.+?)\s+in the image\?\s*$",
     re.IGNORECASE,
 )
+_DASH_B_NEGATIVE_JSON = Path("images/dash_benchmark_neg.json")
+_DASH_B_POSITIVE_JSON = Path("images/dash_benchmark_pos.json")
+_DASH_B_NEGATIVE_ROOT = Path("images/neg")
+_DASH_B_POSITIVE_ROOT = Path("images/pos")
+_DEFAULT_DASH_B_QUESTION_TEMPLATE = (
+    "Can you see a {object_name} in this image? Please answer only with yes or no."
+)
 
 
 class DatasetUnavailableError(FileNotFoundError):
@@ -41,12 +48,55 @@ def _parse_image_id(image_path: str) -> int:
     return int(matches[-1])
 
 
-def _coerce_rows(source: Path | Sequence[dict[str, object]]) -> list[dict[str, object]]:
+def _build_dash_b_rows(
+    source_root: Path,
+    *,
+    question_template: str | None,
+) -> list[dict[str, object]]:
+    template = question_template or _DEFAULT_DASH_B_QUESTION_TEMPLATE
+    rows: list[dict[str, object]] = []
+    for label, json_name, image_root in (
+        ("no", _DASH_B_NEGATIVE_JSON, _DASH_B_NEGATIVE_ROOT),
+        ("yes", _DASH_B_POSITIVE_JSON, _DASH_B_POSITIVE_ROOT),
+    ):
+        payload = json.loads((source_root / json_name).read_text(encoding="utf-8"))
+        for dataset_name, object_map in payload.items():
+            for object_name, filenames in object_map.items():
+                for filename in filenames:
+                    rows.append(
+                        {
+                            "sample_id": f"dash-b-{label}-{dataset_name}-{object_name}-{filename}",
+                            "image_path": str(image_root / dataset_name / object_name / filename),
+                            "label": label,
+                            "object_name": object_name,
+                            "question": template.format(object_name=object_name),
+                        }
+                    )
+    return rows
+
+
+def _coerce_rows(
+    source: Path | Sequence[dict[str, object]],
+    *,
+    question_template: str | None,
+) -> list[dict[str, object]]:
     if isinstance(source, Path):
         if not source.exists():
             raise FileNotFoundError(source)
+        if source.is_dir():
+            if (source / _DASH_B_NEGATIVE_JSON).exists() and (source / _DASH_B_POSITIVE_JSON).exists():
+                return _build_dash_b_rows(
+                    source,
+                    question_template=question_template,
+                )
+            raise IsADirectoryError(f"Unsupported dataset directory layout: {source}")
         if source.suffix == ".json":
-            return list(json.loads(source.read_text(encoding="utf-8")))
+            payload = json.loads(source.read_text(encoding="utf-8"))
+            if isinstance(payload, list):
+                return list(payload)
+            if isinstance(payload, dict):
+                return [payload]
+            raise TypeError(f"Unsupported JSON payload type: {type(payload).__name__}")
         return [
             json.loads(line)
             for line in source.read_text(encoding="utf-8").splitlines()
@@ -89,7 +139,7 @@ def load_object_yes_no_records(
     source_dataset: str = "pope",
     question_template: str | None = None,
 ) -> list[HallucinationRecord]:
-    rows = _coerce_rows(source)
+    rows = _coerce_rows(source, question_template=question_template)
     records: list[HallucinationRecord] = []
     for index, row in enumerate(rows):
         image_path = str(row.get("image") or row.get("image_path") or "")
