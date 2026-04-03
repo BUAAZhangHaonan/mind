@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
-from mind.data import build_reference_candidates, load_pope_records
+from mind.data import build_reference_candidates, load_object_yes_no_records, load_pope_records
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,6 +22,14 @@ def build_parser() -> argparse.ArgumentParser:
     normalize_pope.add_argument("--subset", required=True)
     normalize_pope.add_argument("--split", required=True)
     normalize_pope.add_argument("--source-dataset", default="pope")
+
+    normalize_object_yes_no = subparsers.add_parser("normalize-object-yes-no")
+    normalize_object_yes_no.add_argument("--source", type=Path, required=True)
+    normalize_object_yes_no.add_argument("--output", type=Path, required=True)
+    normalize_object_yes_no.add_argument("--subset", required=True)
+    normalize_object_yes_no.add_argument("--split", required=True)
+    normalize_object_yes_no.add_argument("--source-dataset", default="pope")
+    normalize_object_yes_no.add_argument("--question-template", default=None)
 
     reference = subparsers.add_parser("build-reference")
     reference.add_argument("--instances-json", type=Path, required=True)
@@ -48,6 +56,18 @@ def _normalize_pope(args: argparse.Namespace) -> int:
         subset=args.subset,
         split=args.split,
         source_dataset=args.source_dataset,
+    )
+    _write_jsonl(args.output, [asdict(record) for record in records])
+    return 0
+
+
+def _normalize_object_yes_no(args: argparse.Namespace) -> int:
+    records = load_object_yes_no_records(
+        args.source,
+        subset=args.subset,
+        split=args.split,
+        source_dataset=args.source_dataset,
+        question_template=args.question_template,
     )
     _write_jsonl(args.output, [asdict(record) for record in records])
     return 0
@@ -101,6 +121,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "normalize-pope":
         return _normalize_pope(args)
+    if args.command == "normalize-object-yes-no":
+        return _normalize_object_yes_no(args)
     if args.command == "build-reference":
         return _build_reference(args)
     parser.error(f"Unsupported command: {args.command}")

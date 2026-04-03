@@ -7,6 +7,7 @@ from mind.data import (
     DatasetUnavailableError,
     apply_repope_labels,
     load_hpope_records,
+    load_object_yes_no_records,
     load_pope_records,
 )
 
@@ -94,3 +95,33 @@ def test_load_hpope_records_raises_when_assets_are_missing(tmp_path: Path) -> No
         assert "H-POPE" in str(exc)
     else:  # pragma: no cover - defensive
         raise AssertionError("Expected DatasetUnavailableError for missing H-POPE assets.")
+
+
+def test_load_object_yes_no_records_supports_generic_rows_without_questions(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "dash-b.jsonl"
+    rows = [
+        {
+            "id": "dash-1",
+            "image_path": "dash_b/COCO_val2014_000000000314.jpg",
+            "answer": "no",
+            "object_name": "toaster",
+        }
+    ]
+    dataset_path.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    records = load_object_yes_no_records(
+        dataset_path,
+        subset="main",
+        split="val",
+        source_dataset="dash-b",
+        question_template="Can you see a {object_name} in this image?",
+    )
+
+    assert records[0].sample_id == "dash-1"
+    assert records[0].image_id == 314
+    assert records[0].question == "Can you see a toaster in this image?"
+    assert records[0].label == 0
+    assert records[0].source_dataset == "dash-b"

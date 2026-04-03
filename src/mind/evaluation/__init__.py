@@ -1,15 +1,22 @@
 """Evaluation helpers for MIND."""
 
 from .baselines import (
+    GROUP_COLUMN_BY_STRATEGY,
+    build_feature_variant_frames,
     build_train_eval_splits,
     build_linear_probe_frame,
     build_no_manifold_feature_frame,
+    build_output_baseline_frame,
     build_raw_model_yes_no_baseline,
+    compute_bootstrap_confidence_intervals,
     drift_only_columns,
     evaluate_feature_frame,
+    evaluate_feature_frame_across_random_states,
     feature_columns,
     load_cache_entries,
     load_reference_bank,
+    load_reference_stats,
+    resolve_yes_no_token_ids,
 )
 from .metrics import (
     compute_binary_metrics,
@@ -21,17 +28,24 @@ from .metrics import (
 
 __all__ = [
     "build_linear_probe_frame",
+    "build_feature_variant_frames",
     "build_no_manifold_feature_frame",
+    "build_output_baseline_frame",
     "build_raw_model_yes_no_baseline",
     "build_train_eval_splits",
     "compute_binary_metrics",
+    "compute_bootstrap_confidence_intervals",
     "compute_object_hallucination_label",
+    "evaluate_feature_frame_across_random_states",
     "drift_only_columns",
     "evaluate_feature_frame",
     "evaluate_by_subset",
     "feature_columns",
+    "GROUP_COLUMN_BY_STRATEGY",
     "load_cache_entries",
     "load_reference_bank",
+    "load_reference_stats",
+    "resolve_yes_no_token_ids",
     "write_metrics_report",
     "write_results_table",
 ]

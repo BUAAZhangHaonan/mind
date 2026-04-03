@@ -20,6 +20,9 @@ class DatasetConfig(BaseModel):
     image_root: str | None = None
     splits: list[str] = Field(default_factory=list)
     prompt_template: str
+    normalizer: str = "object_yes_no"
+    source_dataset: str | None = None
+    question_template: str | None = None
 
 
 class RuntimeConfig(BaseModel):

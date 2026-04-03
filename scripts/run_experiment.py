@@ -97,15 +97,18 @@ def build_stage_commands(
     layer_range = str(experiment["layer_range"])
     limit = str(experiment["limit"])
     bank_scope = str(experiment["bank_scope"])
-    dataset_source = "repope" if dataset.name == "repope" else dataset.name
+    dataset_source = dataset.source_dataset or ("repope" if dataset.name == "repope" else dataset.name)
+    normalizer = dataset.normalizer.strip().lower()
 
     commands: dict[str, list[str]] = {}
     for stage in stages:
         if stage == "prepare":
+            if normalizer not in {"object_yes_no", "object-yes-no", "pope"}:
+                raise ValueError(f"Unsupported dataset normalizer: {dataset.normalizer}")
             command = [
                 python_bin,
                 "scripts/prepare_data.py",
-                "normalize-pope",
+                "normalize-object-yes-no",
                 "--source",
                 f"{dataset.root}/{subset}.jsonl",
                 "--output",
@@ -117,6 +120,8 @@ def build_stage_commands(
             ]
             if dataset_source != "pope":
                 command.extend(["--source-dataset", dataset_source])
+            if dataset.question_template:
+                command.extend(["--question-template", dataset.question_template])
         elif stage == "cache_reference":
             command = [
                 python_bin,

@@ -20,6 +20,7 @@ def _load_script(name: str):
 
 cache_reference_states = _load_script("cache_reference_states")
 build_manifolds = _load_script("build_manifolds")
+compute_baselines_script = _load_script("compute_baselines")
 compute_drift = _load_script("compute_drift")
 run_experiment = _load_script("run_experiment")
 
@@ -363,7 +364,7 @@ def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -
     assert commands["prepare"][0].endswith("python")
     assert commands["prepare"][1:] == [
         "scripts/prepare_data.py",
-        "normalize-pope",
+        "normalize-object-yes-no",
         "--source",
         "data/pope/popular.jsonl",
         "--output",
@@ -381,6 +382,64 @@ def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -
     assert "outputs/normalized/pope/popular.jsonl" in commands["extract_eval"]
     assert "--image-root" in commands["extract_eval"]
     assert "data/coco/val2014" in commands["extract_eval"]
+
+
+def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: Path) -> None:
+    dataset_config = tmp_path / "dash_b.yaml"
+    dataset_config.write_text(
+        "\n".join(
+            [
+                "name: dash-b",
+                "root: data/dash_b",
+                "image_root: data/coco/val2014",
+                "splits:",
+                "  - main",
+                "prompt_template: |",
+                "  Answer yes or no based only on the image.",
+                "  Question: {question}",
+                "question_template: Can you see a {object_name} in this image?",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "experiment.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: smoke-llava-onevision-dash-b",
+                "model_config: configs/models/qwen3_vl_8b.yaml",
+                f"dataset_config: {dataset_config}",
+                "subset: main",
+                "split: val",
+                "selected_layers: 16",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["prepare"],
+    )
+
+    assert commands["prepare"][1:] == [
+        "scripts/prepare_data.py",
+        "normalize-object-yes-no",
+        "--source",
+        "data/dash_b/main.jsonl",
+        "--output",
+        "outputs/normalized/dash-b/main.jsonl",
+        "--subset",
+        "main",
+        "--split",
+        "val",
+        "--source-dataset",
+        "dash-b",
+        "--question-template",
+        "Can you see a {object_name} in this image?",
+    ]
 
 
 def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_path: Path) -> None:
@@ -408,3 +467,149 @@ def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_p
 
     assert commands["build_manifolds"][-2:] == ["--bank-scope", "shared"]
     assert commands["compute_drift"][-2:] == ["--bank-scope", "shared"]
+
+
+def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_path: Path) -> None:
+    features_path = tmp_path / "features.parquet"
+    cache_root = tmp_path / "cache"
+    reference_root = tmp_path / "reference"
+    reports_root = tmp_path / "reports"
+    cache_root.mkdir()
+    (reference_root / "qwen3-vl-8b" / "dog").mkdir(parents=True)
+
+    feature_rows = []
+    cache_entries = []
+    for index in range(8):
+        label = index % 2
+        parsed_answer = 1 if label == 1 else 0
+        feature_rows.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0 if label == 1 else 1,
+                "answer_label": parsed_answer,
+                "label": label,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": float(index),
+                "raw_drift_1": float(index) + 0.25,
+                "cal_drift_0": float(index) * 0.5,
+                "cal_drift_1": float(index) * 0.5 + 0.1,
+                "cal_mean_drift": float(index) * 0.5 + 0.05,
+                "cal_max_drift": float(index) * 0.5 + 0.1,
+                "cal_approx_energy": float(index) + 1.0,
+                "cal_detail_energy_l1": float(index) + 0.5,
+            }
+        )
+        cache_entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0 if label == 1 else 1,
+                "parsed_answer": parsed_answer,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8, 13],
+                "layer_vectors": torch.tensor(
+                    [
+                        [0.1 + 0.1 * index, 0.2, 0.3],
+                        [0.2 + 0.1 * index, 0.3, 0.4],
+                    ],
+                    dtype=torch.float32,
+                ),
+                "first_token_logits": torch.tensor(
+                    [0.0, 3.0 if parsed_answer == 1 else -1.0, 3.0 if parsed_answer == 0 else -1.0],
+                    dtype=torch.float32,
+                ),
+            }
+        )
+
+    pd.DataFrame(feature_rows).to_parquet(features_path, index=False)
+    torch.save(cache_entries, cache_root / "shard-00000.pt")
+    torch.save(
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
+            dtype=torch.float32,
+        ),
+        reference_root / "qwen3-vl-8b" / "dog" / "layer-08.pt",
+    )
+    torch.save(
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
+            dtype=torch.float32,
+        ),
+        reference_root / "qwen3-vl-8b" / "dog" / "layer-13.pt",
+    )
+    torch.save(
+        {
+            8: {
+                "residual_mean": 0.1,
+                "residual_std": 0.2,
+                "neighbor_residual_mean": 0.1,
+                "neighbor_residual_std": 0.2,
+            },
+            13: {
+                "residual_mean": 0.1,
+                "residual_std": 0.2,
+                "neighbor_residual_mean": 0.1,
+                "neighbor_residual_std": 0.2,
+            },
+        },
+        reference_root / "qwen3-vl-8b" / "dog" / "stats.pt",
+    )
+
+    exit_code = compute_baselines_script.main(
+        [
+            "--features-path",
+            str(features_path),
+            "--cache-path",
+            str(cache_root),
+            "--reference-root",
+            str(reference_root),
+            "--model-name",
+            "qwen3-vl-8b",
+            "--output-root",
+            str(reports_root),
+            "--experiment-name",
+            "smoke-baselines",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "2",
+            "--bootstrap-resamples",
+            "16",
+            "--split-seeds",
+            "3,5",
+            "--yes-token-id",
+            "1",
+            "--no-token-id",
+            "2",
+        ]
+    )
+
+    baselines_path = reports_root / "smoke-baselines" / "baselines.json"
+    ablations_path = reports_root / "smoke-baselines" / "ablations.csv"
+    split_sensitivity_path = reports_root / "smoke-baselines" / "split_sensitivity.csv"
+    variant_results_root = reports_root / "smoke-baselines" / "variant_results"
+
+    assert exit_code == 0
+    assert baselines_path.exists()
+    assert ablations_path.exists()
+    assert split_sensitivity_path.exists()
+    assert (variant_results_root / "full.csv").exists()
+    assert (variant_results_root / "output_p_yes.csv").exists()
+
+    payload = json.loads(baselines_path.read_text(encoding="utf-8"))
+    assert "full" in payload
+    assert "output_p_yes" in payload
+    assert "confidence_intervals" in payload["full"]

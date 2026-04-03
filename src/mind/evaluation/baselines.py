@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+import numpy as np
 import pandas as pd
 import torch
 from sklearn.model_selection import StratifiedGroupKFold, train_test_split
@@ -31,6 +32,32 @@ GROUP_COLUMN_BY_STRATEGY = {
     "image_grouped": "image_id",
     "object_heldout": "object_name",
 }
+
+
+def _hallucination_label_from_entry(entry: dict[str, object]) -> int:
+    return compute_object_hallucination_label(
+        ground_truth_label=int(entry["label"]),
+        answer_label=None if entry.get("parsed_answer") is None else int(entry["parsed_answer"]),
+    )
+
+
+def _metadata_row_from_entry(entry: dict[str, object]) -> dict[str, object]:
+    return {
+        "sample_id": entry["sample_id"],
+        "image_id": int(entry.get("image_id", -1)),
+        "ground_truth_label": int(entry["label"]),
+        "answer_label": -1 if entry.get("parsed_answer") is None else int(entry["parsed_answer"]),
+        "label": _hallucination_label_from_entry(entry),
+        "subset": entry["subset"],
+        "object_name": entry["object_name"],
+    }
+
+
+def _sorted_drift_columns(frame: pd.DataFrame, *, prefix: str) -> list[str]:
+    return sorted(
+        [column for column in frame.columns if column.startswith(prefix)],
+        key=lambda column: int(column.rsplit("_", 1)[-1]),
+    )
 
 
 def load_reference_bank(
@@ -104,6 +131,118 @@ def drift_only_columns(frame: pd.DataFrame) -> list[str]:
         for column in frame.columns
         if column.startswith("raw_drift_") or column in keep
     ]
+
+
+def resolve_yes_no_token_ids(tokenizer) -> dict[str, list[int]]:
+    token_map: dict[str, list[int]] = {"yes": [], "no": []}
+    text_map = {
+        "yes": ["yes", " yes", "Yes"],
+        "no": ["no", " no", "No"],
+    }
+    for label, candidates in text_map.items():
+        seen: set[int] = set()
+        for candidate in candidates:
+            token_ids = tokenizer.encode(candidate, add_special_tokens=False)
+            if len(token_ids) != 1:
+                continue
+            token_id = int(token_ids[0])
+            if token_id in seen:
+                continue
+            seen.add(token_id)
+            token_map[label].append(token_id)
+    if not token_map["yes"] or not token_map["no"]:
+        raise ValueError("Could not resolve single-token yes/no ids from tokenizer.")
+    return token_map
+
+
+def _aggregate_candidate_logit(logits: torch.Tensor, token_ids: Sequence[int]) -> float:
+    selected = logits[torch.as_tensor(list(token_ids), dtype=torch.long)]
+    return float(torch.logsumexp(selected, dim=0))
+
+
+def _aggregate_candidate_probability(logits: torch.Tensor, token_ids: Sequence[int]) -> float:
+    probabilities = torch.softmax(logits.to(dtype=torch.float32), dim=0)
+    selected = probabilities[torch.as_tensor(list(token_ids), dtype=torch.long)]
+    return float(selected.sum())
+
+
+def build_output_baseline_frame(
+    cache_entries: Sequence[dict[str, object]],
+    *,
+    yes_token_ids: Sequence[int],
+    no_token_ids: Sequence[int],
+) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    for entry in cache_entries:
+        logits = entry.get("first_token_logits")
+        if logits is None:
+            continue
+        logits = torch.as_tensor(logits, dtype=torch.float32)
+        p_yes = _aggregate_candidate_probability(logits, yes_token_ids)
+        p_no = _aggregate_candidate_probability(logits, no_token_ids)
+        answer_label = None if entry.get("parsed_answer") is None else int(entry["parsed_answer"])
+        if answer_label == 1:
+            chosen_answer_confidence = p_yes
+        elif answer_label == 0:
+            chosen_answer_confidence = p_no
+        else:
+            chosen_answer_confidence = max(p_yes, p_no)
+        rows.append(
+            {
+                **_metadata_row_from_entry(entry),
+                "p_yes": p_yes,
+                "yes_logit_margin": _aggregate_candidate_logit(logits, yes_token_ids)
+                - _aggregate_candidate_logit(logits, no_token_ids),
+                "chosen_answer_confidence": float(chosen_answer_confidence),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_feature_variant_frames(features: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    metadata_columns = [column for column in features.columns if column in METADATA_COLUMNS]
+    base_frame = features.loc[:, metadata_columns].copy()
+    raw_columns = _sorted_drift_columns(features, prefix="raw_drift_")
+    calibrated_columns = _sorted_drift_columns(features, prefix="cal_drift_")
+    wavelet_columns = sorted(
+        [column for column in features.columns if column.startswith("cal_") and "energy" in column]
+    )
+
+    calibrated_array = features[calibrated_columns].to_numpy(dtype=np.float32)
+    simple_stats = pd.DataFrame(
+        {
+            "cal_mean_drift": (
+                features["cal_mean_drift"].to_numpy(dtype=np.float32)
+                if "cal_mean_drift" in features.columns
+                else calibrated_array.mean(axis=1)
+            ),
+            "cal_max_drift": (
+                features["cal_max_drift"].to_numpy(dtype=np.float32)
+                if "cal_max_drift" in features.columns
+                else calibrated_array.max(axis=1)
+            ),
+            "cal_final_drift": calibrated_array[:, -1],
+            "cal_drift_variance": calibrated_array.var(axis=1),
+            "cal_drift_slope": np.polyfit(
+                np.arange(calibrated_array.shape[1], dtype=np.float32),
+                calibrated_array.T,
+                deg=1,
+            )[0],
+        }
+    )
+
+    return {
+        "raw_curve_only": pd.concat([base_frame, features[raw_columns]], axis=1),
+        "raw_plus_calibrated_simple": pd.concat([base_frame, features[raw_columns], simple_stats], axis=1),
+        "raw_plus_calibrated_full_curve": pd.concat(
+            [base_frame, features[raw_columns], features[calibrated_columns]],
+            axis=1,
+        ),
+        "raw_plus_calibrated_haar": pd.concat(
+            [base_frame, features[raw_columns], features[wavelet_columns]],
+            axis=1,
+        ),
+    }
 
 
 def build_raw_model_yes_no_baseline(cache_entries: Sequence[dict[str, object]]) -> dict[str, object]:
@@ -332,3 +471,82 @@ def evaluate_feature_frame(
         y_score=results["score"],
     )
     return metrics, results
+
+
+def evaluate_feature_frame_across_random_states(
+    frame: pd.DataFrame,
+    *,
+    columns: Sequence[str],
+    split_strategy: str = "row",
+    test_size: float = 0.3,
+    random_states: Sequence[int],
+    num_folds: int = 5,
+) -> pd.DataFrame:
+    rows: list[dict[str, float | int]] = []
+    for random_state in random_states:
+        metrics, _ = evaluate_feature_frame(
+            frame,
+            columns=columns,
+            split_strategy=split_strategy,
+            test_size=test_size,
+            random_state=int(random_state),
+            num_folds=num_folds,
+        )
+        rows.append({"random_state": int(random_state), **metrics})
+    return pd.DataFrame(rows)
+
+
+def compute_bootstrap_confidence_intervals(
+    results: pd.DataFrame,
+    *,
+    group_column: str,
+    n_resamples: int = 1000,
+    ci_level: float = 0.95,
+    random_state: int = 13,
+) -> dict[str, dict[str, float]]:
+    if group_column not in results.columns:
+        raise ValueError(f"Missing grouping column: {group_column}")
+    groups = results[group_column].drop_duplicates().tolist()
+    if not groups:
+        raise ValueError("Bootstrap requires at least one group.")
+    rng = np.random.default_rng(random_state)
+    alpha = 1.0 - ci_level
+    collected: list[dict[str, float]] = []
+    attempts = 0
+    max_attempts = max(10 * n_resamples, 100)
+
+    while len(collected) < n_resamples and attempts < max_attempts:
+        sampled_groups = rng.choice(groups, size=len(groups), replace=True)
+        sampled_frame = pd.concat(
+            [results.loc[results[group_column] == group_value] for group_value in sampled_groups],
+            ignore_index=True,
+        )
+        attempts += 1
+        if sampled_frame["label"].nunique() < 2:
+            continue
+        collected.append(
+            compute_binary_metrics(
+                y_true=sampled_frame["label"],
+                y_pred=sampled_frame["prediction"],
+                y_score=sampled_frame["score"],
+            )
+        )
+
+    if not collected:
+        raise ValueError("Bootstrap did not produce any valid resamples.")
+
+    point_metrics = compute_binary_metrics(
+        y_true=results["label"],
+        y_pred=results["prediction"],
+        y_score=results["score"],
+    )
+    intervals: dict[str, dict[str, float]] = {}
+    for metric_name in point_metrics:
+        values = np.asarray([metrics[metric_name] for metrics in collected], dtype=np.float64)
+        intervals[metric_name] = {
+            "point": float(point_metrics[metric_name]),
+            "lower": float(np.quantile(values, alpha / 2.0)),
+            "upper": float(np.quantile(values, 1.0 - alpha / 2.0)),
+            "n_resamples": float(len(values)),
+        }
+    return intervals

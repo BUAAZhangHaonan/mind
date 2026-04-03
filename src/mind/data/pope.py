@@ -67,27 +67,52 @@ def _parse_object_name(row: dict[str, object], question: str) -> str:
     return match.group("object").strip().lower()
 
 
-def load_pope_records(
+def _build_question(
+    row: dict[str, object],
+    *,
+    object_name: str,
+    question_template: str | None,
+) -> str:
+    question = str(row.get("text") or row.get("question") or row.get("prompt") or "").strip()
+    if question:
+        return question
+    if question_template is None:
+        return ""
+    return question_template.format(object_name=object_name)
+
+
+def load_object_yes_no_records(
     source: Path | Sequence[dict[str, object]],
     *,
     subset: str,
     split: str,
     source_dataset: str = "pope",
+    question_template: str | None = None,
 ) -> list[HallucinationRecord]:
     rows = _coerce_rows(source)
     records: list[HallucinationRecord] = []
     for index, row in enumerate(rows):
         image_path = str(row.get("image") or row.get("image_path") or "")
-        sample_id = str(row.get("sample_id") or row.get("question_id") or f"{subset}-{index}")
-        question = str(row.get("text") or row.get("question") or "")
+        sample_id = str(
+            row.get("sample_id")
+            or row.get("question_id")
+            or row.get("id")
+            or f"{subset}-{index}"
+        )
+        question = str(row.get("text") or row.get("question") or row.get("prompt") or "")
         object_name = _parse_object_name(row, question)
+        question = _build_question(
+            row,
+            object_name=object_name,
+            question_template=question_template,
+        )
         records.append(
             HallucinationRecord(
                 sample_id=sample_id,
                 image_id=_parse_image_id(image_path),
                 image_path=image_path,
                 question=question,
-                label=_parse_label(row.get("label", 0)),
+                label=_parse_label(row.get("label", row.get("answer", 0))),
                 object_name=object_name,
                 split=split,
                 subset=subset,
@@ -95,6 +120,21 @@ def load_pope_records(
             )
         )
     return records
+
+
+def load_pope_records(
+    source: Path | Sequence[dict[str, object]],
+    *,
+    subset: str,
+    split: str,
+    source_dataset: str = "pope",
+) -> list[HallucinationRecord]:
+    return load_object_yes_no_records(
+        source,
+        subset=subset,
+        split=split,
+        source_dataset=source_dataset,
+    )
 
 
 def apply_repope_labels(

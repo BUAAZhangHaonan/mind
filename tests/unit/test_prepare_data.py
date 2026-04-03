@@ -148,3 +148,54 @@ def test_prepare_data_build_reference_can_read_allowed_objects_from_normalized_r
     written = json.loads(output_path.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert written == [{"file_name": "000000000001.jpg", "image_id": 1, "object_names": ["dog"]}]
+
+
+def test_prepare_data_normalize_object_yes_no_writes_canonical_jsonl(tmp_path: Path) -> None:
+    source_path = tmp_path / "dash-b.jsonl"
+    output_path = tmp_path / "normalized.jsonl"
+    source_rows = [
+        {
+            "id": "dash-1",
+            "image_path": "dash_b/COCO_val2014_000000000314.jpg",
+            "answer": "no",
+            "object_name": "toaster",
+        }
+    ]
+    source_path.write_text(
+        "\n".join(json.dumps(row) for row in source_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = prepare_data.main(
+        [
+            "normalize-object-yes-no",
+            "--source",
+            str(source_path),
+            "--output",
+            str(output_path),
+            "--subset",
+            "main",
+            "--split",
+            "val",
+            "--source-dataset",
+            "dash-b",
+            "--question-template",
+            "Can you see a {object_name} in this image?",
+        ]
+    )
+
+    written = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    assert exit_code == 0
+    assert written == [
+        {
+            "sample_id": "dash-1",
+            "image_id": 314,
+            "image_path": "dash_b/COCO_val2014_000000000314.jpg",
+            "question": "Can you see a toaster in this image?",
+            "label": 0,
+            "object_name": "toaster",
+            "split": "val",
+            "subset": "main",
+            "source_dataset": "dash-b",
+        }
+    ]
