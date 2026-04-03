@@ -259,3 +259,33 @@ def test_train_detector_frame_assigns_fold_column_for_grouped_evaluation() -> No
     assert len(results) == len(frame)
     assert sorted(results["fold"].unique().tolist()) == [0, 1]
     assert sorted(results["sample_id"].tolist()) == sorted(frame["sample_id"].tolist())
+
+
+def test_select_feature_frame_uses_requested_variant() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-1",
+                "image_id": 101,
+                "ground_truth_label": 0,
+                "answer_label": 1,
+                "label": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": 0.5,
+                "raw_drift_1": 0.6,
+                "cal_drift_0": 0.2,
+                "cal_drift_1": 0.3,
+                "cal_mean_drift": 0.25,
+                "cal_max_drift": 0.3,
+                "cal_approx_energy": 1.0,
+                "cal_detail_energy_l1": 0.5,
+            }
+        ]
+    )
+
+    variant_frame = train_detector.select_feature_frame(frame, "raw_plus_calibrated_simple")
+
+    assert "cal_drift_0" not in variant_frame.columns
+    assert "cal_approx_energy" not in variant_frame.columns
+    assert "cal_drift_slope" in variant_frame.columns

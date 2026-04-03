@@ -7,6 +7,8 @@ import pytest
 import torch
 
 from mind.evaluation.baselines import (
+    apply_label_overrides_to_entries,
+    apply_label_overrides_to_frame,
     build_feature_variant_frames,
     build_no_manifold_feature_frame,
     build_output_baseline_frame,
@@ -14,6 +16,8 @@ from mind.evaluation.baselines import (
     compute_bootstrap_confidence_intervals,
     evaluate_feature_frame,
     evaluate_feature_frame_across_random_states,
+    resolve_feature_variant_frame,
+    resolve_highest_valid_num_folds,
     resolve_yes_no_token_ids,
 )
 
@@ -209,6 +213,124 @@ def test_build_no_manifold_feature_frame_can_use_shared_bank() -> None:
 
     assert sorted(frame["sample_id"].tolist()) == ["cat-sample", "dog-sample"]
     assert "raw_drift_0" in frame.columns
+
+
+def test_apply_label_overrides_to_entries_updates_ground_truth_labels() -> None:
+    overrides = pd.DataFrame(
+        [
+            {"sample_id": "sample-2", "label": 0},
+        ]
+    )
+
+    updated = apply_label_overrides_to_entries(
+        [
+            {
+                "sample_id": "sample-1",
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+            },
+            {
+                "sample_id": "sample-2",
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+            },
+        ],
+        overrides,
+    )
+
+    assert [entry["label"] for entry in updated] == [1, 0]
+
+
+def test_apply_label_overrides_to_frame_recomputes_hallucination_labels() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-1",
+                "image_id": 101,
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": 0.1,
+            },
+            {
+                "sample_id": "sample-2",
+                "image_id": 102,
+                "ground_truth_label": 1,
+                "answer_label": 1,
+                "label": 0,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": 0.2,
+            },
+        ]
+    )
+    overrides = pd.DataFrame([{"sample_id": "sample-2", "label": 0}])
+
+    updated = apply_label_overrides_to_frame(frame, overrides)
+
+    assert list(updated["ground_truth_label"]) == [1, 0]
+    assert list(updated["label"]) == [0, 1]
+
+
+def test_resolve_feature_variant_frame_returns_requested_variant() -> None:
+    features = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-1",
+                "image_id": 101,
+                "ground_truth_label": 0,
+                "answer_label": 1,
+                "label": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": 0.5,
+                "raw_drift_1": 0.6,
+                "cal_drift_0": 0.2,
+                "cal_drift_1": 0.3,
+                "cal_mean_drift": 0.25,
+                "cal_max_drift": 0.3,
+                "cal_approx_energy": 1.0,
+                "cal_detail_energy_l1": 0.5,
+            }
+        ]
+    )
+
+    frame = resolve_feature_variant_frame(features, "raw_plus_calibrated_simple")
+
+    assert "cal_drift_0" not in frame.columns
+    assert "cal_approx_energy" not in frame.columns
+    assert "cal_drift_slope" in frame.columns
+    assert "raw_drift_0" in frame.columns
+
+
+def test_resolve_highest_valid_num_folds_returns_first_valid_candidate() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": 100 + index,
+                "object_name": "dog" if index < 2 else "cat",
+                "label": 0 if index in {0, 2} else 1,
+                "raw_drift_0": float(index),
+            }
+            for index in range(4)
+        ]
+    )
+
+    num_folds = resolve_highest_valid_num_folds(
+        [frame],
+        split_strategy="object_heldout",
+        candidate_folds=(5, 4, 3, 2),
+        random_state=11,
+    )
+
+    assert num_folds == 2
 
 
 def test_evaluate_feature_frame_uses_image_grouped_out_of_fold_results() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Sequence
 
 import numpy as np
@@ -10,6 +11,7 @@ import torch
 
 
 SHARED_BANK_KEY = "__shared__"
+SHUFFLED_OBJECT_MAP_FILENAME = "shuffled_object_map.json"
 
 
 @dataclass
@@ -193,8 +195,27 @@ def clean_reference_entries(entries: Sequence[dict[str, object]]) -> list[dict[s
     return [entry for entry in entries if entry.get("parsed_answer") == 1]
 
 
+def build_shuffled_object_mapping(
+    object_names: Sequence[str],
+    *,
+    shuffle_seed: int = 13,
+) -> dict[str, str]:
+    unique_names = sorted({str(name) for name in object_names})
+    if len(unique_names) < 2:
+        raise ValueError("Shuffled-object banks require at least two distinct objects.")
+    shuffled = list(unique_names)
+    rng = np.random.default_rng(shuffle_seed)
+    for index in range(len(shuffled) - 1, 0, -1):
+        swap_index = int(rng.integers(0, index))
+        shuffled[index], shuffled[swap_index] = shuffled[swap_index], shuffled[index]
+    return {
+        destination: source
+        for destination, source in zip(unique_names, shuffled)
+    }
+
+
 def resolve_reference_scope_key(object_name: str, bank_scope: str) -> str:
-    if bank_scope == "object":
+    if bank_scope in {"object", "shuffled_object"}:
         return object_name
     if bank_scope == "shared":
         return SHARED_BANK_KEY
@@ -206,10 +227,23 @@ def build_reference_bank(
     *,
     min_points: int = 0,
     bank_scope: str = "object",
+    shuffle_seed: int = 13,
+    shuffled_object_mapping: dict[str, str] | None = None,
 ) -> dict[str, dict[int, torch.Tensor]]:
     bank: dict[str, dict[int, list[torch.Tensor]]] = {}
+    source_to_destination: dict[str, str] = {}
+    if bank_scope == "shuffled_object":
+        mapping = shuffled_object_mapping or build_shuffled_object_mapping(
+            [str(entry["object_name"]) for entry in entries],
+            shuffle_seed=shuffle_seed,
+        )
+        source_to_destination = {source: destination for destination, source in mapping.items()}
     for entry in entries:
-        object_name = resolve_reference_scope_key(str(entry["object_name"]), bank_scope)
+        entry_object_name = str(entry["object_name"])
+        if bank_scope == "shuffled_object":
+            object_name = source_to_destination[entry_object_name]
+        else:
+            object_name = resolve_reference_scope_key(entry_object_name, bank_scope)
         layer_vectors = entry["layer_vectors"]
         selected_layers = entry["selected_layers"]
         bank.setdefault(object_name, {})
@@ -232,8 +266,15 @@ def compute_reference_bank_stats(
     *,
     k_neighbors: int = 32,
     bank_scope: str = "object",
+    shuffle_seed: int = 13,
+    shuffled_object_mapping: dict[str, str] | None = None,
 ) -> dict[str, dict[int, dict[str, float]]]:
-    bank = build_reference_bank(entries, bank_scope=bank_scope)
+    bank = build_reference_bank(
+        entries,
+        bank_scope=bank_scope,
+        shuffle_seed=shuffle_seed,
+        shuffled_object_mapping=shuffled_object_mapping,
+    )
     stats_map: dict[str, dict[int, dict[str, float]]] = {}
     for object_name, layer_map in bank.items():
         stats_map[object_name] = {}

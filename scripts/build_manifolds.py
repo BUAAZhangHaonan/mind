@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pandas as pd
 import torch
 
 from mind.manifolds import (
+    SHUFFLED_OBJECT_MAP_FILENAME,
     build_reference_bank,
+    build_shuffled_object_mapping,
     clean_reference_entries,
     compute_reference_bank_stats,
 )
@@ -39,6 +42,10 @@ def build_counts_output_path(*, output_root: Path, model_name: str) -> Path:
     return output_root / model_name / "reference_counts.csv"
 
 
+def build_shuffled_mapping_output_path(*, output_root: Path, model_name: str) -> Path:
+    return output_root / model_name / SHUFFLED_OBJECT_MAP_FILENAME
+
+
 def save_reference_bank(
     *,
     entries: list[dict[str, object]],
@@ -46,17 +53,28 @@ def save_reference_bank(
     model_name: str,
     k_neighbors: int = 32,
     bank_scope: str = "object",
+    shuffle_seed: int = 13,
 ) -> list[Path]:
     cleaned_entries = clean_reference_entries(entries)
+    shuffled_object_mapping: dict[str, str] | None = None
+    if bank_scope == "shuffled_object":
+        shuffled_object_mapping = build_shuffled_object_mapping(
+            [str(entry["object_name"]) for entry in cleaned_entries],
+            shuffle_seed=shuffle_seed,
+        )
     stats_map = compute_reference_bank_stats(
         cleaned_entries,
         k_neighbors=k_neighbors,
         bank_scope=bank_scope,
+        shuffle_seed=shuffle_seed,
+        shuffled_object_mapping=shuffled_object_mapping,
     )
     bank = build_reference_bank(
         cleaned_entries,
         min_points=k_neighbors,
         bank_scope=bank_scope,
+        shuffle_seed=shuffle_seed,
+        shuffled_object_mapping=shuffled_object_mapping,
     )
     written_paths: list[Path] = []
     for object_name, layer_map in bank.items():
@@ -97,6 +115,14 @@ def save_reference_bank(
         counts_frame = counts_frame.sort_values(["object_name", "layer_index"])
     counts_frame.to_csv(counts_path, index=False)
     written_paths.append(counts_path)
+    if shuffled_object_mapping is not None:
+        mapping_path = build_shuffled_mapping_output_path(output_root=output_root, model_name=model_name)
+        mapping_path.parent.mkdir(parents=True, exist_ok=True)
+        mapping_path.write_text(
+            json.dumps(shuffled_object_mapping, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        written_paths.append(mapping_path)
     return written_paths
 
 
@@ -117,7 +143,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--object-name", default="")
     parser.add_argument("--layer-index", type=int, default=0)
     parser.add_argument("--k-neighbors", type=int, default=32)
-    parser.add_argument("--bank-scope", choices=["object", "shared"], default="object")
+    parser.add_argument("--bank-scope", choices=["object", "shared", "shuffled_object"], default="object")
+    parser.add_argument("--shuffle-seed", type=int, default=13)
     return parser
 
 
@@ -141,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         model_name=args.model_name,
         k_neighbors=args.k_neighbors,
         bank_scope=args.bank_scope,
+        shuffle_seed=args.shuffle_seed,
     ):
         print(path)
     return 0

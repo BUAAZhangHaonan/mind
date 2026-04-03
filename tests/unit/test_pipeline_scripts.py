@@ -23,6 +23,7 @@ build_manifolds = _load_script("build_manifolds")
 compute_baselines_script = _load_script("compute_baselines")
 compute_drift = _load_script("compute_drift")
 run_experiment = _load_script("run_experiment")
+train_detector = _load_script("train_detector")
 
 
 def test_build_reference_cache_output_path_uses_model_dataset_split_layout(tmp_path: Path) -> None:
@@ -162,6 +163,53 @@ def test_save_reference_bank_writes_shared_bank_artifacts(tmp_path: Path) -> Non
     counts = pd.read_csv(counts_path)
     assert counts.loc[0, "object_name"] == "__shared__"
     assert counts.loc[0, "count"] == 2
+
+
+def test_save_reference_bank_writes_shuffled_object_mapping(tmp_path: Path) -> None:
+    written_paths = build_manifolds.save_reference_bank(
+        entries=[
+            {
+                "sample_id": "yes-1",
+                "parsed_answer": 1,
+                "object_name": "dog",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[1.0, 0.0]]),
+            },
+            {
+                "sample_id": "yes-2",
+                "parsed_answer": 1,
+                "object_name": "cat",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[2.0, 0.0]]),
+            },
+            {
+                "sample_id": "yes-3",
+                "parsed_answer": 1,
+                "object_name": "bus",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[3.0, 0.0]]),
+            },
+        ],
+        output_root=tmp_path,
+        model_name="qwen3-vl-8b",
+        k_neighbors=1,
+        bank_scope="shuffled_object",
+        shuffle_seed=7,
+    )
+
+    mapping_path = tmp_path / "qwen3-vl-8b" / "shuffled_object_map.json"
+    assert mapping_path in written_paths
+    mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    assert sorted(mapping) == ["bus", "cat", "dog"]
+    assert all(target != source for target, source in mapping.items())
+    for target, source in mapping.items():
+        target_tensor = torch.load(
+            tmp_path / "qwen3-vl-8b" / target / "layer-08.pt",
+            weights_only=False,
+        )
+        expected_value = {"dog": 1.0, "cat": 2.0, "bus": 3.0}[source]
+        assert target_tensor.shape == (1, 2)
+        assert float(target_tensor[0, 0]) == expected_value
 
 
 def test_build_feature_frame_raises_on_entries_without_reference_coverage(tmp_path: Path) -> None:
@@ -469,6 +517,36 @@ def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_p
     assert commands["compute_drift"][-2:] == ["--bank-scope", "shared"]
 
 
+def test_run_experiment_supports_output_root_and_baselines_stage(tmp_path: Path) -> None:
+    config_path = tmp_path / "experiment.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: smoke-qwen3.5-4b-popular",
+                "model_config: configs/models/qwen3_5_4b.yaml",
+                "dataset_config: configs/data/pope.yaml",
+                "subset: popular",
+                "split: val",
+                "selected_layers: 16",
+                "full_variant: raw_plus_calibrated_simple",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["compute_drift", "baselines"],
+        output_root=tmp_path / "round2",
+    )
+
+    assert commands["compute_drift"][5] == str(tmp_path / "round2" / "reference_banks")
+    assert commands["baselines"][1] == "scripts/compute_baselines.py"
+    assert str(tmp_path / "round2" / "features" / "smoke-qwen3.5-4b-popular" / "popular.parquet") in commands["baselines"]
+    assert commands["baselines"][-2:] == ["--full-variant", "raw_plus_calibrated_simple"]
+
+
 def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_path: Path) -> None:
     features_path = tmp_path / "features.parquet"
     cache_root = tmp_path / "cache"
@@ -613,3 +691,142 @@ def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_
     assert "full" in payload
     assert "output_p_yes" in payload
     assert "confidence_intervals" in payload["full"]
+
+
+def test_compute_baselines_can_apply_label_overrides_and_full_variant(tmp_path: Path) -> None:
+    features_path = tmp_path / "features.parquet"
+    cache_root = tmp_path / "cache"
+    reference_root = tmp_path / "reference"
+    reports_root = tmp_path / "reports"
+    overrides_path = tmp_path / "repope.jsonl"
+    cache_root.mkdir()
+    (reference_root / "qwen3-vl-8b" / "dog").mkdir(parents=True)
+
+    feature_rows = []
+    cache_entries = []
+    for index in range(8):
+        label = index % 2
+        parsed_answer = 1
+        feature_rows.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 1,
+                "answer_label": parsed_answer,
+                "label": 0,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": float(index),
+                "raw_drift_1": float(index) + 0.25,
+                "cal_drift_0": float(index) * 0.5,
+                "cal_drift_1": float(index) * 0.5 + 0.1,
+                "cal_mean_drift": float(index) * 0.5 + 0.05,
+                "cal_max_drift": float(index) * 0.5 + 0.1,
+                "cal_approx_energy": float(index) + 1.0,
+                "cal_detail_energy_l1": float(index) + 0.5,
+            }
+        )
+        cache_entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 1,
+                "parsed_answer": parsed_answer,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8, 13],
+                "layer_vectors": torch.tensor(
+                    [
+                        [0.1 + 0.1 * index, 0.2, 0.3],
+                        [0.2 + 0.1 * index, 0.3, 0.4],
+                    ],
+                    dtype=torch.float32,
+                ),
+                "first_token_logits": torch.tensor([0.0, 3.0, -1.0], dtype=torch.float32),
+            }
+        )
+
+    overrides_path.write_text(
+        "\n".join(
+            json.dumps({"sample_id": f"sample-{index}", "label": 0 if index % 2 == 0 else 1})
+            for index in range(8)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    pd.DataFrame(feature_rows).to_parquet(features_path, index=False)
+    torch.save(cache_entries, cache_root / "shard-00000.pt")
+    for layer_index in [8, 13]:
+        torch.save(
+            torch.tensor(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                ],
+                dtype=torch.float32,
+            ),
+            reference_root / "qwen3-vl-8b" / "dog" / f"layer-{layer_index:02d}.pt",
+        )
+    torch.save(
+        {
+            8: {
+                "residual_mean": 0.1,
+                "residual_std": 0.2,
+                "neighbor_residual_mean": 0.1,
+                "neighbor_residual_std": 0.2,
+            },
+            13: {
+                "residual_mean": 0.1,
+                "residual_std": 0.2,
+                "neighbor_residual_mean": 0.1,
+                "neighbor_residual_std": 0.2,
+            },
+        },
+        reference_root / "qwen3-vl-8b" / "dog" / "stats.pt",
+    )
+
+    exit_code = compute_baselines_script.main(
+        [
+            "--features-path",
+            str(features_path),
+            "--cache-path",
+            str(cache_root),
+            "--reference-root",
+            str(reference_root),
+            "--model-name",
+            "qwen3-vl-8b",
+            "--output-root",
+            str(reports_root),
+            "--experiment-name",
+            "smoke-baselines-repope",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "2",
+            "--bootstrap-resamples",
+            "16",
+            "--split-seeds",
+            "3,5",
+            "--yes-token-id",
+            "1",
+            "--no-token-id",
+            "2",
+            "--label-overrides",
+            str(overrides_path),
+            "--full-variant",
+            "raw_plus_calibrated_simple",
+        ]
+    )
+
+    payload = json.loads(
+        (reports_root / "smoke-baselines-repope" / "baselines.json").read_text(encoding="utf-8")
+    )
+    full_results = pd.read_csv(reports_root / "smoke-baselines-repope" / "variant_results" / "full.csv")
+
+    assert exit_code == 0
+    assert payload["full"]["roc_auc"] == payload["raw_plus_calibrated_simple"]["roc_auc"]
+    assert payload["full"]["pr_auc"] == payload["raw_plus_calibrated_simple"]["pr_auc"]
+    assert sorted(full_results["label"].unique().tolist()) == [0, 1]
+    assert full_results.loc[full_results["sample_id"] == "sample-0", "label"].item() == 1

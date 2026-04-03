@@ -33,6 +33,15 @@ GROUP_COLUMN_BY_STRATEGY = {
     "object_heldout": "object_name",
 }
 
+FEATURE_VARIANT_NAMES = (
+    "raw_curve_only",
+    "raw_plus_calibrated_simple",
+    "raw_plus_calibrated_full_curve",
+    "raw_plus_calibrated_haar",
+)
+
+DEFAULT_FULL_VARIANT = "raw_plus_calibrated_haar"
+
 
 def _hallucination_label_from_entry(entry: dict[str, object]) -> int:
     return compute_object_hallucination_label(
@@ -70,7 +79,7 @@ def load_reference_bank(
     model_root = reference_root / model_name
     for layer_path in model_root.glob("*/layer-*.pt"):
         object_name = layer_path.parent.name
-        if bank_scope == "object" and object_name == "__shared__":
+        if bank_scope in {"object", "shuffled_object"} and object_name == "__shared__":
             continue
         if bank_scope == "shared" and object_name != "__shared__":
             continue
@@ -89,7 +98,7 @@ def load_reference_stats(
     model_root = reference_root / model_name
     for stats_path in model_root.glob("*/stats.pt"):
         object_name = stats_path.parent.name
-        if bank_scope == "object" and object_name == "__shared__":
+        if bank_scope in {"object", "shuffled_object"} and object_name == "__shared__":
             continue
         if bank_scope == "shared" and object_name != "__shared__":
             continue
@@ -101,6 +110,21 @@ def load_reference_stats(
     return stats_map
 
 
+def load_label_overrides(overrides: Path | pd.DataFrame) -> pd.DataFrame:
+    if isinstance(overrides, pd.DataFrame):
+        override_frame = overrides.copy()
+    else:
+        override_frame = (
+            pd.read_parquet(overrides)
+            if overrides.suffix == ".parquet"
+            else pd.read_json(overrides, lines=True)
+        )
+    override_columns = [column for column in ["sample_id", "label"] if column in override_frame.columns]
+    if override_columns != ["sample_id", "label"]:
+        raise ValueError("Label override file must include sample_id and label columns.")
+    return override_frame[["sample_id", "label"]].copy()
+
+
 def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
     if cache_path.is_dir():
         entries: list[dict[str, object]] = []
@@ -108,6 +132,53 @@ def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
             entries.extend(torch.load(shard_path, weights_only=False))
         return entries
     return list(torch.load(cache_path, weights_only=False))
+
+
+def apply_label_overrides_to_entries(
+    cache_entries: Sequence[dict[str, object]],
+    overrides: Path | pd.DataFrame,
+) -> list[dict[str, object]]:
+    override_frame = load_label_overrides(overrides)
+    override_map = {
+        str(row["sample_id"]): int(row["label"])
+        for row in override_frame.to_dict(orient="records")
+    }
+    updated_entries: list[dict[str, object]] = []
+    for entry in cache_entries:
+        updated = dict(entry)
+        if str(entry["sample_id"]) in override_map:
+            updated["label"] = int(override_map[str(entry["sample_id"])])
+        updated_entries.append(updated)
+    return updated_entries
+
+
+def apply_label_overrides_to_frame(
+    frame: pd.DataFrame,
+    overrides: Path | pd.DataFrame,
+) -> pd.DataFrame:
+    override_frame = load_label_overrides(overrides)
+    merged = frame.drop(columns=["label"], errors="ignore").merge(
+        override_frame.rename(columns={"label": "override_label"}),
+        on="sample_id",
+        how="left",
+    )
+    if "ground_truth_label" in merged.columns and "answer_label" in merged.columns:
+        merged["ground_truth_label"] = (
+            merged["override_label"].fillna(merged["ground_truth_label"]).astype(int)
+        )
+        merged["label"] = [
+            compute_object_hallucination_label(
+                ground_truth_label=int(ground_truth),
+                answer_label=None if int(answer_label) < 0 else int(answer_label),
+            )
+            for ground_truth, answer_label in zip(
+                merged["ground_truth_label"].tolist(),
+                merged["answer_label"].tolist(),
+            )
+        ]
+    else:
+        merged["label"] = merged["override_label"].fillna(frame["label"]).astype(int)
+    return merged.drop(columns=["override_label"])
 
 
 def _format_missing_reference_coverage(missing_entries: list[dict[str, object]]) -> str:
@@ -243,6 +314,13 @@ def build_feature_variant_frames(features: pd.DataFrame) -> dict[str, pd.DataFra
             axis=1,
         ),
     }
+
+
+def resolve_feature_variant_frame(features: pd.DataFrame, variant_name: str) -> pd.DataFrame:
+    variants = build_feature_variant_frames(features)
+    if variant_name not in variants:
+        raise ValueError(f"Unsupported feature variant: {variant_name}")
+    return variants[variant_name]
 
 
 def build_raw_model_yes_no_baseline(cache_entries: Sequence[dict[str, object]]) -> dict[str, object]:
@@ -494,6 +572,28 @@ def evaluate_feature_frame_across_random_states(
         )
         rows.append({"random_state": int(random_state), **metrics})
     return pd.DataFrame(rows)
+
+
+def resolve_highest_valid_num_folds(
+    frames: Sequence[pd.DataFrame],
+    *,
+    split_strategy: str,
+    candidate_folds: Sequence[int] = (5, 4, 3, 2),
+    random_state: int = 13,
+) -> int:
+    for num_folds in candidate_folds:
+        try:
+            for frame in frames:
+                build_train_eval_splits(
+                    frame,
+                    split_strategy=split_strategy,
+                    random_state=random_state,
+                    num_folds=int(num_folds),
+                )
+        except ValueError:
+            continue
+        return int(num_folds)
+    raise ValueError(f"No valid fold count found for {split_strategy}.")
 
 
 def compute_bootstrap_confidence_intervals(

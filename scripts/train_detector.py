@@ -10,7 +10,12 @@ import joblib
 import pandas as pd
 
 from mind.detectors import fit_logistic_detector
-from mind.evaluation.baselines import build_train_eval_splits
+from mind.evaluation.baselines import (
+    DEFAULT_FULL_VARIANT,
+    FEATURE_VARIANT_NAMES,
+    build_train_eval_splits,
+    resolve_feature_variant_frame,
+)
 
 
 def build_feature_output_path(
@@ -46,6 +51,12 @@ def feature_columns(frame: pd.DataFrame) -> list[str]:
             "fold",
         }
     ]
+
+
+def select_feature_frame(frame: pd.DataFrame, feature_variant: str | None) -> pd.DataFrame:
+    if not feature_variant:
+        return frame
+    return resolve_feature_variant_frame(frame, feature_variant)
 
 
 def train_detector_frame(
@@ -101,6 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-size", type=float, default=0.3)
     parser.add_argument("--random-state", type=int, default=13)
     parser.add_argument(
+        "--feature-variant",
+        choices=list(FEATURE_VARIANT_NAMES),
+        default=DEFAULT_FULL_VARIANT,
+    )
+    parser.add_argument(
         "--split-strategy",
         choices=["row", "image_grouped", "object_heldout"],
         default="row",
@@ -123,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    train_frame = pd.read_parquet(args.train_path)
+    train_frame = select_feature_frame(pd.read_parquet(args.train_path), args.feature_variant)
     if train_frame["label"].nunique() < 2:
         raise ValueError("Training frame must contain both hallucinated and non-hallucinated samples.")
     columns = feature_columns(train_frame)
@@ -137,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
             num_folds=args.num_folds,
         )
     else:
-        eval_frame = pd.read_parquet(args.eval_path)
+        eval_frame = select_feature_frame(pd.read_parquet(args.eval_path), args.feature_variant)
         detector = fit_logistic_detector(train_frame[columns].to_numpy(), train_frame["label"].to_numpy())
         probabilities = detector.predict_proba(eval_frame[columns].to_numpy())[:, 1]
         predictions = detector.predict(eval_frame[columns].to_numpy())
@@ -146,10 +162,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         checkpoint_payload = {
             "columns": columns,
+            "feature_variant": args.feature_variant,
             "split_strategy": "explicit_eval",
             "detectors": [{"fold": 0, "detector": detector}],
             "detector": detector,
         }
+    checkpoint_payload["feature_variant"] = args.feature_variant
     output_paths = build_detector_output_paths(
         output_root=args.output_root,
         experiment_name=args.experiment_name,

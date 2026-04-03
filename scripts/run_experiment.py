@@ -9,9 +9,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 from mind.config import DatasetConfig, ModelConfig, load_yaml_config
+from mind.evaluation import DEFAULT_FULL_VARIANT, resolve_highest_valid_num_folds
 
 
 DEFAULT_STAGES = [
@@ -21,6 +23,7 @@ DEFAULT_STAGES = [
     "extract_eval",
     "build_manifolds",
     "compute_drift",
+    "baselines",
     "train_detector",
     "evaluate",
     "plot",
@@ -57,7 +60,25 @@ def load_experiment_spec(config_path: Path) -> dict[str, object]:
     payload.setdefault("reference_image_root", "data/coco/train2017")
     payload.setdefault("reference_max_images_per_object", 64)
     payload.setdefault("bank_scope", "object")
+    payload.setdefault("full_variant", DEFAULT_FULL_VARIANT)
+    payload.setdefault("split_strategy", "row")
+    payload.setdefault("num_folds", 5)
+    payload.setdefault("test_size", 0.3)
+    payload.setdefault("random_state", 13)
+    payload.setdefault("bootstrap_resamples", 1000)
+    payload.setdefault("split_seeds", "13,17,19,23,29")
+    payload.setdefault("label_overrides", "")
     return payload
+
+
+def resolve_reference_banks_root(output_root: Path, bank_scope: str) -> Path:
+    if bank_scope == "object":
+        return output_root / "reference_banks"
+    if bank_scope == "shared":
+        return output_root / "reference_banks_shared"
+    if bank_scope == "shuffled_object":
+        return output_root / "reference_banks_shuffled"
+    raise ValueError(f"Unsupported bank scope: {bank_scope}")
 
 
 def build_runtime_paths(
@@ -65,18 +86,22 @@ def build_runtime_paths(
     experiment: dict[str, object],
     dataset: DatasetConfig,
     model: ModelConfig,
+    output_root: Path,
 ) -> dict[str, str]:
     subset = str(experiment["subset"])
     dataset_name = dataset.name
     experiment_name = str(experiment["name"])
+    reference_banks_root = resolve_reference_banks_root(output_root, str(experiment["bank_scope"]))
     return {
-        "normalized": f"outputs/normalized/{dataset_name}/{subset}.jsonl",
-        "reference_cache": f"outputs/cache/{model.name}/{experiment['reference_dataset_name']}/{experiment['reference_split']}",
-        "eval_cache": f"outputs/cache/{model.name}/{dataset_name}/{subset}",
-        "reference_banks": "outputs/reference_banks",
-        "features": f"outputs/features/{experiment_name}/{subset}.parquet",
-        "reports": f"outputs/reports/{experiment_name}",
-        "plots": f"outputs/plots/{experiment_name}",
+        "normalized": str(output_root / "normalized" / dataset_name / f"{subset}.jsonl"),
+        "reference_cache": str(
+            output_root / "cache" / model.name / str(experiment["reference_dataset_name"]) / str(experiment["reference_split"])
+        ),
+        "eval_cache": str(output_root / "cache" / model.name / dataset_name / subset),
+        "reference_banks": str(reference_banks_root),
+        "features": str(output_root / "features" / experiment_name / f"{subset}.parquet"),
+        "reports": str(output_root / "reports" / experiment_name),
+        "plots": str(output_root / "plots" / experiment_name),
     }
 
 
@@ -85,18 +110,21 @@ def build_stage_commands(
     config_path: Path,
     stages: list[str],
     python_bin: str | None = None,
+    output_root: Path | None = None,
 ) -> dict[str, list[str]]:
     python_bin = python_bin or sys.executable
+    output_root = output_root or Path("outputs")
     experiment = load_experiment_spec(config_path)
     dataset = load_yaml_config(Path(str(experiment["dataset_config"])), DatasetConfig)
     model = load_yaml_config(Path(str(experiment["model_config"])), ModelConfig)
-    paths = build_runtime_paths(experiment=experiment, dataset=dataset, model=model)
+    paths = build_runtime_paths(experiment=experiment, dataset=dataset, model=model, output_root=output_root)
     subset = str(experiment["subset"])
     split = str(experiment["split"])
     selected_layers = str(experiment["selected_layers"])
     layer_range = str(experiment["layer_range"])
     limit = str(experiment["limit"])
     bank_scope = str(experiment["bank_scope"])
+    full_variant = str(experiment["full_variant"])
     dataset_source = dataset.source_dataset or ("repope" if dataset.name == "repope" else dataset.name)
     normalizer = dataset.normalizer.strip().lower()
 
@@ -133,7 +161,7 @@ def build_stage_commands(
                 "--model-config",
                 str(experiment["model_config"]),
                 "--output-root",
-                "outputs/cache",
+                str(output_root / "cache"),
                 "--dataset-name",
                 str(experiment["reference_dataset_name"]),
                 "--split",
@@ -170,7 +198,7 @@ def build_stage_commands(
                 "--model-config",
                 str(experiment["model_config"]),
                 "--output-root",
-                "outputs/cache",
+                str(output_root / "cache"),
                 "--dataset-name",
                 dataset.name,
                 "--split",
@@ -193,7 +221,7 @@ def build_stage_commands(
                 "--reference-cache",
                 paths["reference_cache"],
                 "--output-root",
-                "outputs/reference_banks",
+                paths["reference_banks"],
                 "--model-name",
                 model.name,
                 "--bank-scope",
@@ -206,11 +234,11 @@ def build_stage_commands(
                 "--cache-path",
                 paths["eval_cache"],
                 "--reference-root",
-                "outputs/reference_banks",
+                paths["reference_banks"],
                 "--model-name",
                 model.name,
                 "--output-root",
-                "outputs/features",
+                str(output_root / "features"),
                 "--experiment-name",
                 str(experiment["name"]),
                 "--split",
@@ -218,6 +246,41 @@ def build_stage_commands(
                 "--bank-scope",
                 bank_scope,
             ]
+        elif stage == "baselines":
+            command = [
+                python_bin,
+                "scripts/compute_baselines.py",
+                "--features-path",
+                paths["features"],
+                "--cache-path",
+                paths["eval_cache"],
+                "--reference-root",
+                paths["reference_banks"],
+                "--model-name",
+                model.name,
+                "--output-root",
+                str(output_root / "reports"),
+                "--experiment-name",
+                str(experiment["name"]),
+                "--split-strategy",
+                str(experiment["split_strategy"]),
+                "--num-folds",
+                str(experiment["num_folds"]),
+                "--test-size",
+                str(experiment["test_size"]),
+                "--random-state",
+                str(experiment["random_state"]),
+                "--bootstrap-resamples",
+                str(experiment["bootstrap_resamples"]),
+                "--split-seeds",
+                str(experiment["split_seeds"]),
+                "--bank-scope",
+                bank_scope,
+                "--full-variant",
+                full_variant,
+            ]
+            if str(experiment["label_overrides"]).strip():
+                command.extend(["--label-overrides", str(experiment["label_overrides"])])
         elif stage == "train_detector":
             command = [
                 python_bin,
@@ -225,9 +288,19 @@ def build_stage_commands(
                 "--train-path",
                 paths["features"],
                 "--output-root",
-                "outputs/reports",
+                str(output_root / "reports"),
                 "--experiment-name",
                 str(experiment["name"]),
+                "--feature-variant",
+                full_variant,
+                "--split-strategy",
+                str(experiment["split_strategy"]),
+                "--num-folds",
+                str(experiment["num_folds"]),
+                "--test-size",
+                str(experiment["test_size"]),
+                "--random-state",
+                str(experiment["random_state"]),
             ]
         elif stage == "evaluate":
             command = [
@@ -236,10 +309,12 @@ def build_stage_commands(
                 "--input-path",
                 f"{paths['reports']}/results.csv",
                 "--output-root",
-                "outputs/reports",
+                str(output_root / "reports"),
                 "--experiment-name",
                 str(experiment["name"]),
             ]
+            if str(experiment["label_overrides"]).strip():
+                command.extend(["--label-overrides", str(experiment["label_overrides"])])
         elif stage == "plot":
             command = [
                 python_bin,
@@ -249,7 +324,7 @@ def build_stage_commands(
                 "--results-path",
                 f"{paths['reports']}/results.csv",
                 "--output-root",
-                "outputs/plots",
+                str(output_root / "plots"),
                 "--experiment-name",
                 str(experiment["name"]),
             ]
@@ -259,18 +334,37 @@ def build_stage_commands(
     return commands
 
 
+def resolve_highest_valid_object_heldout_folds(
+    frame_paths: list[Path],
+    *,
+    candidate_folds: tuple[int, ...] = (5, 4, 3, 2),
+    random_state: int = 13,
+) -> int:
+    frames = [
+        pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
+        for path in frame_paths
+    ]
+    return resolve_highest_valid_num_folds(
+        frames,
+        split_strategy="object_heldout",
+        candidate_folds=candidate_folds,
+        random_state=random_state,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--stages", default="all")
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--output-root", type=Path, default=Path("outputs"))
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     stages = parse_stage_list(args.stages)
-    commands = build_stage_commands(config_path=args.config, stages=stages)
+    commands = build_stage_commands(config_path=args.config, stages=stages, output_root=args.output_root)
     for stage in stages:
         command = commands[stage]
         rendered = " ".join(shlex.quote(part) for part in command)
