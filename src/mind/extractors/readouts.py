@@ -28,13 +28,17 @@ def stack_prefill_hidden_states(
 
 def _default_query_token_index(model_inputs: Any, *, batch_index: int) -> int:
     attention_mask = None
-    if isinstance(model_inputs, dict):
+    if hasattr(model_inputs, "get"):
         attention_mask = model_inputs.get("attention_mask")
     if attention_mask is not None:
         nonzero = torch.nonzero(attention_mask[batch_index], as_tuple=False).flatten()
         if len(nonzero) > 0:
             return int(nonzero[-1].item())
-    if isinstance(model_inputs, dict) and "input_ids" in model_inputs:
+    try:
+        has_input_ids = "input_ids" in model_inputs
+    except TypeError:
+        has_input_ids = False
+    if has_input_ids:
         return int(model_inputs["input_ids"][batch_index].shape[-1] - 1)
     raise ValueError("Could not resolve query token index from model inputs.")
 

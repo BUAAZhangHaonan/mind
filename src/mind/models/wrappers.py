@@ -27,6 +27,23 @@ from mind.config import ModelConfig
 from .types import parse_yes_no_answer, resolve_torch_dtype
 
 
+def _model_inputs_get(model_inputs: Any, key: str, default: Any = None) -> Any:
+    getter = getattr(model_inputs, "get", None)
+    if callable(getter):
+        return getter(key, default)
+    try:
+        return model_inputs[key]
+    except (KeyError, TypeError, IndexError):
+        return default
+
+
+def _model_inputs_has(model_inputs: Any, key: str) -> bool:
+    try:
+        return key in model_inputs
+    except TypeError:
+        return False
+
+
 def configure_left_padding(processor: Any) -> Any:
     if hasattr(processor, "padding_side"):
         processor.padding_side = "left"
@@ -136,10 +153,9 @@ def load_molmo_processing_modules(model_id: str) -> tuple[Any, Any, Path]:
 
 
 def _model_inputs_batch_size(model_inputs: Any) -> int:
-    if isinstance(model_inputs, dict):
-        input_ids = model_inputs.get("input_ids")
-        if hasattr(input_ids, "shape") and len(input_ids.shape) > 0:
-            return int(input_ids.shape[0])
+    input_ids = _model_inputs_get(model_inputs, "input_ids")
+    if hasattr(input_ids, "shape") and len(input_ids.shape) > 0:
+        return int(input_ids.shape[0])
     return 1
 
 
@@ -224,12 +240,12 @@ class BaseModelWrapper:
         batch_index: int,
     ) -> int:
         del processor
-        attention_mask = model_inputs.get("attention_mask") if isinstance(model_inputs, dict) else None
+        attention_mask = _model_inputs_get(model_inputs, "attention_mask")
         if attention_mask is not None:
             nonzero = torch.nonzero(attention_mask[batch_index], as_tuple=False).flatten()
             if len(nonzero) > 0:
                 return int(nonzero[-1].item())
-        if isinstance(model_inputs, dict) and "input_ids" in model_inputs:
+        if _model_inputs_has(model_inputs, "input_ids"):
             return int(model_inputs["input_ids"][batch_index].shape[-1] - 1)
         raise ValueError("Could not resolve query token index.")
 
@@ -263,8 +279,6 @@ class BaseModelWrapper:
         model_inputs: Any,
     ) -> Any:
         del processor
-        if not isinstance(model_inputs, dict):
-            raise TypeError("model_inputs must be a mapping for prefill hidden-state extraction.")
         outputs = model(
             **model_inputs,
             return_dict=True,
@@ -424,7 +438,7 @@ class QwenVLWrapper(QwenWrapper):
         batch_index: int,
     ) -> tuple[int, int] | None:
         del processor
-        if not isinstance(model_inputs, dict) or "input_ids" not in model_inputs:
+        if not _model_inputs_has(model_inputs, "input_ids"):
             return None
         image_token_id = getattr(getattr(model, "config", None), "image_token_index", None)
         if image_token_id is None:
@@ -445,10 +459,8 @@ class QwenVLWrapper(QwenWrapper):
         batch_index: int,
     ) -> torch.Tensor | None:
         del processor, batch_index
-        if not isinstance(model_inputs, dict):
-            return None
-        pixel_values = model_inputs.get("pixel_values")
-        image_grid_thw = model_inputs.get("image_grid_thw")
+        pixel_values = _model_inputs_get(model_inputs, "pixel_values")
+        image_grid_thw = _model_inputs_get(model_inputs, "image_grid_thw")
         if pixel_values is None or image_grid_thw is None:
             return None
         if _model_inputs_batch_size(model_inputs) != 1 or int(image_grid_thw.shape[0]) != 1:
@@ -614,9 +626,7 @@ class InternVLWrapper(QwenVLWrapper):
         batch_index: int,
     ) -> torch.Tensor | None:
         del processor
-        if not isinstance(model_inputs, dict):
-            return None
-        pixel_values = model_inputs.get("pixel_values")
+        pixel_values = _model_inputs_get(model_inputs, "pixel_values")
         if pixel_values is None:
             return None
         if _model_inputs_batch_size(model_inputs) != 1 or batch_index != 0:
@@ -651,9 +661,7 @@ class LlavaOnevisionWrapper(QwenVLWrapper):
         batch_index: int,
     ) -> torch.Tensor | None:
         del processor
-        if not isinstance(model_inputs, dict):
-            return None
-        pixel_values = model_inputs.get("pixel_values")
+        pixel_values = _model_inputs_get(model_inputs, "pixel_values")
         if pixel_values is None:
             return None
 
@@ -696,7 +704,7 @@ class MolmoWrapper(BaseModelWrapper):
         batch_index: int,
     ) -> tuple[int, int] | None:
         del model, processor
-        if not isinstance(model_inputs, dict) or "image_input_idx" not in model_inputs:
+        if not _model_inputs_has(model_inputs, "image_input_idx"):
             return None
         image_input_idx = model_inputs["image_input_idx"][batch_index].reshape(-1)
         valid = image_input_idx[image_input_idx >= 0]
@@ -713,9 +721,7 @@ class MolmoWrapper(BaseModelWrapper):
         batch_index: int,
     ) -> torch.Tensor | None:
         del processor
-        if not isinstance(model_inputs, dict):
-            return None
-        images = model_inputs.get("images")
+        images = _model_inputs_get(model_inputs, "images")
         if images is None:
             return None
 
@@ -733,7 +739,7 @@ class MolmoWrapper(BaseModelWrapper):
             return None
 
         flat_features = image_features.reshape(-1, image_features.shape[-1])
-        image_masks = model_inputs.get("image_masks")
+        image_masks = _model_inputs_get(model_inputs, "image_masks")
         if image_masks is not None:
             sample_mask = image_masks[batch_index : batch_index + 1]
             mask = sample_mask.reshape(-1) > 0

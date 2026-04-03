@@ -291,6 +291,42 @@ def test_qwen_wrapper_resolves_query_token_index_from_last_non_padding_token() -
     assert index == 3
 
 
+def test_qwen_wrapper_resolves_query_token_index_from_mapping_like_inputs() -> None:
+    class FakeBatchFeature:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def get(self, key, default=None):
+            return self.payload.get(key, default)
+
+        def __contains__(self, key):
+            return key in self.payload
+
+        def __getitem__(self, key):
+            return self.payload[key]
+
+    wrapper = QwenWrapper(
+        ModelConfig(
+            name="qwen3.5-4b",
+            model_id="Qwen/Qwen3.5-4B",
+            family="qwen",
+        )
+    )
+
+    index = wrapper.resolve_query_token_index(
+        "processor",
+        model_inputs=FakeBatchFeature(
+            {
+                "input_ids": torch.tensor([[0, 10, 11, 12]]),
+                "attention_mask": torch.tensor([[0, 1, 1, 1]]),
+            }
+        ),
+        batch_index=0,
+    )
+
+    assert index == 3
+
+
 def test_qwen_text_prepare_inputs_uses_chat_template_and_device() -> None:
     class FakeBatch(dict):
         def to(self, device: str):
@@ -443,6 +479,35 @@ def test_qwenvl_wrapper_resolves_vision_token_span_from_image_token_indices() ->
     assert span == (1, 2)
 
 
+def test_qwenvl_wrapper_resolves_vision_token_span_from_mapping_like_inputs() -> None:
+    class FakeBatchFeature:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __contains__(self, key):
+            return key in self.payload
+
+        def __getitem__(self, key):
+            return self.payload[key]
+
+    wrapper = InternVLWrapper(
+        ModelConfig(
+            name="internvl3.5-8b",
+            model_id="OpenGVLab/InternVL3_5-8B-HF",
+            family="internvl",
+        )
+    )
+
+    span = wrapper.resolve_vision_token_span(
+        SimpleNamespace(config=SimpleNamespace(image_token_index=99)),
+        "processor",
+        model_inputs=FakeBatchFeature({"input_ids": torch.tensor([[7, 99, 99, 15]])}),
+        batch_index=0,
+    )
+
+    assert span == (1, 2)
+
+
 def test_qwenvl_extract_preprojector_features_uses_visual_blocks_before_merger() -> None:
     class FakeBlock:
         def __call__(self, hidden_states, **kwargs):
@@ -481,6 +546,60 @@ def test_qwenvl_extract_preprojector_features_uses_visual_blocks_before_merger()
     )
 
     assert torch.equal(features, torch.arange(8, dtype=torch.float32).reshape(4, 2) + 1)
+
+
+def test_llava_onevision_extract_preprojector_features_accepts_mapping_like_inputs() -> None:
+    class FakeBatchFeature:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def get(self, key, default=None):
+            return self.payload.get(key, default)
+
+    class FakeVisionTower:
+        def __call__(self, pixel_values, output_hidden_states: bool):
+            assert output_hidden_states is False
+            assert tuple(pixel_values.shape) == (2, 3, 4, 4)
+            return SimpleNamespace(
+                last_hidden_state=torch.tensor(
+                    [
+                        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                        [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+                    ]
+                )
+            )
+
+    wrapper = LlavaOnevisionWrapper(
+        ModelConfig(
+            name="llava-onevision-7b",
+            model_id="llava-hf/llava-onevision-qwen2-7b-ov-hf",
+            family="llava_onevision",
+        )
+    )
+
+    features = wrapper.extract_preprojector_vision_features(
+        SimpleNamespace(vision_tower=FakeVisionTower()),
+        "processor",
+        model_inputs=FakeBatchFeature(
+            {
+                "input_ids": torch.tensor([[1, 2, 3]]),
+                "pixel_values": torch.ones((1, 2, 3, 4, 4), dtype=torch.float32),
+            }
+        ),
+        batch_index=0,
+    )
+
+    assert torch.equal(
+        features,
+        torch.tensor(
+            [
+                [3.0, 4.0],
+                [5.0, 6.0],
+                [9.0, 10.0],
+                [11.0, 12.0],
+            ]
+        ),
+    )
 
 
 def test_internvl_extract_preprojector_features_flattens_visual_tokens() -> None:
