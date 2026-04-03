@@ -638,6 +638,12 @@ class LlavaOnevisionWrapper(QwenVLWrapper):
 
 
 class MolmoWrapper(BaseModelWrapper):
+    def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
+        kwargs = super().model_load_kwargs(device=device)
+        if kwargs.get("attn_implementation") == "sdpa":
+            kwargs["attn_implementation"] = "eager"
+        return kwargs
+
     def resolve_vision_token_span(
         self,
         model: Any,

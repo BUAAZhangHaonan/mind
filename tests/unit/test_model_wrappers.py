@@ -130,6 +130,38 @@ def test_load_bundle_uses_standard_transformers_kwargs(monkeypatch) -> None:
     assert captured["model"][1]["torch_dtype"] == torch.float16
 
 
+def test_molmo_wrapper_forces_eager_attention_for_model_load(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_from_pretrained(model_id: str, **kwargs):
+        captured["model_id"] = model_id
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(name="molmo-model")
+
+    monkeypatch.setattr(
+        "mind.models.wrappers.AutoModelForCausalLM.from_pretrained",
+        fake_from_pretrained,
+    )
+
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+            dtype="float16",
+            attn_implementation="sdpa",
+            trust_remote_code=True,
+        )
+    )
+
+    model = wrapper.load_model(device="cuda")
+
+    assert model.name == "molmo-model"
+    assert captured["model_id"] == "allenai/Molmo-7B-D-0924"
+    assert captured["kwargs"]["device_map"] == "auto"
+    assert captured["kwargs"]["attn_implementation"] == "eager"
+
+
 def test_qwen_wrapper_decode_generation_removes_prompt_tokens() -> None:
     class FakeProcessor:
         def batch_decode(self, token_ids, *, skip_special_tokens: bool, clean_up_tokenization_spaces: bool):

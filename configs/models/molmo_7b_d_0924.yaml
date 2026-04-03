@@ -2,5 +2,5 @@ name: molmo-7b-d-0924
 model_id: allenai/Molmo-7B-D-0924
 family: molmo
 dtype: float16
-attn_implementation: sdpa
+attn_implementation: eager
 trust_remote_code: true
