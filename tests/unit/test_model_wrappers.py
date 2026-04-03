@@ -162,6 +162,89 @@ def test_molmo_wrapper_forces_eager_attention_for_model_load(monkeypatch) -> Non
     assert captured["kwargs"]["attn_implementation"] == "eager"
 
 
+def test_molmo_wrapper_normalizes_placeholder_past_key_values(monkeypatch) -> None:
+    class FakeMolmoModel:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
+            self.calls.append(
+                {
+                    "input_ids": input_ids,
+                    "past_key_values": past_key_values,
+                    "kwargs": kwargs,
+                }
+            )
+            return {"input_ids": input_ids, "past_key_values": past_key_values, **kwargs}
+
+    fake_model = FakeMolmoModel()
+
+    monkeypatch.setattr(
+        "mind.models.wrappers.AutoModelForCausalLM.from_pretrained",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+            dtype="float16",
+            attn_implementation="eager",
+            trust_remote_code=True,
+        )
+    )
+
+    model = wrapper.load_model(device="cuda")
+    placeholder_cache = [(None, None)] * 4
+    result = model.prepare_inputs_for_generation(
+        torch.tensor([[1, 2, 3]]),
+        past_key_values=placeholder_cache,
+        attention_mask=torch.tensor([[1, 1, 1]], dtype=torch.bool),
+    )
+
+    assert fake_model.calls[0]["past_key_values"] is None
+    assert result["past_key_values"] is None
+
+
+def test_base_wrapper_extract_prefill_hidden_states_uses_forward_pass() -> None:
+    class FakeForwardModel:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def __call__(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                hidden_states=tuple(
+                    torch.full((1, 3, 2), fill_value=float(index))
+                    for index in range(5)
+                )
+            )
+
+    wrapper = QwenWrapper(
+        ModelConfig(
+            name="qwen3-vl-8b",
+            model_id="Qwen/Qwen3-VL-8B-Instruct",
+            family="qwen",
+        )
+    )
+    model = FakeForwardModel()
+
+    hidden_states = wrapper.extract_prefill_hidden_states(
+        model,
+        "processor",
+        model_inputs={
+            "input_ids": torch.tensor([[1, 2, 3]]),
+            "attention_mask": torch.tensor([[1, 1, 1]]),
+        },
+    )
+
+    assert len(hidden_states) == 5
+    assert torch.equal(hidden_states[0], torch.zeros((1, 3, 2)))
+    assert model.calls[0]["return_dict"] is True
+    assert model.calls[0]["output_hidden_states"] is True
+
+
 def test_qwen_wrapper_decode_generation_removes_prompt_tokens() -> None:
     class FakeProcessor:
         def batch_decode(self, token_ids, *, skip_special_tokens: bool, clean_up_tokenization_spaces: bool):
@@ -534,6 +617,7 @@ def test_molmo_prepare_batch_inputs_collates_variable_length_fields(tmp_path: Pa
     assert batch["input_ids"][1].tolist() == [21, 22, -1]
     assert tuple(batch["image_input_idx"].shape) == (2, 1, 2)
     assert batch["image_input_idx"][1, 0].tolist() == [0, -1]
+    assert batch["images"].dtype == torch.float16
 
 
 def test_molmo_wrapper_resolves_vision_token_span_from_image_input_idx() -> None:

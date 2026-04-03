@@ -10,6 +10,8 @@ import torch
 from mind.data import HallucinationRecord
 from mind.models import parse_yes_no_answer
 
+from .prefill import resolve_prefill_hidden_states, run_generation_with_prefill_request
+
 
 def stack_prefill_hidden_states(
     hidden_states: Sequence[torch.Tensor],
@@ -144,32 +146,27 @@ def extract_prefill_readout_entries(
         image_paths=[record.image_path for record in records],
         device=device,
     )
-    generate = getattr(wrapper, "generate", None)
-    if callable(generate):
-        generation_output = generate(
-            model,
-            processor,
-            model_inputs=model_inputs,
-            max_new_tokens=max_new_tokens,
-        )
-    else:
-        generation_output = model.generate(
-            **model_inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            return_dict_in_generate=True,
-            output_scores=True,
-            output_hidden_states=True,
-        )
-    if not generation_output.hidden_states:
-        raise ValueError("Generation output did not include hidden states.")
+    generation_output = run_generation_with_prefill_request(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        model_inputs=model_inputs,
+        max_new_tokens=max_new_tokens,
+    )
     if not generation_output.scores:
         raise ValueError("Generation output did not include token scores.")
+    prefill_hidden_states = resolve_prefill_hidden_states(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        model_inputs=model_inputs,
+        generation_output=generation_output,
+    )
 
     entries: list[dict[str, object]] = []
     for batch_index, record in enumerate(records):
         full_hidden_states = stack_prefill_hidden_states(
-            generation_output.hidden_states[0],
+            prefill_hidden_states,
             batch_index=batch_index,
         )
         answer_text = wrapper.decode_generation(

@@ -12,6 +12,58 @@ from mind.data import HallucinationRecord
 from mind.models import parse_yes_no_answer
 
 
+def run_generation_with_prefill_request(
+    *,
+    model: Any,
+    processor: Any,
+    wrapper: Any,
+    model_inputs: Any,
+    max_new_tokens: int,
+) -> Any:
+    generate = getattr(wrapper, "generate", None)
+    if callable(generate):
+        return generate(
+            model,
+            processor,
+            model_inputs=model_inputs,
+            max_new_tokens=max_new_tokens,
+        )
+    return model.generate(
+        **model_inputs,
+        max_new_tokens=max_new_tokens,
+        do_sample=False,
+        return_dict_in_generate=True,
+        output_scores=True,
+        output_hidden_states=True,
+    )
+
+
+def resolve_prefill_hidden_states(
+    *,
+    model: Any,
+    processor: Any,
+    wrapper: Any,
+    model_inputs: Any,
+    generation_output: Any,
+) -> Sequence[torch.Tensor]:
+    hidden_state_steps = getattr(generation_output, "hidden_states", None)
+    if hidden_state_steps:
+        prefill_hidden_states = hidden_state_steps[0]
+        if prefill_hidden_states is not None:
+            return prefill_hidden_states
+
+    extractor = getattr(wrapper, "extract_prefill_hidden_states", None)
+    if callable(extractor):
+        hidden_states = extractor(
+            model,
+            processor,
+            model_inputs=model_inputs,
+        )
+        if hidden_states:
+            return hidden_states
+    raise ValueError("Could not resolve prefill hidden states from generation or wrapper forward pass.")
+
+
 def select_layer_range(*, total_layers: int, count: int, range_name: str) -> list[int]:
     if count <= 0:
         raise ValueError("count must be positive")
@@ -126,31 +178,26 @@ def extract_prefill_entries(
         image_paths=[record.image_path for record in records],
         device=device,
     )
-    generate = getattr(wrapper, "generate", None)
-    if callable(generate):
-        generation_output = generate(
-            model,
-            processor,
-            model_inputs=model_inputs,
-            max_new_tokens=max_new_tokens,
-        )
-    else:
-        generation_output = model.generate(
-            **model_inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            return_dict_in_generate=True,
-            output_scores=True,
-            output_hidden_states=True,
-        )
-    if not generation_output.hidden_states:
-        raise ValueError("Generation output did not include hidden states.")
+    generation_output = run_generation_with_prefill_request(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        model_inputs=model_inputs,
+        max_new_tokens=max_new_tokens,
+    )
     if not generation_output.scores:
         raise ValueError("Generation output did not include token scores.")
+    prefill_hidden_states = resolve_prefill_hidden_states(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        model_inputs=model_inputs,
+        generation_output=generation_output,
+    )
     entries: list[dict[str, object]] = []
     for batch_index, record in enumerate(records):
         layer_vectors = extract_prefill_vectors(
-            generation_output.hidden_states[0],
+            prefill_hidden_states,
             selected_layers=selected_layers,
             token_index=token_index,
             batch_index=batch_index,

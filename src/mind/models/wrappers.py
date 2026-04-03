@@ -152,6 +152,29 @@ def _module_dtype(module: Any, fallback: torch.dtype = torch.float32) -> torch.d
         return fallback
 
 
+def _normalize_molmo_past_key_values(
+    past_key_values: Any,
+) -> Any:
+    if past_key_values is None:
+        return None
+    try:
+        entries = list(past_key_values)
+    except TypeError:
+        return past_key_values
+    if not entries:
+        return None
+    if all(
+        entry is None
+        or (
+            isinstance(entry, tuple)
+            and all(value is None for value in entry)
+        )
+        for entry in entries
+    ):
+        return None
+    return past_key_values
+
+
 @dataclass
 class BaseModelWrapper:
     """Base wrapper that normalizes model loading and prompt shape."""
@@ -231,6 +254,26 @@ class BaseModelWrapper:
     ) -> torch.Tensor | None:
         del model, processor, model_inputs, batch_index
         return None
+
+    def extract_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        if not isinstance(model_inputs, dict):
+            raise TypeError("model_inputs must be a mapping for prefill hidden-state extraction.")
+        outputs = model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+        )
+        hidden_states = getattr(outputs, "hidden_states", None)
+        if not hidden_states:
+            raise ValueError("Forward output did not include hidden states.")
+        return hidden_states
 
     def _move_batch_to_device(self, batch: Any, device: str) -> Any:
         if hasattr(batch, "to"):
@@ -738,7 +781,10 @@ class MolmoWrapper(BaseModelWrapper):
                     text=self.format_yes_no_question(question),
                 )
             )
-        return self._move_batch_to_device(collate_tensor_dicts(processed_inputs), device)
+        batch = self._move_batch_to_device(collate_tensor_dicts(processed_inputs), device)
+        if isinstance(batch, dict) and "images" in batch:
+            batch["images"] = batch["images"].to(dtype=resolve_torch_dtype(self.config.dtype))
+        return batch
 
     def prepare_inputs(
         self,
@@ -789,7 +835,28 @@ class MolmoWrapper(BaseModelWrapper):
         )
 
     def load_model(self, *, device: str = "cuda"):
-        return AutoModelForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             self.config.model_id,
             **self.model_load_kwargs(device=device),
         )
+        prepare_inputs_for_generation = getattr(model, "prepare_inputs_for_generation", None)
+        if callable(prepare_inputs_for_generation):
+            original_prepare_inputs_for_generation = prepare_inputs_for_generation
+
+            def patched_prepare_inputs_for_generation(
+                self,
+                input_ids: torch.LongTensor,
+                past_key_values: Any = None,
+                **kwargs,
+            ):
+                return original_prepare_inputs_for_generation(
+                    input_ids,
+                    past_key_values=_normalize_molmo_past_key_values(past_key_values),
+                    **kwargs,
+                )
+
+            model.prepare_inputs_for_generation = types.MethodType(
+                patched_prepare_inputs_for_generation,
+                model,
+            )
+        return model
