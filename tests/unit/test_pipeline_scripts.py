@@ -24,6 +24,7 @@ compute_baselines_script = _load_script("compute_baselines")
 compute_drift = _load_script("compute_drift")
 run_experiment = _load_script("run_experiment")
 run_halp_script = _load_script("run_halp")
+run_glsim_script = _load_script("run_glsim")
 train_detector = _load_script("train_detector")
 
 
@@ -109,6 +110,106 @@ def test_run_halp_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: P
     assert selection_path.exists()
     payload = json.loads(metrics_path.read_text(encoding="utf-8"))
     assert payload["selected_probe_counts"]["vision_only"] == 3
+
+
+def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: Path, monkeypatch) -> None:
+    class FakeTokenizer:
+        def encode(self, text: str, add_special_tokens: bool = False):
+            assert add_special_tokens is False
+            return {"dog": [2]}.get(text, [1])
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+    class FakeWrapper:
+        def load_processor(self):
+            return FakeProcessor()
+
+        def load_model(self, device: str = "cpu"):
+            del device
+            head = torch.nn.Linear(2, 4, bias=False)
+            with torch.no_grad():
+                head.weight.zero_()
+                head.weight[2, 0] = 1.0
+            return type("FakeModel", (), {"get_output_embeddings": lambda self: head})()
+
+        def prepare_inputs(self, processor, *, question: str, image_path: str | None, device: str):
+            del processor, question, image_path, device
+            return {"input_ids": torch.tensor([[9, 2, 8]], dtype=torch.long)}
+
+    monkeypatch.setattr(
+        run_glsim_script,
+        "load_yaml_config",
+        lambda path, cls: type("Cfg", (), {"name": "fake", "model_id": "fake", "family": "fake"})(),
+    )
+    monkeypatch.setattr(run_glsim_script, "create_model_wrapper", lambda config: FakeWrapper())
+
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    for index in range(12):
+        hallucination_label = 1 if index % 2 == 0 else 0
+        sign = 1.0 if hallucination_label else -1.0
+        full_hidden_states = torch.zeros((4, 3, 2), dtype=torch.float32)
+        full_hidden_states[0, 0] = torch.tensor([2.0 * sign, 0.0])
+        full_hidden_states[0, 1] = torch.tensor([1.0 * sign, 0.0])
+        full_hidden_states[0, 2] = torch.tensor([1.0 * sign, 0.0])
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "image_path": "fake.jpg",
+                "question": "Is there a dog in the image?",
+                "label": 0,
+                "parsed_answer": 1 if hallucination_label else 0,
+                "subset": "popular",
+                "object_name": "dog",
+                "query_token_index": 2,
+                "vision_token_span": [0, 1],
+                "full_hidden_states": full_hidden_states,
+            }
+        )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    output_root = tmp_path / "reports"
+    exit_code = run_glsim_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--model-config",
+            "configs/models/qwen3_vl_8b.yaml",
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-glsim",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "3",
+            "--image-layers",
+            "0,1",
+            "--text-layers",
+            "0,1",
+            "--k-values",
+            "1",
+            "--w-values",
+            "0.5",
+            "--bootstrap-resamples",
+            "50",
+            "--device",
+            "cpu",
+        ]
+    )
+
+    assert exit_code == 0
+    metrics_path = output_root / "smoke-glsim" / "glsim.json"
+    results_path = output_root / "smoke-glsim" / "glsim_results.csv"
+    selection_path = output_root / "smoke-glsim" / "glsim_selection.csv"
+    assert metrics_path.exists()
+    assert results_path.exists()
+    assert selection_path.exists()
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    assert payload["selected_config_counts"]["i0_t0_k1_w0.50"] == 3
 
 
 def test_parse_stage_list_supports_csv_and_all() -> None:
