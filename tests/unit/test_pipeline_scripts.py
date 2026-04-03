@@ -23,6 +23,7 @@ build_manifolds = _load_script("build_manifolds")
 compute_baselines_script = _load_script("compute_baselines")
 compute_drift = _load_script("compute_drift")
 run_experiment = _load_script("run_experiment")
+run_halp_script = _load_script("run_halp")
 train_detector = _load_script("train_detector")
 
 
@@ -46,6 +47,68 @@ def test_build_feature_output_path_uses_experiment_and_split_layout(tmp_path: Pa
     )
 
     assert output_path == tmp_path / "smoke-qwen3-vl" / "popular.parquet"
+
+
+def test_run_halp_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: Path) -> None:
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    for index in range(12):
+        hallucination_label = 1 if index % 2 == 0 else 0
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0,
+                "parsed_answer": 1 if hallucination_label else 0,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+                "query_token_index": 2,
+                "vision_token_span": [0, 1],
+                "vision_features": torch.tensor(
+                    [
+                        [float(hallucination_label), 0.0],
+                        [float(hallucination_label), 1.0],
+                    ]
+                ),
+                "full_hidden_states": torch.zeros((4, 3, 2), dtype=torch.float32),
+            }
+        )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    output_root = tmp_path / "reports"
+    exit_code = run_halp_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-halp",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "3",
+            "--epochs",
+            "8",
+            "--batch-size",
+            "4",
+            "--hidden-dims",
+            "8,4",
+            "--bootstrap-resamples",
+            "50",
+        ]
+    )
+
+    assert exit_code == 0
+    metrics_path = output_root / "smoke-halp" / "halp.json"
+    results_path = output_root / "smoke-halp" / "halp_results.csv"
+    selection_path = output_root / "smoke-halp" / "halp_selection.csv"
+    assert metrics_path.exists()
+    assert results_path.exists()
+    assert selection_path.exists()
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    assert payload["selected_probe_counts"]["vision_only"] == 3
 
 
 def test_parse_stage_list_supports_csv_and_all() -> None:
