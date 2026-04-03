@@ -122,7 +122,10 @@ def load_label_overrides(overrides: Path | pd.DataFrame) -> pd.DataFrame:
     override_columns = [column for column in ["sample_id", "label"] if column in override_frame.columns]
     if override_columns != ["sample_id", "label"]:
         raise ValueError("Label override file must include sample_id and label columns.")
-    return override_frame[["sample_id", "label"]].copy()
+    normalized = override_frame[["sample_id", "label"]].copy()
+    normalized["sample_id"] = normalized["sample_id"].astype(str)
+    normalized["label"] = normalized["label"].astype(int)
+    return normalized
 
 
 def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
@@ -157,7 +160,9 @@ def apply_label_overrides_to_frame(
     overrides: Path | pd.DataFrame,
 ) -> pd.DataFrame:
     override_frame = load_label_overrides(overrides)
-    merged = frame.drop(columns=["label"], errors="ignore").merge(
+    working_frame = frame.copy()
+    working_frame["sample_id"] = working_frame["sample_id"].astype(str)
+    merged = working_frame.drop(columns=["label"], errors="ignore").merge(
         override_frame.rename(columns={"label": "override_label"}),
         on="sample_id",
         how="left",
@@ -177,7 +182,7 @@ def apply_label_overrides_to_frame(
             )
         ]
     else:
-        merged["label"] = merged["override_label"].fillna(frame["label"]).astype(int)
+        merged["label"] = merged["override_label"].fillna(working_frame["label"]).astype(int)
     return merged.drop(columns=["override_label"])
 
 
