@@ -126,14 +126,23 @@ def extract_prefill_entries(
         image_paths=[record.image_path for record in records],
         device=device,
     )
-    generation_output = model.generate(
-        **model_inputs,
-        max_new_tokens=max_new_tokens,
-        do_sample=False,
-        return_dict_in_generate=True,
-        output_scores=True,
-        output_hidden_states=True,
-    )
+    generate = getattr(wrapper, "generate", None)
+    if callable(generate):
+        generation_output = generate(
+            model,
+            processor,
+            model_inputs=model_inputs,
+            max_new_tokens=max_new_tokens,
+        )
+    else:
+        generation_output = model.generate(
+            **model_inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            return_dict_in_generate=True,
+            output_scores=True,
+            output_hidden_states=True,
+        )
     if not generation_output.hidden_states:
         raise ValueError("Generation output did not include hidden states.")
     if not generation_output.scores:

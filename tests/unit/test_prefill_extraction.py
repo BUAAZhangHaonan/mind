@@ -194,6 +194,19 @@ def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
             assert torch.equal(generated_ids, torch.tensor([[10, 11, 12, 42]]))
             return "Yes"
 
+        def generate(self, model, processor, *, model_inputs, max_new_tokens: int):
+            assert processor == "processor"
+            assert max_new_tokens == 4
+            assert torch.equal(model_inputs["input_ids"], torch.tensor([[10, 11, 12]]))
+            return model.generate(
+                **model_inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                return_dict_in_generate=True,
+                output_scores=True,
+                output_hidden_states=True,
+            )
+
     class FakeModel:
         def generate(self, **kwargs):
             assert kwargs["max_new_tokens"] == 4

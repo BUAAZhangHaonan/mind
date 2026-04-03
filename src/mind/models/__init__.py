@@ -5,7 +5,9 @@ from .types import parse_yes_no_answer, resolve_torch_dtype
 from .wrappers import (
     BaseModelWrapper,
     InternVLWrapper,
+    LlavaOnevisionWrapper,
     LoadedModelBundle,
+    MolmoWrapper,
     QwenTextWrapper,
     QwenVLWrapper,
     QwenWrapper,
@@ -14,7 +16,9 @@ from .wrappers import (
 __all__ = [
     "BaseModelWrapper",
     "InternVLWrapper",
+    "LlavaOnevisionWrapper",
     "LoadedModelBundle",
+    "MolmoWrapper",
     "QwenTextWrapper",
     "QwenVLWrapper",
     "QwenWrapper",

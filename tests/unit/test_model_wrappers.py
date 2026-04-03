@@ -9,7 +9,9 @@ from PIL import Image
 from mind.config import ModelConfig
 from mind.models import (
     InternVLWrapper,
+    LlavaOnevisionWrapper,
     LoadedModelBundle,
+    MolmoWrapper,
     QwenWrapper,
     create_model_wrapper,
 )
@@ -32,6 +34,25 @@ def test_create_model_wrapper_selects_expected_family() -> None:
 
     assert isinstance(qwen_wrapper, QwenWrapper)
     assert isinstance(internvl_wrapper, InternVLWrapper)
+
+
+def test_create_model_wrapper_supports_llava_onevision_and_molmo() -> None:
+    llava_config = ModelConfig(
+        name="llava-onevision-7b",
+        model_id="llava-hf/llava-onevision-qwen2-7b-ov-hf",
+        family="llava_onevision",
+    )
+    molmo_config = ModelConfig(
+        name="molmo-7b-d-0924",
+        model_id="allenai/Molmo-7B-D-0924",
+        family="molmo",
+    )
+
+    llava_wrapper = create_model_wrapper(llava_config)
+    molmo_wrapper = create_model_wrapper(molmo_config)
+
+    assert isinstance(llava_wrapper, LlavaOnevisionWrapper)
+    assert isinstance(molmo_wrapper, MolmoWrapper)
 
 
 def test_parse_yes_no_response_strips_thinking_and_punctuation() -> None:
@@ -264,3 +285,139 @@ def test_internvl_prepare_batch_inputs_uses_padding_and_multiple_images(tmp_path
     ]
     assert len(processor.calls[2][2]) == 2
     assert processor.calls[2][4] is True
+
+
+def test_molmo_prepare_batch_inputs_collates_variable_length_fields(tmp_path: Path) -> None:
+    class FakeProcessor:
+        def __init__(self) -> None:
+            self.calls = []
+            self.tokenizer = SimpleNamespace(name="molmo-tokenizer")
+
+        def process(self, *, images, text: str):
+            self.calls.append((images, text))
+            if "plane" in text:
+                return {
+                    "input_ids": torch.tensor([11, 12, 13], dtype=torch.long),
+                    "image_input_idx": torch.tensor([[0, 1]], dtype=torch.long),
+                    "images": torch.ones((1, 2, 2), dtype=torch.float32),
+                    "image_masks": torch.ones((1, 2), dtype=torch.bool),
+                }
+            return {
+                "input_ids": torch.tensor([21, 22], dtype=torch.long),
+                "image_input_idx": torch.tensor([[0]], dtype=torch.long),
+                "images": torch.zeros((1, 1, 2), dtype=torch.float32),
+                "image_masks": torch.ones((1, 1), dtype=torch.bool),
+            }
+
+    image_path_a = tmp_path / "demo-a.png"
+    image_path_b = tmp_path / "demo-b.png"
+    Image.new("RGB", (2, 2), color="white").save(image_path_a)
+    Image.new("RGB", (2, 2), color="black").save(image_path_b)
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+        )
+    )
+
+    batch = wrapper.prepare_batch_inputs(
+        FakeProcessor(),
+        questions=["Is there a plane in the image?", "Is there a dog in the image?"],
+        image_paths=[str(image_path_a), str(image_path_b)],
+        device="cpu",
+    )
+
+    assert tuple(batch["input_ids"].shape) == (2, 3)
+    assert batch["input_ids"][1].tolist() == [21, 22, -1]
+    assert tuple(batch["image_input_idx"].shape) == (2, 1, 2)
+    assert batch["image_input_idx"][1, 0].tolist() == [0, -1]
+    assert tuple(batch["images"].shape) == (2, 1, 2, 2)
+    assert tuple(batch["image_masks"].shape) == (2, 1, 2)
+
+
+def test_molmo_generate_uses_generate_from_batch_with_tokenizer() -> None:
+    class FakeModel:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def generate_from_batch(self, batch, generation_config, **kwargs):
+            self.calls.append((batch, generation_config, kwargs))
+            return "ok"
+
+    processor = SimpleNamespace(tokenizer=SimpleNamespace(name="molmo-tokenizer"))
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+        )
+    )
+    model = FakeModel()
+
+    result = wrapper.generate(
+        model,
+        processor,
+        model_inputs={"input_ids": torch.tensor([[1, 2, 3]])},
+        max_new_tokens=4,
+    )
+
+    assert result == "ok"
+    assert model.calls[0][1].max_new_tokens == 4
+    assert model.calls[0][2]["tokenizer"] is processor.tokenizer
+    assert model.calls[0][2]["return_dict_in_generate"] is True
+    assert model.calls[0][2]["output_scores"] is True
+    assert model.calls[0][2]["output_hidden_states"] is True
+
+
+def test_molmo_load_processor_uses_local_processing_modules(tmp_path: Path, monkeypatch) -> None:
+    snapshot_root = tmp_path / "molmo"
+    snapshot_root.mkdir()
+    (snapshot_root / "image_preprocessing_molmo.py").write_text(
+        "\n".join(
+            [
+                "class MolmoImageProcessor:",
+                "    @classmethod",
+                "    def from_pretrained(cls, path):",
+                "        return cls()",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (snapshot_root / "preprocessing_molmo.py").write_text(
+        "\n".join(
+            [
+                "from .image_preprocessing_molmo import MolmoImageProcessor",
+                "class MolmoProcessor:",
+                "    def __init__(self, image_processor=None, tokenizer=None):",
+                "        self.image_processor = image_processor",
+                "        self.tokenizer = tokenizer",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class FakeTokenizer:
+        def __init__(self) -> None:
+            self.padding_side = "right"
+
+    monkeypatch.setattr("mind.models.wrappers.snapshot_download", lambda **_: str(snapshot_root))
+    monkeypatch.setattr(
+        "mind.models.wrappers.AutoTokenizer.from_pretrained",
+        lambda *args, **kwargs: FakeTokenizer(),
+    )
+
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+        )
+    )
+
+    processor = wrapper.load_processor()
+
+    assert type(processor).__name__ == "MolmoProcessor"
+    assert processor.tokenizer.padding_side == "left"
