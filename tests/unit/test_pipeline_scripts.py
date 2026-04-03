@@ -480,6 +480,23 @@ def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path) -> No
     assert "cal_drift_0" in frame.columns
 
 
+def test_compute_drift_parser_accepts_shuffled_object_scope() -> None:
+    args = compute_drift.build_parser().parse_args(
+        [
+            "--output-root",
+            "outputs/features",
+            "--experiment-name",
+            "smoke-qwen",
+            "--split",
+            "popular",
+            "--bank-scope",
+            "shuffled_object",
+        ]
+    )
+
+    assert args.bank_scope == "shuffled_object"
+
+
 def test_build_feature_frame_labels_hallucinated_positive_answers(tmp_path: Path) -> None:
     reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "dog"
     reference_root.mkdir(parents=True)

@@ -33,7 +33,7 @@ def load_reference_bank(
     model_root = reference_root / model_name
     for layer_path in model_root.glob("*/layer-*.pt"):
         object_name = layer_path.parent.name
-        if bank_scope == "object" and object_name == "__shared__":
+        if bank_scope in {"object", "shuffled_object"} and object_name == "__shared__":
             continue
         if bank_scope == "shared" and object_name != "__shared__":
             continue
@@ -52,7 +52,7 @@ def load_reference_stats(
     model_root = reference_root / model_name
     for stats_path in model_root.glob("*/stats.pt"):
         object_name = stats_path.parent.name
-        if bank_scope == "object" and object_name == "__shared__":
+        if bank_scope in {"object", "shuffled_object"} and object_name == "__shared__":
             continue
         if bank_scope == "shared" and object_name != "__shared__":
             continue
@@ -168,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--split", required=True)
-    parser.add_argument("--bank-scope", choices=["object", "shared"], default="object")
+    parser.add_argument("--bank-scope", choices=["object", "shared", "shuffled_object"], default="object")
     return parser
 
 
