@@ -16,6 +16,7 @@ from mind.evaluation.baselines import (
     build_train_eval_splits,
     resolve_feature_variant_frame,
 )
+from mind.evaluation.metrics import write_results_table
 
 
 def build_feature_output_path(
@@ -174,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     output_paths["checkpoint"].parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(checkpoint_payload, output_paths["checkpoint"])
-    results.to_csv(output_paths["results"], index=False)
+    write_results_table(results, output_paths["results"])
     print(output_paths["checkpoint"])
     print(output_paths["results"])
     return 0

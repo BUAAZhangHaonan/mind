@@ -18,6 +18,17 @@ from sklearn.metrics import (
     roc_curve,
 )
 
+RESULT_COLUMNS = (
+    "sample_id",
+    "image_id",
+    "object_name",
+    "subset",
+    "label",
+    "prediction",
+    "score",
+    "fold",
+)
+
 
 def compute_object_hallucination_label(
     *,
@@ -86,7 +97,30 @@ def write_metrics_report(payload: dict[str, dict[str, float]], output_path: str 
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def canonicalize_result_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    results = frame.copy()
+    if "sample_id" not in results.columns:
+        results["sample_id"] = [f"row-{index:06d}" for index in range(len(results))]
+    results["sample_id"] = results["sample_id"].astype(str)
+
+    defaults = {
+        "image_id": -1,
+        "object_name": "",
+        "subset": "",
+        "label": 0,
+        "prediction": 0,
+        "score": 0.0,
+        "fold": 0,
+    }
+    for column, default in defaults.items():
+        if column not in results.columns:
+            results[column] = default
+
+    results = results.loc[:, list(RESULT_COLUMNS)].sort_values("sample_id").reset_index(drop=True)
+    return results
+
+
 def write_results_table(frame: pd.DataFrame, output_path: str | Path) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(path, index=False)
+    canonicalize_result_frame(frame).to_csv(path, index=False)

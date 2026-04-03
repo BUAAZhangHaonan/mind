@@ -26,6 +26,7 @@ from .baselines import (
     resolve_yes_no_token_ids,
 )
 from .metrics import (
+    canonicalize_result_frame,
     compute_binary_metrics,
     compute_object_hallucination_label,
     evaluate_by_subset,
@@ -40,6 +41,7 @@ __all__ = [
     "build_output_baseline_frame",
     "build_raw_model_yes_no_baseline",
     "build_train_eval_splits",
+    "canonicalize_result_frame",
     "apply_label_overrides_to_entries",
     "apply_label_overrides_to_frame",
     "compute_binary_metrics",

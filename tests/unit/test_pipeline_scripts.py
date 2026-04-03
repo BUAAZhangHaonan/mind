@@ -867,9 +867,20 @@ def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_
     assert (variant_results_root / "output_p_yes.csv").exists()
 
     payload = json.loads(baselines_path.read_text(encoding="utf-8"))
+    full_results = pd.read_csv(variant_results_root / "full.csv")
     assert "full" in payload
     assert "output_p_yes" in payload
     assert "confidence_intervals" in payload["full"]
+    assert full_results.columns.tolist() == [
+        "sample_id",
+        "image_id",
+        "object_name",
+        "subset",
+        "label",
+        "prediction",
+        "score",
+        "fold",
+    ]
 
 
 def test_compute_baselines_can_apply_label_overrides_and_full_variant(tmp_path: Path) -> None:

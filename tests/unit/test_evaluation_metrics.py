@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from mind.evaluation import compute_binary_metrics, evaluate_by_subset, write_metrics_report
+from mind.evaluation import (
+    canonicalize_result_frame,
+    compute_binary_metrics,
+    evaluate_by_subset,
+    write_metrics_report,
+    write_results_table,
+)
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "evaluate.py"
@@ -55,6 +61,72 @@ def test_write_metrics_report_writes_json_payload(tmp_path: Path) -> None:
 
     restored = json.loads(output_path.read_text(encoding="utf-8"))
     assert restored == payload
+
+
+def test_canonicalize_result_frame_keeps_only_result_columns_and_synthesizes_sample_id() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "image_id": 3,
+                "object_name": "dog",
+                "subset": "popular",
+                "label": 1,
+                "prediction": 1,
+                "score": 0.9,
+                "fold": 0,
+                "raw_drift_0": 0.3,
+                "hidden_0": 4.2,
+            }
+        ]
+    )
+
+    canonical = canonicalize_result_frame(frame)
+
+    assert canonical.columns.tolist() == [
+        "sample_id",
+        "image_id",
+        "object_name",
+        "subset",
+        "label",
+        "prediction",
+        "score",
+        "fold",
+    ]
+    assert canonical.loc[0, "sample_id"] == "row-000000"
+
+
+def test_write_results_table_exports_only_canonical_columns(tmp_path: Path) -> None:
+    output_path = tmp_path / "results.csv"
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-2",
+                "image_id": 12,
+                "object_name": "dog",
+                "subset": "popular",
+                "label": 1,
+                "prediction": 1,
+                "score": 0.8,
+                "fold": 1,
+                "raw_drift_0": 3.1,
+                "hidden_0": 5.7,
+            }
+        ]
+    )
+
+    write_results_table(frame, output_path)
+
+    restored = pd.read_csv(output_path)
+    assert restored.columns.tolist() == [
+        "sample_id",
+        "image_id",
+        "object_name",
+        "subset",
+        "label",
+        "prediction",
+        "score",
+        "fold",
+    ]
 
 
 def test_build_report_paths_returns_metrics_and_results_paths(tmp_path: Path) -> None:

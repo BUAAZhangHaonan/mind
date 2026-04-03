@@ -32,6 +32,7 @@ from mind.evaluation.baselines import (
     resolve_feature_variant_frame,
     resolve_yes_no_token_ids,
 )
+from mind.evaluation.metrics import write_results_table
 
 
 KNOWN_MODEL_IDS = {
@@ -184,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
             num_folds=args.num_folds,
         )
         results_path = output_paths["variant_results"] / f"{variant_name}.csv"
-        results.to_csv(results_path, index=False)
+        write_results_table(results, results_path)
         confidence_intervals = compute_bootstrap_confidence_intervals(
             results,
             group_column=group_column,
