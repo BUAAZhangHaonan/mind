@@ -2,7 +2,7 @@
 
 ## Title
 
-MIND: Multi-scale Internal Normal-residual Drift for Early Multimodal Hallucination Detection
+MIND: Multi-scale Internal Normal-residual Drift for Early Object Hallucination Detection
 
 ## Name Meaning
 
@@ -12,7 +12,7 @@ MIND: Multi-scale Internal Normal-residual Drift for Early Multimodal Hallucinat
 
 ## One-Sentence Claim
 
-Hallucination leaves a compressible, interpretable geometric drift signal in pre-answer hidden states, and that low-dimensional signal survives grouped evaluation across model families even when a full hidden-state linear probe still performs as an upper baseline.
+Object hallucination leaves a compressible, interpretable geometric drift signal in pre-answer hidden states, and that low-dimensional signal survives grouped evaluation across model families even when a full hidden-state linear probe still performs as an upper baseline.
 
 ## Abstract Skeleton
 
@@ -31,9 +31,9 @@ Method:
 
 Evaluation:
 
-- Primary protocol: `image_grouped` split on POPE popular
-- Secondary protocol: `object_heldout`
-- Main comparisons: drift-only, no-manifold, and linear probe
+- Current evidence: `image_grouped` on POPE popular, RePOPE relabeling, and POPE adversarial
+- Next-round expansion: DASH-B on the same object yes-no task
+- Main comparisons: output-side confidence baselines, drift-only, no-manifold, and linear probe
 
 Result:
 
@@ -61,6 +61,7 @@ Takeaway:
 ### 2. Related Work
 
 - POPE-style object hallucination benchmarking and relabeling
+- Output-side confidence and logit-margin hallucination baselines
 - Internal-state probing and early warning for multimodal hallucination
 - Local representation geometry and manifold residuals
 - Multi-scale analysis across layers as a descriptive tool, not the theoretical center
@@ -98,21 +99,36 @@ Takeaway:
 #### 3.5 Detector and Protocol
 
 - Headline detector: logistic regression
+- Output-side checks: `p_yes`, yes-minus-no logit margin, and chosen-answer confidence
 - Upper baseline: direct hidden-state linear probe
 - Main protocol: `image_grouped`
 - Secondary protocol: `object_heldout`
 
 ### 4. Experiments
 
-- Benchmark: POPE popular for the correction phase
-- Models:
+- Current benchmark set:
+  - POPE popular
+  - POPE adversarial
+  - RePOPE relabeling of the popular predictions
+- Next benchmark to add:
+  - DASH-B
+- Current models:
   - `Qwen/Qwen3-VL-8B-Instruct`
   - `OpenGVLab/InternVL3_5-8B-HF`
+- Next models to add:
+  - `llava-hf/llava-onevision-qwen2-7b-ov-hf`
+  - `allenai/Molmo-7B-D-0924`
 - Baselines:
-  - raw yes-no answer performance
+  - `p_yes`
+  - yes-minus-no logit margin
+  - chosen-answer confidence
   - drift-only
   - no-manifold
   - linear probe
+  - raw curve only
+  - raw + calibrated simple stats
+  - raw + calibrated full curve
+  - raw + calibrated Haar
 
 ### 5. Main Results
 
@@ -155,7 +171,7 @@ Takeaway:
 ### 6. Discussion
 
 - The core idea is manifold drift, not Haar itself.
-- Wavelets stay in the paper as a compact way to describe variation across layers.
+- Wavelets stay in the paper only if they beat simpler curve summaries in the Phase One ablation.
 - The corrected results support a modest but solid claim:
   - low-dimensional geometry-aware early warning works
   - it is interpretable

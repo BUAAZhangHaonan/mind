@@ -42,8 +42,9 @@ Fixed scope:
 - no segmentation branch
 - no attention-entropy observer branch
 - no image perturbation or counterfactual editing branch
-- POPE as the main benchmark
+- POPE as the current benchmark base
 - RePOPE as the relabel follow-up on the same predictions
+- DASH-B as the next object-only benchmark in the same normalization path
 
 Method summary:
 
@@ -144,6 +145,9 @@ Important model-loading note:
   - `image_grouped`
   - `object_heldout`
 - baselines:
+  - `p_yes`
+  - yes-minus-no logit margin
+  - chosen-answer confidence
   - drift-only
   - no-manifold
   - linear probe

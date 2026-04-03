@@ -95,6 +95,13 @@ def test_export_paper_package_writes_closeout_tables_and_figures(tmp_path: Path)
         "drift_only": _metrics(0.85, 0.12, 0.03, 0.0, 0.96, 0.0, 0.0, 0.0),
         "no_manifold": _metrics(0.83, 0.20, 0.08, 0.0, 0.96, 0.0, 0.0, 0.0),
         "linear_probe": _metrics(0.92, 0.38, 0.25, 0.42, 0.96, 0.45, 0.39, 0.02),
+        "output_p_yes": _metrics(0.89, 0.24, 0.12, 0.0, 0.95, 0.0, 0.0, 0.0),
+        "output_logit_margin": _metrics(0.90, 0.26, 0.15, 0.0, 0.95, 0.0, 0.0, 0.0),
+        "output_chosen_answer_confidence": _metrics(0.88, 0.22, 0.10, 0.0, 0.95, 0.0, 0.0, 0.0),
+        "raw_curve_only": _metrics(0.86, 0.17, 0.07, 0.0, 0.95, 0.0, 0.0, 0.0),
+        "raw_plus_calibrated_simple": _metrics(0.90, 0.27, 0.13, 0.0, 0.95, 0.0, 0.0, 0.0),
+        "raw_plus_calibrated_full_curve": _metrics(0.91, 0.29, 0.14, 0.0, 0.95, 0.0, 0.0, 0.0),
+        "raw_plus_calibrated_haar": _metrics(0.91, 0.28, 0.14, 0.0, 0.95, 0.0, 0.0, 0.0),
     }
     qwen_object_baselines = {
         "full": qwen_object,
@@ -105,6 +112,13 @@ def test_export_paper_package_writes_closeout_tables_and_figures(tmp_path: Path)
         "drift_only": _metrics(0.88, 0.43, 0.17, 0.11, 0.92, 0.64, 0.06, 0.0),
         "no_manifold": _metrics(0.86, 0.40, 0.16, 0.24, 0.92, 0.60, 0.16, 0.01),
         "linear_probe": _metrics(0.94, 0.66, 0.32, 0.64, 0.93, 0.56, 0.73, 0.05),
+        "output_p_yes": _metrics(0.90, 0.48, 0.21, 0.0, 0.92, 0.0, 0.0, 0.0),
+        "output_logit_margin": _metrics(0.91, 0.50, 0.23, 0.0, 0.92, 0.0, 0.0, 0.0),
+        "output_chosen_answer_confidence": _metrics(0.89, 0.47, 0.20, 0.0, 0.92, 0.0, 0.0, 0.0),
+        "raw_curve_only": _metrics(0.89, 0.45, 0.18, 0.0, 0.92, 0.0, 0.0, 0.0),
+        "raw_plus_calibrated_simple": _metrics(0.91, 0.51, 0.24, 0.0, 0.92, 0.0, 0.0, 0.0),
+        "raw_plus_calibrated_full_curve": _metrics(0.92, 0.53, 0.25, 0.0, 0.92, 0.0, 0.0, 0.0),
+        "raw_plus_calibrated_haar": _metrics(0.92, 0.52, 0.25, 0.0, 0.92, 0.0, 0.0, 0.0),
     }
     intern_object_baselines = {
         "full": intern_object,
@@ -135,12 +149,14 @@ def test_export_paper_package_writes_closeout_tables_and_figures(tmp_path: Path)
     table1 = pd.read_csv(outputs["table1_csv"])
     table2 = pd.read_csv(outputs["table2_csv"])
     table3 = pd.read_csv(outputs["table3_csv"])
+    table4 = pd.read_csv(outputs["table4_csv"])
     manifest = json.loads(outputs["figure_manifest"].read_text(encoding="utf-8"))
 
     assert list(table1.columns)[1:] == paper_export.METRIC_ORDER
     assert len(table1) == 6
     assert len(table2) == 10
     assert len(table3) == 6
+    assert len(table4) == 18
 
     qwen_repope_row = table1.loc[table1["setting"] == "Qwen popular + RePOPE"].iloc[0]
     assert qwen_repope_row["roc_auc"] == qwen_repope["roc_auc"]
@@ -156,6 +172,11 @@ def test_export_paper_package_writes_closeout_tables_and_figures(tmp_path: Path)
         (table3["model"] == "Qwen3-VL-8B") & (table3["variant"] == "linear probe")
     ].iloc[0]
     assert qwen_linear_object_row["roc_auc"] == qwen_object_baselines["linear_probe"]["roc_auc"]
+
+    qwen_output_baseline_row = table4.loc[
+        (table4["model"] == "Qwen3-VL-8B") & (table4["variant"] == "output baseline: p(yes)")
+    ].iloc[0]
+    assert qwen_output_baseline_row["roc_auc"] == qwen_baselines["output_p_yes"]["roc_auc"]
 
     assert sorted(manifest) == ["figure1", "figure2", "figure3"]
     for payload in manifest.values():

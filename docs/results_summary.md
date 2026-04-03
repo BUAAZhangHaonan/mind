@@ -1,5 +1,11 @@
 # MIND Results Summary
 
+Scope note:
+
+- the paper scope is now object hallucination only
+- the current evidence comes from POPE popular, POPE adversarial, and RePOPE relabeling
+- DASH-B, LLaVA-OneVision, and Molmo are wired into the repo as the next execution step, not as completed results
+
 ## Correction Phase
 
 This file now treats the 2026-03-30 correction phase as the main result set for the paper decision.
@@ -19,6 +25,32 @@ All corrected outputs live under:
 - `outputs/correction_phase/features/`
 - `outputs/correction_phase/reports/`
 - `outputs/correction_phase/plots/`
+
+## Phase-One Truth-Finding Artifacts
+
+The baseline pass now exports more than a single summary number.
+
+New report files for each experiment:
+
+- `baselines.json`
+- `ablations.csv`
+- `split_sensitivity.csv`
+- `variant_results/*.csv`
+
+What these new files cover:
+
+- one-feature output baselines:
+  - `p_yes`
+  - yes-minus-no logit margin
+  - chosen-answer confidence
+- feature ablations:
+  - raw curve only
+  - raw + calibrated simple stats
+  - raw + calibrated full curve
+  - raw + calibrated Haar
+- grouped uncertainty:
+  - bootstrap confidence intervals
+  - repeated grouped split sensitivity across fixed random seeds
 
 ## Closeout Follow-up: 2026-04-01
 

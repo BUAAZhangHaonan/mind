@@ -33,6 +33,18 @@ MODEL_LABELS = {
     "internvl": "InternVL3.5-8B",
 }
 
+PHASE_ONE_VARIANTS = [
+    ("full", "full MIND"),
+    ("linear_probe", "linear probe"),
+    ("output_p_yes", "output baseline: p(yes)"),
+    ("output_logit_margin", "output baseline: yes-no logit margin"),
+    ("output_chosen_answer_confidence", "output baseline: chosen-answer confidence"),
+    ("raw_curve_only", "raw curve only"),
+    ("raw_plus_calibrated_simple", "raw + calibrated simple stats"),
+    ("raw_plus_calibrated_full_curve", "raw + calibrated full curve"),
+    ("raw_plus_calibrated_haar", "raw + calibrated Haar"),
+]
+
 EXPERIMENTS = {
     "qwen_popular": "correction-qwen3-vl-8b-popular",
     "qwen_popular_shared": "correction-qwen3-vl-8b-popular-shared",
@@ -61,6 +73,8 @@ def build_output_paths(output_root: Path) -> dict[str, Path]:
         "table2_md": tables_root / "table2_structure_comparison.md",
         "table3_csv": tables_root / "table3_object_transfer_boundary.csv",
         "table3_md": tables_root / "table3_object_transfer_boundary.md",
+        "table4_csv": tables_root / "table4_phase1_truth_checks.csv",
+        "table4_md": tables_root / "table4_phase1_truth_checks.md",
         "figure1": figures_root / "figure1_method_diagram.png",
         "figure2": figures_root / "figure2_popular_grouped_curves.png",
         "figure3": figures_root / "figure3_protocol_comparison.png",
@@ -175,6 +189,46 @@ def build_table3(reports_root: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)[["model", "variant", *METRIC_ORDER]]
 
 
+def _format_ci(payload: dict[str, object], metric: str) -> str:
+    confidence_intervals = payload.get("confidence_intervals")
+    if not isinstance(confidence_intervals, dict):
+        return ""
+    interval = confidence_intervals.get(metric)
+    if not isinstance(interval, dict):
+        return ""
+    lower = interval.get("lower")
+    upper = interval.get("upper")
+    if lower is None or upper is None:
+        return ""
+    return f"[{float(lower):.4f}, {float(upper):.4f}]"
+
+
+def build_table4(reports_root: Path) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    for model_key in ["qwen", "internvl"]:
+        experiment_name = EXPERIMENTS[f"{model_key}_popular"]
+        baselines = _load_json(reports_root / experiment_name / "baselines.json")
+        for variant, label in PHASE_ONE_VARIANTS:
+            payload = baselines.get(variant)
+            if not isinstance(payload, dict):
+                continue
+            rows.append(
+                {
+                    "model": MODEL_LABELS[model_key],
+                    "variant": label,
+                    "roc_auc": float(payload["roc_auc"]),
+                    "roc_auc_ci": _format_ci(payload, "roc_auc"),
+                    "pr_auc": float(payload["pr_auc"]),
+                    "pr_auc_ci": _format_ci(payload, "pr_auc"),
+                    "result_path": str(payload.get("result_path", "")),
+                }
+            )
+    columns = ["model", "variant", "roc_auc", "roc_auc_ci", "pr_auc", "pr_auc_ci", "result_path"]
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows)[columns]
+
+
 def _table_to_markdown(frame: pd.DataFrame) -> str:
     columns = frame.columns.tolist()
     header = "| " + " | ".join(columns) + " |"
@@ -212,7 +266,7 @@ def plot_method_diagram(output_path: Path) -> None:
         "Selected pre-answer\nhidden states",
         "Grounded reference bank\n(object or shared)",
         "Layerwise manifold\ndrift curve",
-        "Calibrated wavelets +\nraw magnitude",
+        "Curve summary +\nraw magnitude",
         "Lightweight early-warning\nscore",
     ]
     x_positions = np.linspace(0.08, 0.92, len(steps))
@@ -244,7 +298,7 @@ def plot_method_diagram(output_path: Path) -> None:
     axis.text(
         0.5,
         0.14,
-        "Ranking-oriented early warning: compressible geometric drift before answer generation",
+        "Object-hallucination early warning from compressible geometric drift before answer generation",
         ha="center",
         va="center",
         fontsize=11,
@@ -342,10 +396,12 @@ def export_paper_package(*, reports_root: Path, output_root: Path) -> dict[str, 
     table1 = build_table1(reports_root)
     table2 = build_table2(reports_root)
     table3 = build_table3(reports_root)
+    table4 = build_table4(reports_root)
 
     write_table_bundle(table1, csv_path=paths["table1_csv"], markdown_path=paths["table1_md"])
     write_table_bundle(table2, csv_path=paths["table2_csv"], markdown_path=paths["table2_md"])
     write_table_bundle(table3, csv_path=paths["table3_csv"], markdown_path=paths["table3_md"])
+    write_table_bundle(table4, csv_path=paths["table4_csv"], markdown_path=paths["table4_md"])
 
     plot_method_diagram(paths["figure1"])
     plot_popular_curve_panel(reports_root, paths["figure2"])

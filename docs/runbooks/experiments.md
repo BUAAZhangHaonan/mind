@@ -9,7 +9,25 @@ make env
 make verify-env
 make verify-model MODEL_ID=Qwen/Qwen3-VL-8B-Instruct
 make verify-model MODEL_ID=OpenGVLab/InternVL3_5-8B-HF
+make verify-model MODEL_ID=llava-hf/llava-onevision-qwen2-7b-ov-hf
 make test
+```
+
+Processor smoke checks for the added model families:
+
+```bash
+conda run --no-capture-output -n mind-py311 python - <<'PY'
+from mind.config import ModelConfig
+from mind.models import create_model_wrapper
+
+for name, model_id, family in [
+    ("llava-onevision-7b", "llava-hf/llava-onevision-qwen2-7b-ov-hf", "llava_onevision"),
+    ("molmo-7b-d-0924", "allenai/Molmo-7B-D-0924", "molmo"),
+]:
+    wrapper = create_model_wrapper(ModelConfig(name=name, model_id=model_id, family=family))
+    processor = wrapper.load_processor()
+    print(name, type(processor).__name__)
+PY
 ```
 
 Verified result in this session:
@@ -17,6 +35,7 @@ Verified result in this session:
 - `scripts/verify_env.py` and direct PyTorch checks see `2 x NVIDIA A100 80GB PCIe`
 - Hugging Face config and processor loading worked through `HF_ENDPOINT=https://hf-mirror.com`
 - the full unit and integration suite passed with `93` tests
+- the Phase One baseline path now writes saved per-variant result files and grouped uncertainty artifacts
 - the project now uses one canonical environment only: `mind-py311`
 - the answer prompt was tightened to one-word yes/no output and the extraction scripts now run with `--max-new-tokens 1`
 - if you switch branches or worktrees, run `make install` again so the editable package points at the active checkout
@@ -110,7 +129,9 @@ conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py 
   --output-root outputs/correction_phase/reports \
   --experiment-name correction-qwen3-vl-8b-popular \
   --split-strategy image_grouped \
-  --num-folds 5
+  --num-folds 5 \
+  --bootstrap-resamples 1000 \
+  --split-seeds 13,17,19,23,29
 ```
 
 InternVL:
@@ -133,8 +154,40 @@ conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py 
   --output-root outputs/correction_phase/reports \
   --experiment-name correction-internvl3.5-8b-popular \
   --split-strategy image_grouped \
-  --num-folds 5
+  --num-folds 5 \
+  --bootstrap-resamples 1000 \
+  --split-seeds 13,17,19,23,29
 ```
+
+The baseline export now writes:
+
+- `baselines.json`
+- `ablations.csv`
+- `split_sensitivity.csv`
+- `variant_results/*.csv`
+
+## 2B. Generic Object Yes-No Normalization
+
+POPE, RePOPE, and DASH-B now go through the same normalization path.
+
+Example:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/prepare_data.py \
+  normalize-object-yes-no \
+  --source data/dash_b/main.jsonl \
+  --output outputs/normalized/dash-b/main.jsonl \
+  --subset main \
+  --split val \
+  --source-dataset dash-b \
+  --question-template "Can you see a {object_name} in this image?"
+```
+
+Config files added for this next round:
+
+- `configs/data/dash_b.yaml`
+- `configs/models/llava_onevision_7b.yaml`
+- `configs/models/molmo_7b_d_0924.yaml`
 
 ### Legacy comparison: `row`
 
