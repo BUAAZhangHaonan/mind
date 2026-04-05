@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pandas as pd
 import pytest
 import torch
@@ -11,6 +12,7 @@ from mind.evaluation.baselines import (
     apply_label_overrides_to_entries,
     apply_label_overrides_to_frame,
     build_feature_variant_frames,
+    build_linear_probe_frame,
     build_no_manifold_feature_frame,
     build_output_baseline_frame,
     build_raw_model_yes_no_baseline,
@@ -218,6 +220,37 @@ def test_build_no_manifold_feature_frame_can_use_shared_bank() -> None:
 
     assert sorted(frame["sample_id"].tolist()) == ["cat-sample", "dog-sample"]
     assert "raw_drift_0" in frame.columns
+
+
+def test_build_linear_probe_frame_keeps_hidden_features_dense_float32() -> None:
+    frame = build_linear_probe_frame(
+        [
+            {
+                "sample_id": "sample-1",
+                "image_id": 11,
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "layer_vectors": torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32),
+            },
+            {
+                "sample_id": "sample-2",
+                "image_id": 12,
+                "label": 0,
+                "parsed_answer": 0,
+                "subset": "popular",
+                "object_name": "cat",
+                "layer_vectors": torch.tensor([[5.0, 6.0], [7.0, 8.0]], dtype=torch.float32),
+            },
+        ]
+    )
+
+    hidden_columns = [column for column in frame.columns if column.startswith("hidden_")]
+    assert hidden_columns == ["hidden_0", "hidden_1", "hidden_2", "hidden_3"]
+    assert set(frame[hidden_columns].dtypes.astype(str)) == {"float32"}
+    assert np.isclose(frame.loc[0, "hidden_0"], 1.0)
+    assert np.isclose(frame.loc[1, "hidden_3"], 8.0)
 
 
 def test_apply_label_overrides_to_entries_updates_ground_truth_labels() -> None:

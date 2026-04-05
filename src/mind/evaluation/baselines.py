@@ -449,10 +449,24 @@ def build_no_manifold_feature_frame(
 
 
 def build_linear_probe_frame(cache_entries: Sequence[dict[str, object]]) -> pd.DataFrame:
-    rows: list[dict[str, object]] = []
-    for entry in cache_entries:
-        flat = entry["layer_vectors"].reshape(-1).to(dtype=torch.float32)
-        rows.append(
+    if not cache_entries:
+        return pd.DataFrame()
+
+    first_flat = torch.as_tensor(
+        cache_entries[0]["layer_vectors"],
+        dtype=torch.float32,
+    ).reshape(-1)
+    hidden_matrix = np.empty((len(cache_entries), int(first_flat.numel())), dtype=np.float32)
+    metadata_rows: list[dict[str, object]] = []
+
+    for row_index, entry in enumerate(cache_entries):
+        flat = torch.as_tensor(entry["layer_vectors"], dtype=torch.float32).reshape(-1)
+        if flat.numel() != hidden_matrix.shape[1]:
+            raise ValueError(
+                "All linear-probe cache entries must share the same flattened hidden-state size."
+            )
+        hidden_matrix[row_index, :] = flat.cpu().numpy()
+        metadata_rows.append(
             {
                 "sample_id": entry["sample_id"],
                 "image_id": int(entry.get("image_id", -1)),
@@ -466,10 +480,16 @@ def build_linear_probe_frame(cache_entries: Sequence[dict[str, object]]) -> pd.D
                 ),
                 "subset": entry["subset"],
                 "object_name": entry["object_name"],
-                **{f"hidden_{index}": float(value) for index, value in enumerate(flat.tolist())},
             }
         )
-    return pd.DataFrame(rows)
+
+    metadata_frame = pd.DataFrame(metadata_rows)
+    hidden_frame = pd.DataFrame(
+        hidden_matrix,
+        columns=[f"hidden_{index}" for index in range(hidden_matrix.shape[1])],
+        dtype=np.float32,
+    )
+    return pd.concat([metadata_frame, hidden_frame], axis=1)
 
 
 def build_train_eval_splits(
