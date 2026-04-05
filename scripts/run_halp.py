@@ -12,6 +12,7 @@ import pandas as pd
 from mind.comparators import HALPProbeConfig, build_halp_probe_frames, evaluate_halp_nested
 from mind.comparators.halp import summarize_halp_results
 from mind.evaluation.baselines import apply_label_overrides_to_entries, load_cache_entries
+from mind.evaluation.metrics import write_results_table
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -92,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     output_paths = build_output_paths(args.output_root, args.experiment_name)
     output_paths["metrics"].parent.mkdir(parents=True, exist_ok=True)
     output_paths["metrics"].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    results.to_csv(output_paths["results"], index=False)
+    write_results_table(results, output_paths["results"], extra_columns=("selected_probe",))
     selection.to_csv(output_paths["selection"], index=False)
     print(output_paths["metrics"])
     print(output_paths["results"])

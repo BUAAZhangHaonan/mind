@@ -109,7 +109,19 @@ def test_run_halp_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: P
     assert results_path.exists()
     assert selection_path.exists()
     payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    results = pd.read_csv(results_path)
     assert payload["selected_probe_counts"]["vision_only"] == 3
+    assert results.columns.tolist() == [
+        "sample_id",
+        "image_id",
+        "object_name",
+        "subset",
+        "label",
+        "prediction",
+        "score",
+        "fold",
+        "selected_probe",
+    ]
 
 
 def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: Path, monkeypatch) -> None:
@@ -209,7 +221,19 @@ def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: 
     assert results_path.exists()
     assert selection_path.exists()
     payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    results = pd.read_csv(results_path)
     assert payload["selected_config_counts"]["i0_t0_k1_w0.50"] == 3
+    assert results.columns.tolist() == [
+        "sample_id",
+        "image_id",
+        "object_name",
+        "subset",
+        "label",
+        "prediction",
+        "score",
+        "fold",
+        "selected_config",
+    ]
 
 
 def test_parse_stage_list_supports_csv_and_all() -> None:

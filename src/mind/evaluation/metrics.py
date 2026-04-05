@@ -97,7 +97,11 @@ def write_metrics_report(payload: dict[str, dict[str, float]], output_path: str 
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def canonicalize_result_frame(frame: pd.DataFrame) -> pd.DataFrame:
+def canonicalize_result_frame(
+    frame: pd.DataFrame,
+    *,
+    extra_columns: tuple[str, ...] | list[str] = (),
+) -> pd.DataFrame:
     results = frame.copy()
     if "sample_id" not in results.columns:
         results["sample_id"] = [f"row-{index:06d}" for index in range(len(results))]
@@ -116,11 +120,22 @@ def canonicalize_result_frame(frame: pd.DataFrame) -> pd.DataFrame:
         if column not in results.columns:
             results[column] = default
 
-    results = results.loc[:, list(RESULT_COLUMNS)].sort_values("sample_id").reset_index(drop=True)
+    ordered_columns = list(RESULT_COLUMNS)
+    for column in extra_columns:
+        if column not in results.columns:
+            results[column] = ""
+        ordered_columns.append(column)
+
+    results = results.loc[:, ordered_columns].sort_values("sample_id").reset_index(drop=True)
     return results
 
 
-def write_results_table(frame: pd.DataFrame, output_path: str | Path) -> None:
+def write_results_table(
+    frame: pd.DataFrame,
+    output_path: str | Path,
+    *,
+    extra_columns: tuple[str, ...] | list[str] = (),
+) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    canonicalize_result_frame(frame).to_csv(path, index=False)
+    canonicalize_result_frame(frame, extra_columns=extra_columns).to_csv(path, index=False)

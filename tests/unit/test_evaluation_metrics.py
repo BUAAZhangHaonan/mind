@@ -129,6 +129,42 @@ def test_write_results_table_exports_only_canonical_columns(tmp_path: Path) -> N
     ]
 
 
+def test_write_results_table_preserves_requested_extra_columns(tmp_path: Path) -> None:
+    output_path = tmp_path / "results.csv"
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample-2",
+                "image_id": 12,
+                "object_name": "dog",
+                "subset": "popular",
+                "label": 1,
+                "prediction": 1,
+                "score": 0.8,
+                "fold": 1,
+                "selected_probe": "vision_only",
+                "raw_drift_0": 3.1,
+            }
+        ]
+    )
+
+    write_results_table(frame, output_path, extra_columns=("selected_probe",))
+
+    restored = pd.read_csv(output_path)
+    assert restored.columns.tolist() == [
+        "sample_id",
+        "image_id",
+        "object_name",
+        "subset",
+        "label",
+        "prediction",
+        "score",
+        "fold",
+        "selected_probe",
+    ]
+    assert restored.loc[0, "selected_probe"] == "vision_only"
+
+
 def test_build_report_paths_returns_metrics_and_results_paths(tmp_path: Path) -> None:
     paths = evaluate.build_report_paths(output_root=tmp_path, experiment_name="smoke-qwen3-vl")
 

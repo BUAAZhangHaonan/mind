@@ -16,6 +16,7 @@ from mind.comparators import (
 from mind.comparators.glsim import summarize_glsim_results
 from mind.config import ModelConfig, load_yaml_config
 from mind.evaluation.baselines import apply_label_overrides_to_entries, load_cache_entries
+from mind.evaluation.metrics import write_results_table
 from mind.models import create_model_wrapper
 
 
@@ -120,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     output_paths = build_output_paths(args.output_root, args.experiment_name)
     output_paths["metrics"].parent.mkdir(parents=True, exist_ok=True)
     output_paths["metrics"].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    results.to_csv(output_paths["results"], index=False)
+    write_results_table(results, output_paths["results"], extra_columns=("selected_config",))
     selection.to_csv(output_paths["selection"], index=False)
     print(output_paths["metrics"])
     print(output_paths["results"])
