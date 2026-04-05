@@ -1195,6 +1195,106 @@ def test_compute_baselines_can_merge_selected_variant_runs(tmp_path: Path) -> No
     }
 
 
+def test_compute_baselines_skips_unselected_heavy_variant_builders(tmp_path: Path, monkeypatch) -> None:
+    features_path = tmp_path / "features.parquet"
+    cache_root = tmp_path / "cache"
+    reference_root = tmp_path / "reference"
+    reports_root = tmp_path / "reports"
+    cache_root.mkdir()
+    (reference_root / "qwen3-vl-8b" / "dog").mkdir(parents=True)
+
+    pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0 if index % 2 else 1,
+                "answer_label": index % 2,
+                "label": index % 2,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": float(index),
+                "raw_drift_1": float(index) + 0.25,
+                "cal_drift_0": float(index) * 0.5,
+                "cal_drift_1": float(index) * 0.5 + 0.1,
+                "cal_mean_drift": float(index) * 0.5 + 0.05,
+                "cal_max_drift": float(index) * 0.5 + 0.1,
+                "cal_approx_energy": float(index) + 1.0,
+                "cal_detail_energy_l1": float(index) + 0.5,
+            }
+            for index in range(8)
+        ]
+    ).to_parquet(features_path, index=False)
+    torch.save(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0 if index % 2 else 1,
+                "parsed_answer": index % 2,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8, 13],
+                "layer_vectors": torch.tensor(
+                    [
+                        [0.1 + 0.1 * index, 0.2, 0.3],
+                        [0.2 + 0.1 * index, 0.3, 0.4],
+                    ],
+                    dtype=torch.float32,
+                ),
+                "first_token_logits": torch.tensor(
+                    [0.0, 3.0 if index % 2 else -1.0, 3.0 if index % 2 == 0 else -1.0],
+                    dtype=torch.float32,
+                ),
+            }
+            for index in range(8)
+        ],
+        cache_root / "shard-00000.pt",
+    )
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("unexpected heavy builder call")
+
+    monkeypatch.setattr(compute_baselines_script, "build_linear_probe_frame", _fail)
+    monkeypatch.setattr(compute_baselines_script, "build_no_manifold_feature_frame", _fail)
+
+    exit_code = compute_baselines_script.main(
+        [
+            "--features-path",
+            str(features_path),
+            "--cache-path",
+            str(cache_root),
+            "--reference-root",
+            str(reference_root),
+            "--model-name",
+            "qwen3-vl-8b",
+            "--output-root",
+            str(reports_root),
+            "--experiment-name",
+            "smoke-baselines-fast-path",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "2",
+            "--bootstrap-resamples",
+            "16",
+            "--split-seeds",
+            "3,5",
+            "--yes-token-id",
+            "1",
+            "--no-token-id",
+            "2",
+            "--variants",
+            "full,output_p_yes",
+        ]
+    )
+
+    assert exit_code == 0
+    variant_results_root = reports_root / "smoke-baselines-fast-path" / "variant_results"
+    assert (variant_results_root / "full.csv").exists()
+    assert (variant_results_root / "output_p_yes.csv").exists()
+
+
 def test_compute_baselines_prefers_known_token_ids_before_processor_lookup(monkeypatch) -> None:
     monkeypatch.setattr(
         compute_baselines_script.AutoProcessor,

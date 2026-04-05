@@ -194,56 +194,81 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    selected_variants = parse_variant_list(args.variants)
     features = pd.read_parquet(args.features_path)
     cache_entries = load_cache_entries(args.cache_path)
     if args.label_overrides is not None:
         features = apply_label_overrides_to_frame(features, args.label_overrides)
         cache_entries = apply_label_overrides_to_entries(cache_entries, args.label_overrides)
-    reference_bank = load_reference_bank(
-        args.reference_root,
-        args.model_name,
-        bank_scope=args.bank_scope,
-    )
-    reference_stats = load_reference_stats(
-        args.reference_root,
-        args.model_name,
-        bank_scope=args.bank_scope,
-    )
-    no_manifold_frame = build_no_manifold_feature_frame(
-        cache_entries=cache_entries,
-        reference_bank=reference_bank,
-        reference_stats=reference_stats,
-        bank_scope=args.bank_scope,
-    )
-    linear_probe_frame = build_linear_probe_frame(cache_entries)
-    yes_token_ids, no_token_ids = resolve_token_ids(
-        model_name=args.model_name,
-        model_id=args.model_id,
-        yes_token_ids=args.yes_token_id,
-        no_token_ids=args.no_token_id,
-    )
-    output_baseline_frame = build_output_baseline_frame(
-        cache_entries,
-        yes_token_ids=yes_token_ids,
-        no_token_ids=no_token_ids,
-    )
-    feature_variants = build_feature_variant_frames(features)
-    full_frame = resolve_feature_variant_frame(features, args.full_variant)
     split_seeds = parse_int_list(args.split_seeds)
-    selected_variants = parse_variant_list(args.variants)
 
-    variants: dict[str, tuple[pd.DataFrame, list[str]]] = {
-        "full": (full_frame, feature_columns(full_frame)),
-        "drift_only": (features, drift_only_columns(features)),
-        "no_manifold": (no_manifold_frame, feature_columns(no_manifold_frame)),
-        "linear_probe": (linear_probe_frame, feature_columns(linear_probe_frame)),
-        "output_p_yes": (output_baseline_frame, ["p_yes"]),
-        "output_logit_margin": (output_baseline_frame, ["yes_logit_margin"]),
-        "output_chosen_answer_confidence": (output_baseline_frame, ["chosen_answer_confidence"]),
-    }
-    for variant_name, variant_frame in feature_variants.items():
-        variants[variant_name] = (variant_frame, feature_columns(variant_frame))
-    variants = {name: variants[name] for name in selected_variants}
+    variants: dict[str, tuple[pd.DataFrame, list[str]]] = {}
+    if any(
+        variant_name in selected_variants
+        for variant_name in ("full", "drift_only", *FEATURE_VARIANT_NAMES)
+    ):
+        feature_variants = build_feature_variant_frames(features)
+        if "full" in selected_variants:
+            full_frame = resolve_feature_variant_frame(features, args.full_variant)
+            variants["full"] = (full_frame, feature_columns(full_frame))
+        if "drift_only" in selected_variants:
+            variants["drift_only"] = (features, drift_only_columns(features))
+        for variant_name in FEATURE_VARIANT_NAMES:
+            if variant_name in selected_variants:
+                variant_frame = feature_variants[variant_name]
+                variants[variant_name] = (variant_frame, feature_columns(variant_frame))
+
+    if "no_manifold" in selected_variants:
+        reference_bank = load_reference_bank(
+            args.reference_root,
+            args.model_name,
+            bank_scope=args.bank_scope,
+        )
+        reference_stats = load_reference_stats(
+            args.reference_root,
+            args.model_name,
+            bank_scope=args.bank_scope,
+        )
+        no_manifold_frame = build_no_manifold_feature_frame(
+            cache_entries=cache_entries,
+            reference_bank=reference_bank,
+            reference_stats=reference_stats,
+            bank_scope=args.bank_scope,
+        )
+        variants["no_manifold"] = (no_manifold_frame, feature_columns(no_manifold_frame))
+
+    if "linear_probe" in selected_variants:
+        linear_probe_frame = build_linear_probe_frame(cache_entries)
+        variants["linear_probe"] = (linear_probe_frame, feature_columns(linear_probe_frame))
+
+    if any(
+        variant_name in selected_variants
+        for variant_name in (
+            "output_p_yes",
+            "output_logit_margin",
+            "output_chosen_answer_confidence",
+        )
+    ):
+        yes_token_ids, no_token_ids = resolve_token_ids(
+            model_name=args.model_name,
+            model_id=args.model_id,
+            yes_token_ids=args.yes_token_id,
+            no_token_ids=args.no_token_id,
+        )
+        output_baseline_frame = build_output_baseline_frame(
+            cache_entries,
+            yes_token_ids=yes_token_ids,
+            no_token_ids=no_token_ids,
+        )
+        if "output_p_yes" in selected_variants:
+            variants["output_p_yes"] = (output_baseline_frame, ["p_yes"])
+        if "output_logit_margin" in selected_variants:
+            variants["output_logit_margin"] = (output_baseline_frame, ["yes_logit_margin"])
+        if "output_chosen_answer_confidence" in selected_variants:
+            variants["output_chosen_answer_confidence"] = (
+                output_baseline_frame,
+                ["chosen_answer_confidence"],
+            )
 
     output_paths = build_output_paths(output_root=args.output_root, experiment_name=args.experiment_name)
     output_paths["baselines"].parent.mkdir(parents=True, exist_ok=True)
