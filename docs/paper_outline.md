@@ -2,219 +2,217 @@
 
 ## Title
 
-MIND: Multi-scale Internal Normal-residual Drift for Early Object Hallucination Detection
+MIND: Internal Normal-residual Drift for Early Object Hallucination Detection
 
-## Name Meaning
+## Naming
 
-- `MIND` here expands to `Multi-scale Internal Normal-residual Drift`
-- `normal-residual` is the core quantity measured against the local visual-grounded manifold
-- `drift` is the cross-layer trajectory built from that quantity before answer generation
+- `MIND` should now be treated as the method name, not as a claim about multi-scale wavelets.
+- The paper should stop expanding `MIND` as `Multi-scale Internal Normal-residual Drift`.
+- The central idea is simple: measure object-conditioned manifold drift before the answer starts.
 
-## One-Sentence Claim
+## Current Claim
 
-Object hallucination leaves a compressible, interpretable geometric drift signal in pre-answer hidden states, and that low-dimensional signal survives grouped evaluation across model families even when a full hidden-state linear probe still performs as an upper baseline.
+Object hallucination leaves a useful pre-answer geometric signal in VLM hidden states. That signal gets stronger when raw drift is combined with simple calibrated curve statistics, but it is still not the whole story, and it should not be written up as a universal best detector.
 
-## Abstract Skeleton
+## Phase-One Freeze
 
-Problem:
+These decisions now come from the live round-two rerun on the current code path, not from the older March closeout package.
 
-- Many multimodal hallucination studies judge the final output only.
-- That misses earlier internal evidence and often hides what the model is doing before it answers.
+- Default full MIND feature set:
+  - `raw + calibrated simple stats`
+- Why:
+  - Haar does not beat simple stats on either current popular rerun.
+  - On Qwen popular, simple stats are better than Haar on both ROC-AUC and PR-AUC.
+  - On Intern popular, simple stats are again better than Haar on both ROC-AUC and PR-AUC.
+  - The confidence intervals overlap, so the right choice is the simpler feature set.
+- What this means for the paper:
+  - remove `Multi-scale` from the title
+  - remove Haar from the headline method description
+  - keep the full calibrated curve and Haar only as ablations
 
-Method:
+## Framing Decision
 
-- Build object-conditioned local manifolds from grounded reference states.
-- Keep the raw normal-residual magnitude as the main geometric signal.
-- Calibrate that signal with cleaned reference-bank statistics.
-- Apply Haar only to the calibrated cross-layer drift curve.
-- Train a lightweight logistic detector on the combined raw-plus-calibrated feature set.
+The current rerun does not support the pessimistic fallback that logit margin already beats MIND.
 
-Evaluation:
+- On Qwen popular, logit margin is far below current full MIND.
+- On Intern popular, logit margin is far below current full MIND.
+- So the paper can still make a modest detector-performance claim.
+- The safer wording is:
+  - MIND clearly beats simple output confidence baselines
+  - MIND does not remove the gap to richer baselines like a linear probe
 
-- Current evidence: `image_grouped` on POPE popular, RePOPE relabeling, and POPE adversarial
-- Next-round expansion: DASH-B on the same object yes-no task
-- Main comparisons: output-side confidence baselines, drift-only, no-manifold, and linear probe
+## What Is Live Right Now
 
-Result:
+Use only these results as current paper evidence until the remaining reruns finish.
 
-- On corrected `image_grouped` evaluation, full MIND beats corrected drift-only and corrected no-manifold on both Qwen and InternVL.
-- The linear probe still leads on PR-AUC on the primary grouped protocol.
-- InternVL is notably more stable than Qwen under `object_heldout`.
-- RePOPE popular relabeling preserves the main ordering on the corrected popular predictions.
-- Adversarial closeout also completed for both model families:
-  - Qwen adversarial: `ROC-AUC 0.8708`, `PR-AUC 0.2653`
-  - InternVL adversarial: `ROC-AUC 0.8596`, `PR-AUC 0.4430`
+### POPE Popular, `image_grouped`, current code path
 
-Takeaway:
+- Qwen:
+  - raw only: `ROC-AUC 0.8462`, `PR-AUC 0.1159`
+  - raw + simple stats: `ROC-AUC 0.8908`, `PR-AUC 0.1741`
+  - raw + full curve: `ROC-AUC 0.9145`, `PR-AUC 0.2596`
+  - raw + Haar: `ROC-AUC 0.8690`, `PR-AUC 0.1470`
+  - logit margin: `ROC-AUC 0.5955`, `PR-AUC 0.0422`
+- InternVL:
+  - raw only: `ROC-AUC 0.8764`, `PR-AUC 0.4284`
+  - raw + simple stats: `ROC-AUC 0.8978`, `PR-AUC 0.5092`
+  - raw + full curve: `ROC-AUC 0.9119`, `PR-AUC 0.5333`
+  - raw + Haar: `ROC-AUC 0.8929`, `PR-AUC 0.4854`
+  - logit margin: `ROC-AUC 0.5454`, `PR-AUC 0.0861`
 
-- The paper should argue for geometry-aware early warning and low-dimensional structure, not strongest overall detector performance.
+### How To Read These Numbers
+
+- The calibrated signal matters:
+  - both model families improve over raw-only once calibrated information is added
+- Haar is dead weight:
+  - it is never the best current variant
+- Full-curve compression is competitive:
+  - it is strongest on both current popular reruns
+  - but the win over simple stats is not clean enough to justify the larger feature set as the default
+- Output confidence is not enough:
+  - grouped logit-margin performance is weak on both current reruns
+
+## Historical Artifact Warning
+
+The older March correction-phase popular tables are not reproducible under the current evaluation path.
+
+- The old correction artifacts remain on disk for audit.
+- They should not be used in the paper.
+- The live round-two reruns are now the source of truth.
 
 ## Section Plan
 
 ### 1. Introduction
 
-- Object hallucination is still mostly framed as an output-side problem.
-- Internal states let us ask an earlier and cleaner question: does the model leave the visual-grounded region before it answers?
-- The main challenge is not whether a signal exists. It is whether that signal can be kept in a low-dimensional form without throwing away the useful magnitude information.
-- MIND answers that by measuring manifold normal-residual drift across pre-answer layers.
+- Keep the paper on object hallucination only.
+- Ask one clean question:
+  - does grounded-versus-hallucinated behavior leave a compact geometric trace before the answer begins?
+- Keep the paper honest about scope:
+  - pre-answer geometry
+  - object existence questions
+  - grouped evaluation
 
 ### 2. Related Work
 
-- POPE-style object hallucination benchmarking and relabeling
-- Output-side confidence and logit-margin hallucination baselines
-- Internal-state probing and early warning for multimodal hallucination
-- Local representation geometry and manifold residuals
-- Multi-scale analysis across layers as a descriptive tool, not the theoretical center
+- POPE, RePOPE, and DASH-B for object hallucination evaluation
+- output-side confidence baselines
+- pre-generation probe methods such as HALP
+- similarity-based grounding methods such as GLSim
+- manifold and residual geometry in hidden-state analysis
 
 ### 3. Method
 
-#### 3.1 Clean Grounded Reference Bank
+#### 3.1 Grounded Reference Bank
 
-- Build the bank from external COCO reference images only.
-- Keep only entries with `parsed_answer == 1`.
-- Store both support counts and leave-one-out residual statistics for each object and layer.
-- Add one closeout control only:
-  - object-conditioned bank as the main method
-  - shared bank pooled by `model + layer` as the transfer control
+- Build object-conditioned banks from external COCO reference images.
+- Keep only model outputs with `parsed_answer == 1`.
+- State the limitation plainly:
+  - this is the model’s own correct-yes regime, not an external grounding oracle
 
-#### 3.2 Local Manifold Score
+#### 3.2 Local Geometry
 
-- For each object and layer, normalize reference states.
-- Use local PCA on the nearest neighbors.
-- Measure one quantity only: normalized normal residual.
+- Normalize the hidden states.
+- Fit local PCA on the nearest reference neighbors.
+- Measure the normalized normal residual.
 
-#### 3.3 Cross-layer Drift Signal
+#### 3.3 Cross-layer Signal
 
-- Use the final prefill token right before answer generation.
-- Extract 16 selected pre-answer layers from the fixed cache setting.
-- Form a raw 16-step drift curve from manifold residuals.
+- Use selected pre-answer layers.
+- Form the raw drift curve.
+- Calibrate the curve with cleaned-bank mean and standard deviation.
 
-#### 3.4 Raw and Calibrated Features
+#### 3.4 Final Feature Set
 
-- Keep raw magnitude features unchanged.
-- Build calibrated curves from cleaned-bank mean and standard deviation.
-- Apply Haar to calibrated curves only.
-- Combine raw magnitude and calibrated wavelet features in one lightweight detector input.
+- Default:
+  - raw drift features
+  - calibrated simple statistics:
+    - mean
+    - max
+    - final value
+    - slope
+    - variance
+- Ablations:
+  - raw only
+  - raw + full calibrated curve
+  - raw + Haar
 
-#### 3.5 Detector and Protocol
+#### 3.5 Detectors
 
-- Headline detector: logistic regression
-- Output-side checks: `p_yes`, yes-minus-no logit margin, and chosen-answer confidence
-- Upper baseline: direct hidden-state linear probe
-- Main protocol: `image_grouped`
-- Secondary protocol: `object_heldout`
-
-### 4. Experiments
-
-- Current benchmark set:
-  - POPE popular
-  - POPE adversarial
-  - RePOPE relabeling of the popular predictions
-- Next benchmark to add:
-  - DASH-B
-- Current models:
-  - `Qwen/Qwen3-VL-8B-Instruct`
-  - `OpenGVLab/InternVL3_5-8B-HF`
-- Next models to add:
-  - `llava-hf/llava-onevision-qwen2-7b-ov-hf`
-  - `allenai/Molmo-7B-D-0924`
-- Baselines:
+- main detector:
+  - logistic regression
+- baseline detectors:
   - `p_yes`
   - yes-minus-no logit margin
   - chosen-answer confidence
-  - drift-only
-  - no-manifold
   - linear probe
-  - raw curve only
-  - raw + calibrated simple stats
-  - raw + calibrated full curve
-  - raw + calibrated Haar
+  - HALP
+  - GLSim
 
-### 5. Main Results
+### 4. Experiments
 
-#### 5.1 Primary grouped result
+- Main table:
+  - `POPE popular`
+  - `DASH-B`
+- Supplementary:
+  - `POPE adversarial`
+  - `RePOPE`
+- Model set:
+  - Qwen3-VL-8B
+  - InternVL3.5-8B
+  - LLaVA-OneVision-7B
+  - Molmo-7B-D-0924
+- Main protocol:
+  - `image_grouped`
+- Secondary protocol:
+  - `object_heldout`
 
-- Qwen, `image_grouped`:
-  - full MIND: `ROC-AUC 0.9171`, `PR-AUC 0.2839`
-  - linear probe: `ROC-AUC 0.9161`, `PR-AUC 0.3803`
-- InternVL, `image_grouped`:
-  - full MIND: `ROC-AUC 0.9142`, `PR-AUC 0.5438`
-  - linear probe: `ROC-AUC 0.9367`, `PR-AUC 0.6551`
+### 5. Main Story To Test
 
-#### 5.2 Structural comparisons
-
-- On both model families, full MIND beats drift-only and no-manifold on the primary grouped protocol.
-- The correction therefore repaired a real signal, not just a reporting issue.
-- The shared-bank control hurts popular performance on both model families:
-  - Qwen falls from `ROC-AUC 0.9171` and `PR-AUC 0.2839` to `ROC-AUC 0.8979` and `PR-AUC 0.1986`
-  - InternVL falls from `ROC-AUC 0.9142` and `PR-AUC 0.5438` to `ROC-AUC 0.8667` and `PR-AUC 0.3409`
-
-#### 5.3 Held-out object behavior
-
-- Qwen drops sharply under `object_heldout`.
-- InternVL stays much stronger and full MIND even beats the InternVL linear probe on that secondary protocol.
-- The shared-bank control changes the transfer story:
-  - on Qwen, shared bank improves `object_heldout` to `ROC-AUC 0.8624`, `PR-AUC 0.1319`
-  - on InternVL, shared bank is still worse than the object-conditioned bank under `object_heldout`
-
-#### 5.4 Adversarial closeout
-
-- Qwen adversarial:
-  - full MIND: `ROC-AUC 0.8708`, `PR-AUC 0.2653`, `TPR@1%FPR 0.0702`
-- InternVL adversarial:
-  - full MIND: `ROC-AUC 0.8596`, `PR-AUC 0.4430`, `TPR@1%FPR 0.1429`
-- Readout:
-  - adversarial is harder than popular for both families
-  - InternVL keeps the stronger adversarial precision-recall profile
-  - the six-row grouped closeout table is now complete
+- Does the simple calibrated feature set hold up on DASH-B?
+- Do the added models split the same way on object transfer?
+- Does HALP beat MIND as a detector?
+- Does GLSim beat both?
 
 ### 6. Discussion
 
-- The core idea is manifold drift, not Haar itself.
-- Wavelets stay in the paper only if they beat simpler curve summaries in the Phase One ablation.
-- The corrected results support a modest but solid claim:
-  - low-dimensional geometry-aware early warning works
-  - it is interpretable
-  - it is not the strongest detector in every setting
-- The old middle-layer story should be removed.
-- The safer wording is `selected pre-answer layers`, with late-layer strength treated as an empirical result rather than a fixed theoretical claim.
-- The bank-scope control now gives a sharper interpretation:
-  - object conditioning buys accuracy on popular for both models
-  - Qwen pays a much larger transfer penalty for that object conditioning than InternVL
-  - the next-paper question is therefore shared cross-object geometry, not a larger detector head
+- If HALP or GLSim win, the paper becomes a geometry paper, not a best-detector paper.
+- If DASH-B hurts MIND much more than the baselines, say so plainly.
+- If transfer behavior splits by architecture family, center that result.
+- If all four models behave the same way, center the generality result instead.
 
-## Core Figures
+## Tables To Keep
 
-1. Method overview: grounded bank -> manifold residual -> calibrated drift -> detector
-2. ROC + PR curves for `popular + image_grouped` on Qwen and InternVL
-3. Protocol comparison figure using `row`, `image_grouped`, and `object_heldout`
-
-## Core Tables
-
-1. Main grouped results:
-   - Qwen popular
-   - Qwen popular + RePOPE
-   - Qwen adversarial
-   - InternVL popular
-   - InternVL popular + RePOPE
-   - InternVL adversarial
-2. Structure comparison:
-   - full MIND (object bank)
-   - full MIND (shared bank)
-   - drift-only
-   - no-manifold
+1. Main results:
+   - models × `{POPE popular, DASH-B}`
+   - methods:
+     - `p_yes`
+     - logit margin
+     - chosen confidence
+     - raw-only
+     - no-manifold
+     - full MIND with simple stats
+     - linear probe
+     - HALP
+     - GLSim
+2. Feature ablation:
+   - raw only
+   - raw + simple stats
+   - raw + full curve
+   - raw + Haar
+3. Transfer and control:
+   - object bank
+   - shared bank
+   - shuffled-object bank
    - linear probe
-3. Object transfer boundary:
-   - full MIND (object bank)
-   - full MIND (shared bank)
-   - linear probe
+   - HALP
+   - GLSim
 
 ## Writing Direction
 
-Use this framing:
-
-- The first version of MIND was held back by a signal-definition mistake.
-- Once raw magnitude was preserved and the bank was cleaned, the geometry signal became clearly useful.
-- The strongest final claim is not raw performance supremacy.
-- The strongest final claim is that object hallucination leaves an interpretable pre-answer geometric trace that can be compressed into a stable low-dimensional early-warning signal.
-- The next-paper question is shared cross-object geometry, not a larger detector head.
+- Do not write the paper around the old March package.
+- Do not write Haar as the scientific center.
+- Do write the paper around:
+  - object hallucination only
+  - grouped evaluation only
+  - compact geometry as the main idea
+  - honest comparison to simpler baselines and stronger probe methods
