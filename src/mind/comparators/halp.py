@@ -63,13 +63,7 @@ class HALPProbe(nn.Module):
 def resolve_halp_layer_indices(total_layers: int) -> list[int]:
     if total_layers < 1:
         raise ValueError("total_layers must be positive")
-    return [
-        0,
-        total_layers // 4,
-        total_layers // 2,
-        (3 * total_layers) // 4,
-        total_layers - 1,
-    ]
+    return list(range(total_layers))
 
 
 def _metadata_row_from_readout_entry(entry: dict[str, object]) -> dict[str, object]:

@@ -11,9 +11,9 @@ from mind.comparators.halp import (
 )
 
 
-def test_resolve_halp_layer_indices_uses_quarter_depths() -> None:
-    assert resolve_halp_layer_indices(32) == [0, 8, 16, 24, 31]
-    assert resolve_halp_layer_indices(8) == [0, 2, 4, 6, 7]
+def test_resolve_halp_layer_indices_uses_all_layers() -> None:
+    assert resolve_halp_layer_indices(5) == [0, 1, 2, 3, 4]
+    assert resolve_halp_layer_indices(1) == [0]
 
 
 def test_build_halp_probe_frames_extracts_vf_vt_and_qt_vectors() -> None:
