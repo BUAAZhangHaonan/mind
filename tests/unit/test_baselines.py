@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from mind.evaluation.baselines import (
+    DEFAULT_FULL_VARIANT,
     apply_label_overrides_to_entries,
     apply_label_overrides_to_frame,
     build_feature_variant_frames,
@@ -20,6 +21,10 @@ from mind.evaluation.baselines import (
     resolve_highest_valid_num_folds,
     resolve_yes_no_token_ids,
 )
+
+
+def test_default_full_variant_is_simple_stats() -> None:
+    assert DEFAULT_FULL_VARIANT == "raw_plus_calibrated_simple"
 
 
 def test_build_raw_model_yes_no_baseline_tracks_counts_and_metrics() -> None:

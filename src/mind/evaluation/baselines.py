@@ -40,7 +40,7 @@ FEATURE_VARIANT_NAMES = (
     "raw_plus_calibrated_haar",
 )
 
-DEFAULT_FULL_VARIANT = "raw_plus_calibrated_haar"
+DEFAULT_FULL_VARIANT = "raw_plus_calibrated_simple"
 
 
 def _hallucination_label_from_entry(entry: dict[str, object]) -> int:
