@@ -49,6 +49,17 @@ KNOWN_TOKEN_IDS = {
     "molmo-7b-d-0924": {"yes": [9693, 9834, 9454], "no": [2152, 902, 2753]},
 }
 
+VARIANT_ORDER = (
+    "full",
+    "drift_only",
+    "no_manifold",
+    "linear_probe",
+    "output_p_yes",
+    "output_logit_margin",
+    "output_chosen_answer_confidence",
+    *FEATURE_VARIANT_NAMES,
+)
+
 
 def build_output_paths(*, output_root: Path, experiment_name: str) -> dict[str, Path]:
     root = output_root / experiment_name
@@ -64,8 +75,67 @@ def parse_int_list(value: str) -> list[int]:
     return [int(item.strip()) for item in value.split(",") if item.strip()]
 
 
+def parse_variant_list(value: str) -> list[str]:
+    if value.strip().lower() == "all":
+        return list(VARIANT_ORDER)
+    variants: list[str] = []
+    seen: set[str] = set()
+    for item in value.split(","):
+        name = item.strip()
+        if not name:
+            continue
+        if name not in VARIANT_ORDER:
+            raise ValueError(f"Unsupported baseline variant: {name}")
+        if name in seen:
+            continue
+        seen.add(name)
+        variants.append(name)
+    if not variants:
+        raise ValueError("Provide at least one baseline variant or use --variants all.")
+    return variants
+
+
 def resolve_group_column(split_strategy: str) -> str:
     return GROUP_COLUMN_BY_STRATEGY.get(split_strategy, "sample_id")
+
+
+def load_existing_json(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_existing_frame(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def merge_metric_rows(
+    existing: pd.DataFrame,
+    updates: pd.DataFrame,
+    *,
+    key_columns: list[str],
+) -> pd.DataFrame:
+    if existing.empty:
+        merged = updates.copy()
+    elif updates.empty:
+        merged = existing.copy()
+    else:
+        merged = pd.concat([existing, updates], ignore_index=True)
+        merged = merged.drop_duplicates(subset=key_columns, keep="last")
+    if merged.empty or "variant" not in merged.columns:
+        return merged
+    variant_rank = {name: index for index, name in enumerate(VARIANT_ORDER)}
+    merged["__variant_rank"] = merged["variant"].map(variant_rank).fillna(len(variant_rank)).astype(int)
+    sort_columns = ["__variant_rank"]
+    ascending = [True]
+    for column in ["random_state"]:
+        if column in merged.columns:
+            sort_columns.append(column)
+            ascending.append(True)
+    merged = merged.sort_values(sort_columns, ascending=ascending).drop(columns="__variant_rank")
+    return merged.reset_index(drop=True)
 
 
 def resolve_token_ids(
@@ -118,6 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split-seeds", default="13,17,19,23,29")
     parser.add_argument("--yes-token-id", action="append", type=int, default=[])
     parser.add_argument("--no-token-id", action="append", type=int, default=[])
+    parser.add_argument("--variants", default="all")
     return parser
 
 
@@ -159,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     feature_variants = build_feature_variant_frames(features)
     full_frame = resolve_feature_variant_frame(features, args.full_variant)
     split_seeds = parse_int_list(args.split_seeds)
+    selected_variants = parse_variant_list(args.variants)
 
     variants: dict[str, tuple[pd.DataFrame, list[str]]] = {
         "full": (full_frame, feature_columns(full_frame)),
@@ -171,18 +243,18 @@ def main(argv: list[str] | None = None) -> int:
     }
     for variant_name, variant_frame in feature_variants.items():
         variants[variant_name] = (variant_frame, feature_columns(variant_frame))
-
-    baselines: dict[str, object] = {
-        "bank_scope": args.bank_scope,
-        "full_variant": args.full_variant,
-        "presence_answer_summary": build_raw_model_yes_no_baseline(cache_entries),
-    }
-    ablation_rows: list[dict[str, object]] = []
-    split_sensitivity_rows: list[dict[str, object]] = []
+    variants = {name: variants[name] for name in selected_variants}
 
     output_paths = build_output_paths(output_root=args.output_root, experiment_name=args.experiment_name)
     output_paths["baselines"].parent.mkdir(parents=True, exist_ok=True)
     output_paths["variant_results"].mkdir(parents=True, exist_ok=True)
+
+    baselines = load_existing_json(output_paths["baselines"])
+    baselines["bank_scope"] = args.bank_scope
+    baselines["full_variant"] = args.full_variant
+    baselines["presence_answer_summary"] = build_raw_model_yes_no_baseline(cache_entries)
+    ablation_rows: list[dict[str, object]] = []
+    split_sensitivity_rows: list[dict[str, object]] = []
 
     group_column = resolve_group_column(args.split_strategy)
     for variant_name, (variant_frame, columns) in variants.items():
@@ -220,8 +292,16 @@ def main(argv: list[str] | None = None) -> int:
         for row in sensitivity.to_dict(orient="records"):
             split_sensitivity_rows.append({"variant": variant_name, **row})
 
-    ablations = pd.DataFrame(ablation_rows)
-    split_sensitivity = pd.DataFrame(split_sensitivity_rows)
+    ablations = merge_metric_rows(
+        load_existing_frame(output_paths["ablations"]),
+        pd.DataFrame(ablation_rows),
+        key_columns=["variant"],
+    )
+    split_sensitivity = merge_metric_rows(
+        load_existing_frame(output_paths["split_sensitivity"]),
+        pd.DataFrame(split_sensitivity_rows),
+        key_columns=["variant", "random_state"],
+    )
     output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
     ablations.to_csv(output_paths["ablations"], index=False)
     split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)

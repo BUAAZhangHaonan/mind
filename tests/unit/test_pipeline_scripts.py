@@ -1046,6 +1046,155 @@ def test_compute_baselines_can_apply_label_overrides_and_full_variant(tmp_path: 
     assert full_results.loc[full_results["sample_id"] == "sample-0", "label"].item() == 1
 
 
+def test_compute_baselines_can_merge_selected_variant_runs(tmp_path: Path) -> None:
+    features_path = tmp_path / "features.parquet"
+    cache_root = tmp_path / "cache"
+    reference_root = tmp_path / "reference"
+    reports_root = tmp_path / "reports"
+    cache_root.mkdir()
+    (reference_root / "qwen3-vl-8b" / "dog").mkdir(parents=True)
+
+    feature_rows = []
+    cache_entries = []
+    for index in range(8):
+        label = index % 2
+        parsed_answer = 1 if label == 1 else 0
+        feature_rows.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0 if label == 1 else 1,
+                "answer_label": parsed_answer,
+                "label": label,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": float(index),
+                "raw_drift_1": float(index) + 0.25,
+                "cal_drift_0": float(index) * 0.5,
+                "cal_drift_1": float(index) * 0.5 + 0.1,
+                "cal_mean_drift": float(index) * 0.5 + 0.05,
+                "cal_max_drift": float(index) * 0.5 + 0.1,
+                "cal_approx_energy": float(index) + 1.0,
+                "cal_detail_energy_l1": float(index) + 0.5,
+            }
+        )
+        cache_entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0 if label == 1 else 1,
+                "parsed_answer": parsed_answer,
+                "subset": "popular",
+                "object_name": "dog",
+                "selected_layers": [8, 13],
+                "layer_vectors": torch.tensor(
+                    [
+                        [0.1 + 0.1 * index, 0.2, 0.3],
+                        [0.2 + 0.1 * index, 0.3, 0.4],
+                    ],
+                    dtype=torch.float32,
+                ),
+                "first_token_logits": torch.tensor(
+                    [0.0, 3.0 if parsed_answer == 1 else -1.0, 3.0 if parsed_answer == 0 else -1.0],
+                    dtype=torch.float32,
+                ),
+            }
+        )
+
+    pd.DataFrame(feature_rows).to_parquet(features_path, index=False)
+    torch.save(cache_entries, cache_root / "shard-00000.pt")
+    for layer_index in [8, 13]:
+        torch.save(
+            torch.tensor(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                ],
+                dtype=torch.float32,
+            ),
+            reference_root / "qwen3-vl-8b" / "dog" / f"layer-{layer_index:02d}.pt",
+        )
+    torch.save(
+        {
+            8: {
+                "residual_mean": 0.1,
+                "residual_std": 0.2,
+                "neighbor_residual_mean": 0.1,
+                "neighbor_residual_std": 0.2,
+            },
+            13: {
+                "residual_mean": 0.1,
+                "residual_std": 0.2,
+                "neighbor_residual_mean": 0.1,
+                "neighbor_residual_std": 0.2,
+            },
+        },
+        reference_root / "qwen3-vl-8b" / "dog" / "stats.pt",
+    )
+
+    common_args = [
+        "--features-path",
+        str(features_path),
+        "--cache-path",
+        str(cache_root),
+        "--reference-root",
+        str(reference_root),
+        "--model-name",
+        "qwen3-vl-8b",
+        "--output-root",
+        str(reports_root),
+        "--experiment-name",
+        "smoke-baselines-merge",
+        "--split-strategy",
+        "image_grouped",
+        "--num-folds",
+        "2",
+        "--bootstrap-resamples",
+        "16",
+        "--split-seeds",
+        "3,5",
+        "--yes-token-id",
+        "1",
+        "--no-token-id",
+        "2",
+    ]
+
+    exit_code_first = compute_baselines_script.main(common_args + ["--variants", "full,output_p_yes"])
+    exit_code_second = compute_baselines_script.main(
+        common_args + ["--variants", "output_logit_margin,linear_probe"]
+    )
+
+    baselines_path = reports_root / "smoke-baselines-merge" / "baselines.json"
+    variant_results_root = reports_root / "smoke-baselines-merge" / "variant_results"
+    payload = json.loads(baselines_path.read_text(encoding="utf-8"))
+    ablations = pd.read_csv(reports_root / "smoke-baselines-merge" / "ablations.csv")
+    split_sensitivity = pd.read_csv(
+        reports_root / "smoke-baselines-merge" / "split_sensitivity.csv"
+    )
+
+    assert exit_code_first == 0
+    assert exit_code_second == 0
+    assert (variant_results_root / "full.csv").exists()
+    assert (variant_results_root / "output_p_yes.csv").exists()
+    assert (variant_results_root / "output_logit_margin.csv").exists()
+    assert (variant_results_root / "linear_probe.csv").exists()
+    assert set(["full", "output_p_yes", "output_logit_margin", "linear_probe"]).issubset(payload)
+    assert ablations["variant"].tolist() == [
+        "full",
+        "linear_probe",
+        "output_p_yes",
+        "output_logit_margin",
+    ]
+    assert split_sensitivity.groupby("variant")["random_state"].nunique().to_dict() == {
+        "full": 2,
+        "linear_probe": 2,
+        "output_logit_margin": 2,
+        "output_p_yes": 2,
+    }
+
+
 def test_compute_baselines_prefers_known_token_ids_before_processor_lookup(monkeypatch) -> None:
     monkeypatch.setattr(
         compute_baselines_script.AutoProcessor,
