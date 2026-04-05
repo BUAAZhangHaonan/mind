@@ -1,89 +1,100 @@
 # Round-Two Run Audit
 
-Date: 2026-04-05
-
 ## Conclusion
 
-The round-two cache layer is partly complete, but the paper-facing report layer is not.
+Round two is only half-finished on disk.
 
-- Qwen and InternVL `POPE popular` report directories are partial and cannot be used as final paper sources.
-- LLaVA-OneVision and Molmo `POPE popular` eval caches and COCO reference caches are complete and look structurally valid.
-- The round-two exporter and summary docs still describe the old closeout world rather than the current run state.
+- The new-model cache work completed cleanly.
+- The paper-facing report layer is still missing most of the real outputs.
+- One runtime default still points at Haar even though the paper freeze now says simple stats.
 
 ## Verified State
 
-### Repo and job state
+- Branch: `master`
+- Working tree: clean
+- Active long jobs: none
 
-- branch: `master`
-- working tree: clean
-- active long-running experiment jobs: none
+### Completed caches
 
-### Round-two reports
+- `outputs/round2_2026_04/cache/llava-onevision-7b/pope/popular`
+  - `24` shards, `shard-00000.pt` to `shard-00023.pt`
+- `outputs/round2_2026_04/cache/molmo-7b-d-0924/pope/popular`
+  - `24` shards, `shard-00000.pt` to `shard-00023.pt`
+- `outputs/round2_2026_04/cache/llava-onevision-7b/pope-reference/train`
+  - `40` shards, `shard-00000.pt` to `shard-00039.pt`
+- `outputs/round2_2026_04/cache/molmo-7b-d-0924/pope-reference/train`
+  - `40` shards, `shard-00000.pt` to `shard-00039.pt`
 
-Present under `outputs/round2_2026_04/reports/`:
+### Cache payload spot-check
 
-- `round2-qwen3-vl-8b-popular/variant_results/full.csv`
-- `round2-qwen3-vl-8b-popular/variant_results/drift_only.csv`
-- `round2-qwen3-vl-8b-popular/variant_results/no_manifold.csv`
-- `round2-qwen3-vl-8b-popular/variant_results/linear_probe.csv`
-- `round2-internvl3.5-8b-popular/variant_results/full.csv`
-- `round2-internvl3.5-8b-popular/variant_results/drift_only.csv`
-- `round2-internvl3.5-8b-popular/variant_results/no_manifold.csv`
-- `round2-internvl3.5-8b-popular/variant_results/linear_probe.csv`
+LLaVA-OneVision and Molmo both look sane on the current round-two cache path.
 
-Missing from both popular report directories:
+- cache entries use `layer_vectors`
+- `selected_layers` length is `14`
+- hidden size is `3584`
+- first-token logits are present
+- parsed answers are present
 
+## Incomplete or Missing Outputs
+
+### Partial popular reports
+
+These two report directories are incomplete and should not be treated as valid final outputs.
+
+- `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular`
+- `outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular`
+
+Each one currently contains only:
+
+- `variant_results/full.csv`
+- `variant_results/drift_only.csv`
+- `variant_results/no_manifold.csv`
+- `variant_results/linear_probe.csv`
+
+Each one is still missing:
+
+- `variant_results/output_p_yes.csv`
+- `variant_results/output_logit_margin.csv`
+- `variant_results/output_chosen_answer_confidence.csv`
 - `baselines.json`
 - `ablations.csv`
 - `split_sensitivity.csv`
-- output-side baseline result CSVs
 
-### New-model popular caches
+### Missing round-two downstream trees
 
-Under `outputs/round2_2026_04/cache/`:
+These non-smoke round-two directories do not exist yet.
 
-- `llava-onevision-7b/pope/popular`: `24` shards, `shard-00000.pt` to `shard-00023.pt`
-- `molmo-7b-d-0924/pope/popular`: `24` shards, `shard-00000.pt` to `shard-00023.pt`
-- `llava-onevision-7b/pope-reference/train`: `40` shards, `shard-00000.pt` to `shard-00039.pt`
-- `molmo-7b-d-0924/pope-reference/train`: `40` shards, `shard-00000.pt` to `shard-00039.pt`
+- `outputs/round2_2026_04/features`
+- `outputs/round2_2026_04/readouts`
+- `outputs/round2_2026_04/reference_banks`
+- `outputs/round2_2026_04/reference_banks_shared`
+- `outputs/round2_2026_04/reference_banks_shuffled`
 
-Spot-check on the first shard for both models:
+That means the main execution work is still ahead of us.
 
-- cache schema uses `layer_vectors`
-- `selected_layers` length is `14`
-- hidden state shape is `(14, 3584)`
-- first-token logit vectors are present
-- `parsed_answer` is present for both eval and reference entries
+## Paper And Export Gaps
 
-### Downstream round-two artifacts
+- `docs/paper_outline.md` is aligned with the phase-one freeze.
+- `docs/results_summary.md` is behind the actual run state:
+  - it still says the LLaVA and Molmo reference caches are pending
+- `scripts/export_paper_package.py` still reads the old two-model closeout layout and cannot produce the final round-two package as-is
 
-Not present yet outside smoke/debug paths:
+## Runtime Mismatch To Fix Before Reruns
 
-- non-smoke `features/`
-- non-smoke `readouts/`
-- non-smoke `reference_banks/`
-- non-smoke `plots/`
+The frozen method choice is now simple stats, but the runtime default still points at Haar.
 
-## Paper-facing mismatches
+- current default in `src/mind/evaluation/baselines.py`: `raw_plus_calibrated_haar`
+- that default flows into:
+  - `scripts/compute_baselines.py`
+  - `scripts/train_detector.py`
+  - `scripts/run_experiment.py`
 
-### Exporter
+This needs to change before any more paper-facing reruns.
 
-`scripts/export_paper_package.py` still assumes the old two-model correction-phase package.
+## Decision
 
-- experiment names are hard-coded to `correction-*`
-- only Qwen and InternVL appear in `MODEL_LABELS`
-- table builders read `metrics.json` and old closeout report names
-- no support for HALP or GLSim outputs
-- no support for tracked round-two tables under `docs/tables/round2/`
+The next clean step is:
 
-### Results summary
-
-`docs/results_summary.md` is partly outdated.
-
-- it still says LLaVA-OneVision reference cache is pending
-- it still says Molmo reference cache is pending
-- those cache trees are now complete
-
-## Execution Implication
-
-The next valid step is to rebuild the paper-facing round-two artifacts from the current cache layer, starting with clean `POPE popular` reruns for Qwen and InternVL and full popular completion for LLaVA-OneVision and Molmo.
+1. fix the default full variant to `raw_plus_calibrated_simple`
+2. rebuild the popular report outputs cleanly
+3. generate every later table from round-two-local artifacts only
