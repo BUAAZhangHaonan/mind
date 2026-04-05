@@ -42,6 +42,13 @@ KNOWN_MODEL_IDS = {
     "molmo-7b-d-0924": "allenai/Molmo-7B-D-0924",
 }
 
+KNOWN_TOKEN_IDS = {
+    "qwen3-vl-8b": {"yes": [9693, 9834, 9454], "no": [2152, 902, 2753]},
+    "internvl3.5-8b": {"yes": [9693, 9834, 9454], "no": [2152, 902, 2753]},
+    "llava-onevision-7b": {"yes": [9693, 9834, 9454], "no": [2152, 902, 2753]},
+    "molmo-7b-d-0924": {"yes": [9693, 9834, 9454], "no": [2152, 902, 2753]},
+}
+
 
 def build_output_paths(*, output_root: Path, experiment_name: str) -> dict[str, Path]:
     root = output_root / experiment_name
@@ -70,6 +77,9 @@ def resolve_token_ids(
 ) -> tuple[list[int], list[int]]:
     if yes_token_ids and no_token_ids:
         return yes_token_ids, no_token_ids
+    if model_name in KNOWN_TOKEN_IDS:
+        token_map = KNOWN_TOKEN_IDS[model_name]
+        return list(token_map["yes"]), list(token_map["no"])
     resolved_model_id = model_id or KNOWN_MODEL_IDS.get(model_name, "")
     if not resolved_model_id:
         raise ValueError("Provide --model-id or both --yes-token-id and --no-token-id.")

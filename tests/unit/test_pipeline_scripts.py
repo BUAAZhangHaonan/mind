@@ -1020,3 +1020,21 @@ def test_compute_baselines_can_apply_label_overrides_and_full_variant(tmp_path: 
     assert payload["full"]["pr_auc"] == payload["raw_plus_calibrated_simple"]["pr_auc"]
     assert sorted(full_results["label"].unique().tolist()) == [0, 1]
     assert full_results.loc[full_results["sample_id"] == "sample-0", "label"].item() == 1
+
+
+def test_compute_baselines_prefers_known_token_ids_before_processor_lookup(monkeypatch) -> None:
+    monkeypatch.setattr(
+        compute_baselines_script.AutoProcessor,
+        "from_pretrained",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not use AutoProcessor")),
+    )
+
+    yes_token_ids, no_token_ids = compute_baselines_script.resolve_token_ids(
+        model_name="qwen3-vl-8b",
+        model_id="",
+        yes_token_ids=[],
+        no_token_ids=[],
+    )
+
+    assert yes_token_ids == [9693, 9834, 9454]
+    assert no_token_ids == [2152, 902, 2753]
