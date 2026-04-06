@@ -19,6 +19,7 @@ from mind.evaluation.baselines import (
     compute_bootstrap_confidence_intervals,
     evaluate_feature_frame,
     evaluate_feature_frame_across_random_states,
+    load_cache_entries,
     resolve_feature_variant_frame,
     resolve_highest_valid_num_folds,
     resolve_yes_no_token_ids,
@@ -281,6 +282,37 @@ def test_apply_label_overrides_to_entries_updates_ground_truth_labels() -> None:
     )
 
     assert [entry["label"] for entry in updated] == [1, 0]
+
+
+def test_load_cache_entries_can_keep_only_selected_fields(tmp_path) -> None:
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    torch.save(
+        [
+            {
+                "sample_id": "sample-1",
+                "image_id": 11,
+                "label": 1,
+                "parsed_answer": 1,
+                "subset": "popular",
+                "object_name": "dog",
+                "layer_vectors": torch.tensor([[1.0, 2.0]]),
+                "first_token_logits": torch.tensor([0.1, 0.2]),
+            }
+        ],
+        cache_root / "shard-00000.pt",
+    )
+
+    entries = load_cache_entries(
+        cache_root,
+        keep_fields={"sample_id", "label", "first_token_logits"},
+    )
+
+    assert len(entries) == 1
+    assert set(entries[0]) == {"sample_id", "label", "first_token_logits"}
+    assert entries[0]["sample_id"] == "sample-1"
+    assert entries[0]["label"] == 1
+    assert torch.equal(entries[0]["first_token_logits"], torch.tensor([0.1, 0.2]))
 
 
 def test_apply_label_overrides_to_frame_recomputes_hallucination_labels() -> None:

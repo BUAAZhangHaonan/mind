@@ -1445,6 +1445,71 @@ def test_compute_baselines_skips_unselected_heavy_variant_builders(tmp_path: Pat
     assert (variant_results_root / "output_p_yes.csv").exists()
 
 
+def test_compute_baselines_does_not_load_cache_for_feature_only_variants(tmp_path: Path, monkeypatch) -> None:
+    features_path = tmp_path / "features.parquet"
+    reference_root = tmp_path / "reference"
+    reports_root = tmp_path / "reports"
+    (reference_root / "qwen3-vl-8b").mkdir(parents=True)
+
+    pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0 if index % 2 else 1,
+                "answer_label": index % 2,
+                "label": index % 2,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": float(index),
+                "raw_drift_1": float(index) + 0.25,
+                "cal_drift_0": float(index) * 0.5,
+                "cal_drift_1": float(index) * 0.5 + 0.1,
+                "cal_mean_drift": float(index) * 0.5 + 0.05,
+                "cal_max_drift": float(index) * 0.5 + 0.1,
+                "cal_approx_energy": float(index) + 1.0,
+                "cal_detail_energy_l1": float(index) + 0.5,
+            }
+            for index in range(8)
+        ]
+    ).to_parquet(features_path, index=False)
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("cache should not be loaded for feature-only variants")
+
+    monkeypatch.setattr(compute_baselines_script, "load_cache_entries", _fail)
+
+    exit_code = compute_baselines_script.main(
+        [
+            "--features-path",
+            str(features_path),
+            "--cache-path",
+            str(tmp_path / "missing-cache"),
+            "--reference-root",
+            str(reference_root),
+            "--model-name",
+            "qwen3-vl-8b",
+            "--output-root",
+            str(reports_root),
+            "--experiment-name",
+            "smoke-baselines-feature-only",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "2",
+            "--bootstrap-resamples",
+            "16",
+            "--split-seeds",
+            "3,5",
+            "--variants",
+            "full",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (reports_root / "smoke-baselines-feature-only" / "variant_results" / "full.csv").exists()
+
+
 def test_compute_baselines_prefers_known_token_ids_before_processor_lookup(monkeypatch) -> None:
     monkeypatch.setattr(
         compute_baselines_script.AutoProcessor,

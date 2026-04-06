@@ -128,13 +128,34 @@ def load_label_overrides(overrides: Path | pd.DataFrame) -> pd.DataFrame:
     return normalized
 
 
-def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
+def _trim_cache_entry(
+    entry: dict[str, object],
+    *,
+    keep_fields: set[str] | None,
+) -> dict[str, object]:
+    if keep_fields is None:
+        return dict(entry)
+    return {key: value for key, value in entry.items() if key in keep_fields}
+
+
+def load_cache_entries(
+    cache_path: Path,
+    *,
+    keep_fields: set[str] | None = None,
+) -> list[dict[str, object]]:
     if cache_path.is_dir():
         entries: list[dict[str, object]] = []
         for shard_path in sorted(cache_path.rglob("*.pt")):
-            entries.extend(torch.load(shard_path, weights_only=False))
+            shard_entries = torch.load(shard_path, weights_only=False)
+            entries.extend(
+                _trim_cache_entry(entry, keep_fields=keep_fields)
+                for entry in shard_entries
+            )
         return entries
-    return list(torch.load(cache_path, weights_only=False))
+    return [
+        _trim_cache_entry(entry, keep_fields=keep_fields)
+        for entry in torch.load(cache_path, weights_only=False)
+    ]
 
 
 def apply_label_overrides_to_entries(
