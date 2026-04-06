@@ -11,14 +11,25 @@ Date: 2026-04-06
   - `round2-molmo-7b-d-0924-popular`
 - `POPE popular` reference banks exist for all four models under `outputs/round2_2026_04/reference_banks/`.
   - each root has `79` object folders plus `reference_counts.csv`
-- The only live round-two popular report tree is `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular/`.
-  - it currently contains `output_p_yes.csv`, `output_logit_margin.csv`, `output_chosen_answer_confidence.csv`
-  - it also contains `baselines.json`, `ablations.csv`, and `split_sensitivity.csv`
-  - it does not currently contain `full.csv`, `drift_only.csv`, `no_manifold.csv`, or `linear_probe.csv`
-- A debug popular report exists for Qwen at `outputs/round2_2026_04/reports/debug-round2-qwen3-vl-8b-popular/variant_results/full.csv`.
-  - the file uses the lean result schema
-  - it is not a paper-ready replacement for the missing detector-side report set
-- There are no live round-two popular report dirs yet for InternVL, LLaVA-OneVision, or Molmo.
+- Round-two popular report trees now exist for all four models:
+  - `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/`
+  - `outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular/`
+  - `outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular/`
+  - `outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular/`
+- All four current popular report trees contain:
+  - `output_p_yes.csv`
+  - `output_logit_margin.csv`
+  - `output_chosen_answer_confidence.csv`
+  - `full.csv`
+  - `drift_only.csv`
+  - `baselines.json`
+  - `ablations.csv`
+  - `split_sensitivity.csv`
+- `no_manifold.csv` is also present for all four current popular report trees.
+- `linear_probe.csv` is still pending for all four current popular report trees.
+- The older `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular/` tree is now a stale partial duplicate.
+  - keep it out of paper generation
+  - prefer `round2-qwen3-vl-8b-popular-final`
 
 ## DASH-B State
 
@@ -46,7 +57,7 @@ Date: 2026-04-06
 - `docs/paper_outline.md` has the right frozen framing
   - it still needs final round-two tables and final round-two numbers
 - `scripts/export_paper_package.py` is already aimed at round-two report names
-  - the live artifact tree does not yet satisfy what the exporter expects
+  - it still needs completed report trees and comparator outputs to generate the final package
 
 ## Pipeline Note
 
