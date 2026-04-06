@@ -415,6 +415,8 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     )
 
     table1 = pd.read_csv(outputs["table1_csv"])
+    table1_popular = pd.read_csv(outputs["table1_pope_popular_csv"])
+    table1_dash_b = pd.read_csv(outputs["table1_dash_b_csv"])
     table2 = pd.read_csv(outputs["table2_csv"])
     table3 = pd.read_csv(outputs["table3_csv"])
     supp_pope_adversarial = pd.read_csv(outputs["supp_pope_adversarial_csv"])
@@ -425,6 +427,8 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     assert set(table1["method"]) >= {"p_yes", "logit_margin", "chosen_confidence", "drift_only", "no_manifold", "full MIND", "linear_probe", "HALP", "GLSim"}
     assert set(table1["benchmark"]) == {"POPE popular", "DASH-B"}
     assert set(table1["protocol"]) == {"image_grouped"}
+    assert set(table1_popular["benchmark"]) == {"POPE popular"}
+    assert set(table1_dash_b["benchmark"]) == {"DASH-B"}
 
     qwen_popular_full = table1.loc[
         (table1["model"] == "Qwen3-VL-8B")
@@ -441,6 +445,8 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     assert not supp_split_sensitivity.empty
 
     assert (tables_root / "table1_main.csv").exists()
+    assert (tables_root / "table1_pope_popular.csv").exists()
+    assert (tables_root / "table1_dash_b.csv").exists()
     assert (tables_root / "table2_feature_ablation.csv").exists()
     assert (tables_root / "table3_transfer_controls.csv").exists()
     assert (tables_root / "supp_pope_adversarial.csv").exists()

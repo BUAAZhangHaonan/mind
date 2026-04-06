@@ -89,6 +89,10 @@ def build_output_paths(output_root: Path) -> dict[str, Path]:
     return {
         "table1_csv": tables_root / "table1_main.csv",
         "table1_md": tables_root / "table1_main.md",
+        "table1_pope_popular_csv": tables_root / "table1_pope_popular.csv",
+        "table1_pope_popular_md": tables_root / "table1_pope_popular.md",
+        "table1_dash_b_csv": tables_root / "table1_dash_b.csv",
+        "table1_dash_b_md": tables_root / "table1_dash_b.md",
         "table2_csv": tables_root / "table2_feature_ablation.csv",
         "table2_md": tables_root / "table2_feature_ablation.md",
         "table3_csv": tables_root / "table3_transfer_controls.csv",
@@ -699,6 +703,8 @@ def export_paper_package(
     reports = discover_round_two_reports(reports_root)
 
     main_table = build_main_table(reports)
+    popular_main_table = build_benchmark_table(reports, benchmark_key="popular")
+    dash_b_main_table = build_benchmark_table(reports, benchmark_key="dash-b")
     feature_table = build_feature_table(reports)
     transfer_table = build_transfer_table(reports)
     pop_adversarial_table = build_benchmark_table(reports, benchmark_key="adversarial")
@@ -715,6 +721,20 @@ def export_paper_package(
         export_md=paths["table1_md"],
         docs_csv=tables_root / "table1_main.csv",
         docs_md=tables_root / "table1_main.md",
+    )
+    _write_table_bundle(
+        popular_main_table,
+        export_csv=paths["table1_pope_popular_csv"],
+        export_md=paths["table1_pope_popular_md"],
+        docs_csv=tables_root / "table1_pope_popular.csv",
+        docs_md=tables_root / "table1_pope_popular.md",
+    )
+    _write_table_bundle(
+        dash_b_main_table,
+        export_csv=paths["table1_dash_b_csv"],
+        export_md=paths["table1_dash_b_md"],
+        docs_csv=tables_root / "table1_dash_b.csv",
+        docs_md=tables_root / "table1_dash_b.md",
     )
     _write_table_bundle(
         feature_table,
