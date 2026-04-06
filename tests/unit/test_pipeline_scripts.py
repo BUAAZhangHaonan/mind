@@ -1286,19 +1286,19 @@ def test_compute_baselines_persists_completed_variants_before_later_failure(
         reference_root / "qwen3-vl-8b" / "dog" / "stats.pt",
     )
 
-    original_sensitivity = compute_baselines_script.evaluate_feature_frame_across_random_states
+    original_evaluate = compute_baselines_script.evaluate_feature_frame
     call_count = {"count": 0}
 
-    def _crash_on_second_variant(*args, **kwargs):
+    def _crash_before_second_variant_metrics(*args, **kwargs):
         call_count["count"] += 1
-        if call_count["count"] == 2:
+        if call_count["count"] == 4:
             raise RuntimeError("boom")
-        return original_sensitivity(*args, **kwargs)
+        return original_evaluate(*args, **kwargs)
 
     monkeypatch.setattr(
         compute_baselines_script,
-        "evaluate_feature_frame_across_random_states",
-        _crash_on_second_variant,
+        "evaluate_feature_frame",
+        _crash_before_second_variant_metrics,
     )
 
     args = [

@@ -310,22 +310,23 @@ def main(argv: list[str] | None = None) -> int:
             key_columns=["variant"],
         )
 
-        sensitivity = evaluate_feature_frame_across_random_states(
-            variant_frame,
-            columns=columns,
-            split_strategy=args.split_strategy,
-            test_size=args.test_size,
-            random_states=split_seeds,
-            num_folds=args.num_folds,
-        )
-        split_sensitivity = merge_metric_rows(
-            split_sensitivity,
-            pd.DataFrame([{"variant": variant_name, **row} for row in sensitivity.to_dict(orient="records")]),
-            key_columns=["variant", "random_state"],
-        )
         output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
         ablations.to_csv(output_paths["ablations"], index=False)
-        split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
+        for random_state in split_seeds:
+            seed_metrics, _ = evaluate_feature_frame(
+                variant_frame,
+                columns=columns,
+                split_strategy=args.split_strategy,
+                test_size=args.test_size,
+                random_state=int(random_state),
+                num_folds=args.num_folds,
+            )
+            split_sensitivity = merge_metric_rows(
+                split_sensitivity,
+                pd.DataFrame([{"variant": variant_name, "random_state": int(random_state), **seed_metrics}]),
+                key_columns=["variant", "random_state"],
+            )
+            split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
     print(output_paths["baselines"])
     print(output_paths["ablations"])
     print(output_paths["split_sensitivity"])
