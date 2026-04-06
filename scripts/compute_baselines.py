@@ -278,8 +278,8 @@ def main(argv: list[str] | None = None) -> int:
     baselines["bank_scope"] = args.bank_scope
     baselines["full_variant"] = args.full_variant
     baselines["presence_answer_summary"] = build_raw_model_yes_no_baseline(cache_entries)
-    ablation_rows: list[dict[str, object]] = []
-    split_sensitivity_rows: list[dict[str, object]] = []
+    ablations = load_existing_frame(output_paths["ablations"])
+    split_sensitivity = load_existing_frame(output_paths["split_sensitivity"])
 
     group_column = resolve_group_column(args.split_strategy)
     for variant_name, (variant_frame, columns) in variants.items():
@@ -304,7 +304,11 @@ def main(argv: list[str] | None = None) -> int:
             "confidence_intervals": confidence_intervals,
             "result_path": str(results_path),
         }
-        ablation_rows.append({"variant": variant_name, **metrics})
+        ablations = merge_metric_rows(
+            ablations,
+            pd.DataFrame([{"variant": variant_name, **metrics}]),
+            key_columns=["variant"],
+        )
 
         sensitivity = evaluate_feature_frame_across_random_states(
             variant_frame,
@@ -314,22 +318,14 @@ def main(argv: list[str] | None = None) -> int:
             random_states=split_seeds,
             num_folds=args.num_folds,
         )
-        for row in sensitivity.to_dict(orient="records"):
-            split_sensitivity_rows.append({"variant": variant_name, **row})
-
-    ablations = merge_metric_rows(
-        load_existing_frame(output_paths["ablations"]),
-        pd.DataFrame(ablation_rows),
-        key_columns=["variant"],
-    )
-    split_sensitivity = merge_metric_rows(
-        load_existing_frame(output_paths["split_sensitivity"]),
-        pd.DataFrame(split_sensitivity_rows),
-        key_columns=["variant", "random_state"],
-    )
-    output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
-    ablations.to_csv(output_paths["ablations"], index=False)
-    split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
+        split_sensitivity = merge_metric_rows(
+            split_sensitivity,
+            pd.DataFrame([{"variant": variant_name, **row} for row in sensitivity.to_dict(orient="records")]),
+            key_columns=["variant", "random_state"],
+        )
+        output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
+        ablations.to_csv(output_paths["ablations"], index=False)
+        split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
     print(output_paths["baselines"])
     print(output_paths["ablations"])
     print(output_paths["split_sensitivity"])
