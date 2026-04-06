@@ -60,6 +60,39 @@ VARIANT_ORDER = (
     *FEATURE_VARIANT_NAMES,
 )
 
+CACHE_BACKED_VARIANTS = {
+    "no_manifold",
+    "linear_probe",
+    "output_p_yes",
+    "output_logit_margin",
+    "output_chosen_answer_confidence",
+}
+
+
+def resolve_required_cache_fields(selected_variants: list[str]) -> set[str]:
+    keep_fields = {
+        "sample_id",
+        "image_id",
+        "label",
+        "parsed_answer",
+        "subset",
+        "object_name",
+    }
+    if "no_manifold" in selected_variants:
+        keep_fields.update({"selected_layers", "layer_vectors"})
+    if "linear_probe" in selected_variants:
+        keep_fields.add("layer_vectors")
+    if any(
+        variant_name in selected_variants
+        for variant_name in (
+            "output_p_yes",
+            "output_logit_margin",
+            "output_chosen_answer_confidence",
+        )
+    ):
+        keep_fields.add("first_token_logits")
+    return keep_fields
+
 
 def build_output_paths(*, output_root: Path, experiment_name: str) -> dict[str, Path]:
     root = output_root / experiment_name
@@ -196,10 +229,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     selected_variants = parse_variant_list(args.variants)
     features = pd.read_parquet(args.features_path)
-    cache_entries = load_cache_entries(args.cache_path)
+    cache_entries = None
     if args.label_overrides is not None:
         features = apply_label_overrides_to_frame(features, args.label_overrides)
-        cache_entries = apply_label_overrides_to_entries(cache_entries, args.label_overrides)
+    if any(variant_name in CACHE_BACKED_VARIANTS for variant_name in selected_variants):
+        cache_entries = load_cache_entries(
+            args.cache_path,
+            keep_fields=resolve_required_cache_fields(selected_variants),
+        )
+        if args.label_overrides is not None:
+            cache_entries = apply_label_overrides_to_entries(cache_entries, args.label_overrides)
     split_seeds = parse_int_list(args.split_seeds)
 
     variants: dict[str, tuple[pd.DataFrame, list[str]]] = {}
@@ -219,6 +258,8 @@ def main(argv: list[str] | None = None) -> int:
                 variants[variant_name] = (variant_frame, feature_columns(variant_frame))
 
     if "no_manifold" in selected_variants:
+        if cache_entries is None:
+            raise ValueError("no_manifold evaluation requires cache entries.")
         reference_bank = load_reference_bank(
             args.reference_root,
             args.model_name,
@@ -238,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
         variants["no_manifold"] = (no_manifold_frame, feature_columns(no_manifold_frame))
 
     if "linear_probe" in selected_variants:
+        if cache_entries is None:
+            raise ValueError("linear_probe evaluation requires cache entries.")
         linear_probe_frame = build_linear_probe_frame(cache_entries)
         variants["linear_probe"] = (linear_probe_frame, feature_columns(linear_probe_frame))
 
@@ -249,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
             "output_chosen_answer_confidence",
         )
     ):
+        if cache_entries is None:
+            raise ValueError("Output-side baseline evaluation requires cache entries.")
         yes_token_ids, no_token_ids = resolve_token_ids(
             model_name=args.model_name,
             model_id=args.model_id,
@@ -277,7 +322,8 @@ def main(argv: list[str] | None = None) -> int:
     baselines = load_existing_json(output_paths["baselines"])
     baselines["bank_scope"] = args.bank_scope
     baselines["full_variant"] = args.full_variant
-    baselines["presence_answer_summary"] = build_raw_model_yes_no_baseline(cache_entries)
+    if cache_entries is not None:
+        baselines["presence_answer_summary"] = build_raw_model_yes_no_baseline(cache_entries)
     ablations = load_existing_frame(output_paths["ablations"])
     split_sensitivity = load_existing_frame(output_paths["split_sensitivity"])
 
@@ -293,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         results_path = output_paths["variant_results"] / f"{variant_name}.csv"
         write_results_table(results, results_path)
+        print(f"[compute_baselines] wrote {results_path}")
         confidence_intervals = compute_bootstrap_confidence_intervals(
             results,
             group_column=group_column,
@@ -312,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
 
         output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
         ablations.to_csv(output_paths["ablations"], index=False)
+        print(f"[compute_baselines] updated {output_paths['baselines']}")
+        print(f"[compute_baselines] updated {output_paths['ablations']}")
         for random_state in split_seeds:
             seed_metrics, _ = evaluate_feature_frame(
                 variant_frame,
@@ -327,6 +376,10 @@ def main(argv: list[str] | None = None) -> int:
                 key_columns=["variant", "random_state"],
             )
             split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
+            print(
+                f"[compute_baselines] updated {output_paths['split_sensitivity']} "
+                f"for {variant_name} seed {int(random_state)}"
+            )
     print(output_paths["baselines"])
     print(output_paths["ablations"])
     print(output_paths["split_sensitivity"])
