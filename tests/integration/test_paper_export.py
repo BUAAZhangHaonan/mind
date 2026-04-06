@@ -429,6 +429,20 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     assert set(table1["protocol"]) == {"image_grouped"}
     assert set(table1_popular["benchmark"]) == {"POPE popular"}
     assert set(table1_dash_b["benchmark"]) == {"DASH-B"}
+    assert list(table1_popular.columns) == [
+        "model",
+        "benchmark",
+        "p_yes",
+        "logit_margin",
+        "chosen_confidence",
+        "drift_only",
+        "no_manifold",
+        "full_MIND",
+        "linear_probe",
+        "HALP",
+        "GLSim",
+    ]
+    assert list(table1_dash_b.columns) == list(table1_popular.columns)
 
     qwen_popular_full = table1.loc[
         (table1["model"] == "Qwen3-VL-8B")
@@ -437,10 +451,28 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     ].iloc[0]
     assert qwen_popular_full["roc_auc"] == 0.89
     assert qwen_popular_full["pr_auc"] == 0.17
+    qwen_popular_full_wide = table1_popular.loc[
+        table1_popular["model"] == "Qwen3-VL-8B",
+        "full_MIND",
+    ].iloc[0]
+    assert qwen_popular_full_wide == "ROC 0.8900 [0.8800, 0.9000]; PR 0.1700 [0.1500, 0.1900]"
 
-    assert set(table2["feature_variant"]) == {"raw_only", "raw_plus_simple_stats", "raw_plus_full_curve", "raw_plus_Haar"}
-    assert set(table3["protocol"]) == {"image_grouped", "object_heldout"}
-    assert set(table3["bank_scope"]) >= {"object", "shared", "shuffled_object", "linear_probe", "halp", "glsim"}
+    assert list(table2.columns) == [
+        "model",
+        "benchmark",
+        "raw_only",
+        "raw_plus_simple_stats",
+        "raw_plus_full_curve",
+        "raw_plus_Haar",
+    ]
+    assert list(table3.columns) == [
+        "model",
+        "benchmark",
+        "method",
+        "image_grouped",
+        "object_heldout",
+    ]
+    assert set(table3["method"]) >= {"object", "shared", "shuffled_object", "linear_probe", "HALP", "GLSim"}
 
     assert not supp_split_sensitivity.empty
 
@@ -507,9 +539,7 @@ def test_export_prefers_most_complete_duplicate_report(tmp_path: Path) -> None:
 
     table1_popular = pd.read_csv(outputs["table1_pope_popular_csv"])
     qwen_popular_full = table1_popular.loc[
-        (table1_popular["model"] == "Qwen3-VL-8B")
-        & (table1_popular["method"] == "full MIND")
+        table1_popular["model"] == "Qwen3-VL-8B",
+        "full_MIND",
     ].iloc[0]
-    assert qwen_popular_full["roc_auc"] == 0.91
-    assert qwen_popular_full["pr_auc"] == 0.19
-    assert qwen_popular_full["report_path"].endswith("round2-qwen3-vl-8b-popular-final")
+    assert qwen_popular_full == "ROC 0.9100 [0.9000, 0.9200]; PR 0.1900 [0.1700, 0.2100]"

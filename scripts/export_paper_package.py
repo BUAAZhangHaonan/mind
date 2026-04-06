@@ -47,6 +47,18 @@ MAIN_METHOD_ORDER = [
     ("linear_probe", "linear_probe"),
 ]
 
+WIDE_MAIN_METHOD_ORDER = [
+    ("output_p_yes", "p_yes"),
+    ("output_logit_margin", "logit_margin"),
+    ("output_chosen_answer_confidence", "chosen_confidence"),
+    ("drift_only", "drift_only"),
+    ("no_manifold", "no_manifold"),
+    ("full", "full_MIND"),
+    ("linear_probe", "linear_probe"),
+    ("halp", "HALP"),
+    ("glsim", "GLSim"),
+]
+
 FEATURE_VARIANT_ORDER = [
     ("raw_curve_only", "raw_only"),
     ("raw_plus_calibrated_simple", "raw_plus_simple_stats"),
@@ -166,6 +178,15 @@ def _metric_row(
     if extra:
         row.update(extra)
     return row
+
+
+def _format_metric_cell(payload: dict[str, object] | None) -> str:
+    if not payload:
+        return ""
+    return (
+        f"ROC {float(payload['roc_auc']):.4f} {_format_ci(payload, 'roc_auc')}; "
+        f"PR {float(payload['pr_auc']):.4f} {_format_ci(payload, 'pr_auc')}"
+    )
 
 
 def _metric_frame(rows: list[dict[str, object]], columns: list[str]) -> pd.DataFrame:
@@ -462,6 +483,33 @@ def build_feature_table(reports: list[RoundTwoReport]) -> pd.DataFrame:
     return _metric_frame(rows, columns)
 
 
+def build_wide_feature_table(reports: list[RoundTwoReport]) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    columns = ["model", "benchmark", *[variant_label for _, variant_label in FEATURE_VARIANT_ORDER]]
+    for model_key in ROUND_TWO_MODEL_ORDER:
+        for benchmark_key in ("popular", "dash-b"):
+            report = _find_report(
+                reports,
+                model_key=model_key,
+                benchmark_key=benchmark_key,
+                protocol="image_grouped",
+                kind="baseline",
+                bank_scope="object",
+            )
+            if report is None:
+                continue
+            row: dict[str, object] = {
+                "model": ROUND_TWO_MODEL_LABELS[model_key],
+                "benchmark": ROUND_TWO_BENCHMARK_LABELS[benchmark_key],
+            }
+            for variant_key, variant_label in FEATURE_VARIANT_ORDER:
+                row[variant_label] = _format_metric_cell(_baseline_payload(report, variant_key))
+            rows.append(row)
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows, columns=columns)
+
+
 def build_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: str = "popular") -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for model_key in ROUND_TWO_MODEL_ORDER:
@@ -528,6 +576,59 @@ def build_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: str = 
     return _metric_frame(rows, columns)
 
 
+def build_wide_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: str = "popular") -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    columns = ["model", "benchmark", "method", "image_grouped", "object_heldout"]
+    for model_key in ROUND_TWO_MODEL_ORDER:
+        for bank_scope, method_label in TRANSFER_METHOD_ORDER:
+            row: dict[str, object] = {
+                "model": ROUND_TWO_MODEL_LABELS[model_key],
+                "benchmark": ROUND_TWO_BENCHMARK_LABELS[benchmark_key],
+                "method": method_label,
+                "image_grouped": "",
+                "object_heldout": "",
+            }
+            for protocol in ("image_grouped", "object_heldout"):
+                payload: dict[str, object] | None = None
+                if bank_scope in {"object", "shared", "shuffled_object", "linear_probe"}:
+                    report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="baseline",
+                        bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
+                    )
+                    if report is not None:
+                        payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
+                elif bank_scope == "halp":
+                    report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="halp",
+                    )
+                    if report is not None:
+                        payload = report.halp or {}
+                else:
+                    report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="glsim",
+                    )
+                    if report is not None:
+                        payload = report.glsim or {}
+                row[protocol] = _format_metric_cell(payload)
+            if row["image_grouped"] or row["object_heldout"]:
+                rows.append(row)
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows, columns=columns)
+
+
 def build_benchmark_table(
     reports: list[RoundTwoReport],
     *,
@@ -587,6 +688,57 @@ def build_benchmark_table(
         "report_path",
     ]
     return _metric_frame(rows, columns)
+
+
+def build_wide_benchmark_table(
+    reports: list[RoundTwoReport],
+    *,
+    benchmark_key: str,
+    table_protocol: str = "image_grouped",
+) -> pd.DataFrame:
+    columns = ["model", "benchmark", *[column_label for _, column_label in WIDE_MAIN_METHOD_ORDER]]
+    rows: list[dict[str, object]] = []
+    for model_key in ROUND_TWO_MODEL_ORDER:
+        row: dict[str, object] = {
+            "model": ROUND_TWO_MODEL_LABELS[model_key],
+            "benchmark": ROUND_TWO_BENCHMARK_LABELS[benchmark_key],
+        }
+        report = _find_report(
+            reports,
+            model_key=model_key,
+            benchmark_key=benchmark_key,
+            protocol=table_protocol,
+            kind="baseline",
+            bank_scope="object",
+        )
+        if report is None:
+            continue
+        for variant_key, column_label in WIDE_MAIN_METHOD_ORDER:
+            if variant_key == "halp":
+                halp_report = _find_report(
+                    reports,
+                    model_key=model_key,
+                    benchmark_key=benchmark_key,
+                    protocol=table_protocol,
+                    kind="halp",
+                )
+                row[column_label] = _format_metric_cell(None if halp_report is None else halp_report.halp or {})
+                continue
+            if variant_key == "glsim":
+                glsim_report = _find_report(
+                    reports,
+                    model_key=model_key,
+                    benchmark_key=benchmark_key,
+                    protocol=table_protocol,
+                    kind="glsim",
+                )
+                row[column_label] = _format_metric_cell(None if glsim_report is None else glsim_report.glsim or {})
+                continue
+            row[column_label] = _format_metric_cell(_baseline_payload(report, variant_key))
+        rows.append(row)
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows, columns=columns)
 
 
 def build_supp_split_sensitivity_table(reports: list[RoundTwoReport]) -> pd.DataFrame:
@@ -738,15 +890,17 @@ def export_paper_package(
     reports = discover_round_two_reports(reports_root)
 
     main_table = build_main_table(reports)
-    popular_main_table = build_benchmark_table(reports, benchmark_key="popular")
-    dash_b_main_table = build_benchmark_table(reports, benchmark_key="dash-b")
-    feature_table = build_feature_table(reports)
-    transfer_table = build_transfer_table(reports)
-    pop_adversarial_table = build_benchmark_table(reports, benchmark_key="adversarial")
-    repope_table = build_benchmark_table(reports, benchmark_key="repope")
-    dash_b_transfer_table = build_transfer_table(
+    popular_main_table = build_wide_benchmark_table(reports, benchmark_key="popular")
+    dash_b_main_table = build_wide_benchmark_table(reports, benchmark_key="dash-b")
+    feature_table = build_wide_feature_table(reports)
+    transfer_long_table = build_transfer_table(reports)
+    transfer_table = build_wide_transfer_table(reports)
+    pop_adversarial_table = build_wide_benchmark_table(reports, benchmark_key="adversarial")
+    repope_table = build_wide_benchmark_table(reports, benchmark_key="repope")
+    dash_b_transfer_table = build_wide_benchmark_table(
         [report for report in reports if report.benchmark_key == "dash-b"],
         benchmark_key="dash-b",
+        table_protocol="object_heldout",
     )
     split_sensitivity_table = build_supp_split_sensitivity_table(reports)
 
@@ -816,7 +970,7 @@ def export_paper_package(
 
     plot_method_diagram(paths["figure1"])
     _plot_popular_curves(reports, paths["figure2"])
-    _plot_transfer_comparison(transfer_table, paths["figure3"])
+    _plot_transfer_comparison(transfer_long_table, paths["figure3"])
 
     manifest = {
         "figure1": {"title": "Round-two method diagram", "path": str(paths["figure1"])},
