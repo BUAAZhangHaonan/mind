@@ -44,17 +44,13 @@ def compute_binary_metrics(
     y_pred,
     y_score,
 ) -> dict[str, float]:
-    y_true = list(y_true)
-    y_pred = list(y_pred)
-    y_score = list(y_score)
-    unique_labels = set(y_true)
+    y_true = np.asarray(y_true, dtype=np.int64)
+    y_pred = np.asarray(y_pred, dtype=np.int64)
+    y_score = np.asarray(y_score, dtype=np.float64)
+    unique_labels = np.unique(y_true)
 
-    negative_total = sum(1 for value in y_true if value == 0)
-    false_positives = sum(
-        1
-        for truth, prediction in zip(y_true, y_pred)
-        if truth == 0 and prediction == 1
-    )
+    negative_total = int(np.sum(y_true == 0))
+    false_positives = int(np.sum((y_true == 0) & (y_pred == 1)))
 
     roc_auc = float(roc_auc_score(y_true, y_score)) if len(unique_labels) > 1 else float("nan")
     if len(unique_labels) > 1:

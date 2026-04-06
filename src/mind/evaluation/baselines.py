@@ -655,6 +655,13 @@ def compute_bootstrap_confidence_intervals(
     groups = results[group_column].drop_duplicates().tolist()
     if not groups:
         raise ValueError("Bootstrap requires at least one group.")
+    y_true = results["label"].to_numpy(dtype=np.int64)
+    y_pred = results["prediction"].to_numpy(dtype=np.int64)
+    y_score = results["score"].to_numpy(dtype=np.float64)
+    grouped_indices = {
+        group_value: np.asarray(index_frame, dtype=np.int64)
+        for group_value, index_frame in results.groupby(group_column).indices.items()
+    }
     rng = np.random.default_rng(random_state)
     alpha = 1.0 - ci_level
     collected: list[dict[str, float]] = []
@@ -663,18 +670,16 @@ def compute_bootstrap_confidence_intervals(
 
     while len(collected) < n_resamples and attempts < max_attempts:
         sampled_groups = rng.choice(groups, size=len(groups), replace=True)
-        sampled_frame = pd.concat(
-            [results.loc[results[group_column] == group_value] for group_value in sampled_groups],
-            ignore_index=True,
-        )
+        sampled_indices = np.concatenate([grouped_indices[group_value] for group_value in sampled_groups])
         attempts += 1
-        if sampled_frame["label"].nunique() < 2:
+        sampled_true = y_true[sampled_indices]
+        if np.unique(sampled_true).size < 2:
             continue
         collected.append(
             compute_binary_metrics(
-                y_true=sampled_frame["label"],
-                y_pred=sampled_frame["prediction"],
-                y_score=sampled_frame["score"],
+                y_true=sampled_true,
+                y_pred=y_pred[sampled_indices],
+                y_score=y_score[sampled_indices],
             )
         )
 
@@ -682,9 +687,9 @@ def compute_bootstrap_confidence_intervals(
         raise ValueError("Bootstrap did not produce any valid resamples.")
 
     point_metrics = compute_binary_metrics(
-        y_true=results["label"],
-        y_pred=results["prediction"],
-        y_score=results["score"],
+        y_true=y_true,
+        y_pred=y_pred,
+        y_score=y_score,
     )
     intervals: dict[str, dict[str, float]] = {}
     for metric_name in point_metrics:
