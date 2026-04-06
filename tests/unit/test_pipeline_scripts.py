@@ -319,6 +319,42 @@ def test_save_reference_bank_writes_stats_and_counts_report(tmp_path: Path) -> N
     assert counts.loc[0, "count"] == 2
 
 
+def test_save_reference_bank_persists_low_support_layers_for_drift(tmp_path: Path) -> None:
+    written_paths = build_manifolds.save_reference_bank(
+        entries=[
+            {
+                "sample_id": "yes-1",
+                "parsed_answer": 1,
+                "object_name": "backpack",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[0.0, 0.0, 0.0]]),
+            },
+            {
+                "sample_id": "yes-2",
+                "parsed_answer": 1,
+                "object_name": "backpack",
+                "selected_layers": [8],
+                "layer_vectors": torch.tensor([[1.0, 0.0, 0.0]]),
+            },
+        ],
+        output_root=tmp_path,
+        model_name="qwen3-vl-8b",
+        k_neighbors=4,
+    )
+
+    layer_path = tmp_path / "qwen3-vl-8b" / "backpack" / "layer-08.pt"
+    stats_path = tmp_path / "qwen3-vl-8b" / "backpack" / "stats.pt"
+    counts_path = tmp_path / "qwen3-vl-8b" / "reference_counts.csv"
+
+    assert layer_path in written_paths
+    assert layer_path.exists()
+    assert stats_path.exists()
+    counts = pd.read_csv(counts_path)
+    assert counts.loc[0, "object_name"] == "backpack"
+    assert counts.loc[0, "count"] == 2
+    assert not bool(counts.loc[0, "supports_manifold"])
+
+
 def test_save_reference_bank_writes_shared_bank_artifacts(tmp_path: Path) -> None:
     written_paths = build_manifolds.save_reference_bank(
         entries=[

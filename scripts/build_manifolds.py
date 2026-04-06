@@ -71,7 +71,7 @@ def save_reference_bank(
     )
     bank = build_reference_bank(
         cleaned_entries,
-        min_points=k_neighbors,
+        min_points=0,
         bank_scope=bank_scope,
         shuffle_seed=shuffle_seed,
         shuffled_object_mapping=shuffled_object_mapping,
