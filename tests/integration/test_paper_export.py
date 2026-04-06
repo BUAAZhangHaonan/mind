@@ -456,3 +456,60 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
 
     assert "metrics.json" not in {path.name for path in reports_root.rglob("*") if path.is_file()}
     assert "results.csv" not in {path.name for path in reports_root.rglob("*") if path.is_file()}
+
+
+def test_export_prefers_most_complete_duplicate_report(tmp_path: Path) -> None:
+    reports_root = tmp_path / "reports"
+    output_root = tmp_path / "paper"
+    tables_root = tmp_path / "docs" / "tables" / "round2"
+
+    _seed_round_two_reports(reports_root)
+
+    canonical = reports_root / "round2-qwen3-vl-8b-popular"
+    partial_variant = canonical / "variant_results" / "full.csv"
+    partial_variant.unlink()
+    baseline_payload = json.loads((canonical / "baselines.json").read_text(encoding="utf-8"))
+    baseline_payload.pop("full")
+    (canonical / "baselines.json").write_text(
+        json.dumps(baseline_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    richer = reports_root / "round2-qwen3-vl-8b-popular-final"
+    richer.mkdir(parents=True, exist_ok=True)
+    (richer / "variant_results").mkdir(parents=True, exist_ok=True)
+    for path in canonical.glob("variant_results/*.csv"):
+        (richer / "variant_results" / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    (richer / "variant_results" / "full.csv").write_text(
+        (reports_root / "round2-internvl3.5-8b-popular" / "variant_results" / "full.csv").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    richer_payload = dict(baseline_payload)
+    richer_payload["full"] = {
+        **_metric_payload(0.91, 0.19),
+        "result_path": "variant_results/full.csv",
+    }
+    (richer / "baselines.json").write_text(
+        json.dumps(richer_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    (richer / "ablations.csv").write_text((canonical / "ablations.csv").read_text(encoding="utf-8"), encoding="utf-8")
+    (richer / "split_sensitivity.csv").write_text(
+        (canonical / "split_sensitivity.csv").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    outputs = paper_export.export_paper_package(
+        reports_root=reports_root,
+        output_root=output_root,
+        tables_root=tables_root,
+    )
+
+    table1_popular = pd.read_csv(outputs["table1_pope_popular_csv"])
+    qwen_popular_full = table1_popular.loc[
+        (table1_popular["model"] == "Qwen3-VL-8B")
+        & (table1_popular["method"] == "full MIND")
+    ].iloc[0]
+    assert qwen_popular_full["roc_auc"] == 0.91
+    assert qwen_popular_full["pr_auc"] == 0.19
+    assert qwen_popular_full["report_path"].endswith("round2-qwen3-vl-8b-popular-final")

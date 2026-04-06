@@ -275,6 +275,36 @@ def discover_round_two_reports(reports_root: Path) -> list[RoundTwoReport]:
     return sorted(discovered.values(), key=lambda item: (item.model_key, item.benchmark_key, item.protocol, item.path.name))
 
 
+def _report_completeness_key(report: RoundTwoReport, *, kind: str) -> tuple[int, int, int, int, int, str]:
+    variant_count = len(report.variant_results or {})
+    if kind == "baseline":
+        return (
+            1 if report.baseline is not None else 0,
+            variant_count,
+            1 if report.ablations is not None else 0,
+            1 if report.split_sensitivity is not None else 0,
+            -len(report.path.name),
+            report.path.name,
+        )
+    if kind == "halp":
+        return (
+            1 if report.halp is not None else 0,
+            1 if (report.path / "halp_results.csv").exists() else 0,
+            1 if (report.path / "halp_selection.csv").exists() else 0,
+            0,
+            -len(report.path.name),
+            report.path.name,
+        )
+    return (
+        1 if report.glsim is not None else 0,
+        1 if (report.path / "glsim_results.csv").exists() else 0,
+        1 if (report.path / "glsim_selection.csv").exists() else 0,
+        0,
+        -len(report.path.name),
+        report.path.name,
+    )
+
+
 def _find_report(
     reports: list[RoundTwoReport],
     *,
@@ -284,6 +314,7 @@ def _find_report(
     kind: str,
     bank_scope: str | None = None,
 ) -> RoundTwoReport | None:
+    candidates: list[RoundTwoReport] = []
     for report in reports:
         if report.model_key != model_key or report.benchmark_key != benchmark_key or report.protocol != protocol:
             continue
@@ -292,12 +323,16 @@ def _find_report(
                 continue
             if bank_scope is not None and report.baseline.get("bank_scope") != bank_scope:
                 continue
-            return report
+            candidates.append(report)
+            continue
         if kind == "halp" and report.halp is not None:
-            return report
+            candidates.append(report)
+            continue
         if kind == "glsim" and report.glsim is not None:
-            return report
-    return None
+            candidates.append(report)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda report: _report_completeness_key(report, kind=kind))
 
 
 def _baseline_payload(report: RoundTwoReport, variant: str) -> dict[str, object]:
