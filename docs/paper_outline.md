@@ -32,45 +32,86 @@ These decisions now come from the live round-two rerun on the current code path,
 
 ## Framing Decision
 
-The current rerun does not support the pessimistic fallback that logit margin already beats MIND.
+The current round-two tables support a narrower and cleaner claim than the old drafts did.
 
-- On Qwen popular, logit margin is far below current full MIND.
-- On Intern popular, logit margin is far below current full MIND.
-- So the paper can still make a modest detector-performance claim.
-- The safer wording is:
-  - MIND clearly beats simple output confidence baselines
-  - MIND does not remove the gap to richer baselines like a linear probe
+- MIND clearly beats simple output confidence baselines on almost every completed row.
+- The one visible exception is LLaVA on `POPE popular`, where chosen-answer confidence slightly beats full MIND.
+- The linear probe beats full MIND on every completed row.
+- So the paper can still make a modest detector-performance claim over simple output baselines.
+- It cannot claim that MIND is the strongest internal-state detector.
 
-## What Is Live Right Now
+## Current Round-Two Results
 
-Use only these results as current paper evidence until the remaining reruns finish.
+Use only the saved round-two rows in:
 
-### POPE Popular, `image_grouped`, current code path
+- `docs/tables/round2/table1_pope_popular.md`
+- `docs/tables/round2/table1_dash_b.md`
+- `docs/tables/round2/table2_feature_ablation.md`
 
-- Qwen:
-  - raw only: `ROC-AUC 0.8462`, `PR-AUC 0.1159`
-  - raw + simple stats: `ROC-AUC 0.8908`, `PR-AUC 0.1741`
-  - raw + full curve: `ROC-AUC 0.9145`, `PR-AUC 0.2596`
-  - raw + Haar: `ROC-AUC 0.8690`, `PR-AUC 0.1470`
-  - logit margin: `ROC-AUC 0.5955`, `PR-AUC 0.0422`
-- InternVL:
-  - raw only: `ROC-AUC 0.8764`, `PR-AUC 0.4284`
-  - raw + simple stats: `ROC-AUC 0.8978`, `PR-AUC 0.5092`
-  - raw + full curve: `ROC-AUC 0.9119`, `PR-AUC 0.5333`
-  - raw + Haar: `ROC-AUC 0.8929`, `PR-AUC 0.4854`
-  - logit margin: `ROC-AUC 0.5454`, `PR-AUC 0.0861`
+### POPE Popular
 
-### How To Read These Numbers
+The clean story on `POPE popular` is:
 
-- The calibrated signal matters:
-  - both model families improve over raw-only once calibrated information is added
-- Haar is dead weight:
-  - it is never the best current variant
-- Full-curve compression is competitive:
-  - it is strongest on both current popular reruns
-  - but the win over simple stats is not clean enough to justify the larger feature set as the default
-- Output confidence is not enough:
-  - grouped logit-margin performance is weak on both current reruns
+- full MIND beats the simple output baselines on Qwen, InternVL, and Molmo
+- LLaVA is the one row where chosen-answer confidence edges out full MIND
+- the linear probe beats full MIND on all four models
+
+The current full-MIND rows are:
+
+- Qwen: `ROC-AUC 0.8908`, `PR-AUC 0.1741`
+- InternVL: `ROC-AUC 0.8978`, `PR-AUC 0.5092`
+- LLaVA: `ROC-AUC 0.8085`, `PR-AUC 0.0874`
+- Molmo: `ROC-AUC 0.8839`, `PR-AUC 0.2992`
+
+The current linear-probe rows are:
+
+- Qwen: `ROC-AUC 0.9161`, `PR-AUC 0.3803`
+- InternVL: `ROC-AUC 0.9366`, `PR-AUC 0.6550`
+- LLaVA: `ROC-AUC 0.8833`, `PR-AUC 0.3238`
+- Molmo: `ROC-AUC 0.9209`, `PR-AUC 0.5606`
+
+### DASH-B
+
+`DASH-B` keeps the basic geometry signal alive, but it changes which part of the method is pulling the weight.
+
+- full MIND still beats the simple output baselines on all four completed rows
+- the linear probe beats full MIND by a very large margin on all four rows
+- `no_manifold` beats full MIND on all four rows
+
+The current full-MIND rows are:
+
+- Qwen: `ROC-AUC 0.9193`, `PR-AUC 0.7374`
+- InternVL: `ROC-AUC 0.8574`, `PR-AUC 0.7084`
+- LLaVA: `ROC-AUC 0.8404`, `PR-AUC 0.7234`
+- Molmo: `ROC-AUC 0.7795`, `PR-AUC 0.5422`
+
+The current `no_manifold` rows are:
+
+- Qwen: `ROC-AUC 0.9290`, `PR-AUC 0.7784`
+- InternVL: `ROC-AUC 0.8769`, `PR-AUC 0.7288`
+- LLaVA: `ROC-AUC 0.8996`, `PR-AUC 0.7883`
+- Molmo: `ROC-AUC 0.8655`, `PR-AUC 0.6861`
+
+The current linear-probe rows are:
+
+- Qwen: `ROC-AUC 0.9909`, `PR-AUC 0.9779`
+- InternVL: `ROC-AUC 0.9858`, `PR-AUC 0.9699`
+- LLaVA: `ROC-AUC 0.9923`, `PR-AUC 0.9883`
+- Molmo: `ROC-AUC 0.9775`, `PR-AUC 0.9561`
+
+### How To Read These Results
+
+- The compact drift signal is real:
+  - it beats simple output confidence methods on almost every completed row
+- The richer probe is stronger:
+  - linear probing wins on both benchmarks for every model
+- The manifold step is the weak point on `DASH-B`:
+  - the harder benchmark does not kill the geometry signal
+  - it mainly hurts the manifold-normalized version of that signal
+- The model families do not line up perfectly:
+  - InternVL and Qwen remain strong under full MIND
+  - Molmo keeps a strong signal, but the gap to the linear probe is large on `DASH-B`
+  - LLaVA is the only popular row where a simple confidence baseline edges out full MIND
 
 ## Historical Artifact Warning
 
@@ -168,17 +209,18 @@ The older March correction-phase popular tables are not reproducible under the c
 
 ### 5. Main Story To Test
 
-- Does the simple calibrated feature set hold up on DASH-B?
-- Do the added models split the same way on object transfer?
-- Does HALP beat MIND as a detector?
-- Does GLSim beat both?
+- The simple calibrated feature set holds up better than output confidence, but not better than the linear probe.
+- The manifold step is not robust on `DASH-B`.
+- The remaining open question is whether HALP or GLSim beat MIND once the comparator work is finished.
+- The transfer story is still open because the held-out control tables are not built yet.
 
 ### 6. Discussion
 
-- If HALP or GLSim win, the paper becomes a geometry paper, not a best-detector paper.
-- If DASH-B hurts MIND much more than the baselines, say so plainly.
-- If transfer behavior splits by architecture family, center that result.
-- If all four models behave the same way, center the generality result instead.
+- The paper is already a geometry paper more than a detector paper.
+- The current tables justify a claim over simple output baselines.
+- They do not justify a claim over richer internal baselines.
+- The strongest negative result so far is that `no_manifold` beats full MIND on `DASH-B`.
+- If HALP or GLSim also beat MIND, the paper should lean even harder into interpretability and architecture comparison.
 
 ## Tables To Keep
 
