@@ -2,7 +2,7 @@
 
 Date: 2026-04-07
 
-This note records the live round-two state after checking the process list, GPU owners, output roots, report directories, and the serial queue log.
+This note records the live round-two state after checking the process list, GPU owners, output roots, report directories, and the queue logs.
 
 ## Live Queue
 
@@ -58,10 +58,11 @@ Recovery decision for this pass:
 - keep `qwen3-vl-8b` `POPE popular` readouts as complete and do not rerun them
 - keep MIND on GPU 1 only
 - relaunch only the GPU extraction queue first
-- leave the CPU comparator queues paused until the host is stable again
+- keep the CPU comparator queues down until a single unified serial queue takes over
 - force the queue onto cached local model paths or offline cached Hub paths so the dead proxy does not break extraction
+- replace the separate GPU and CPU queue scripts with one unified serial queue that never runs two heavy tasks at once
 
-The recovered queue is live again:
+The recovered GPU queue is live again:
 
 - tmux session:
   - `mind_gpu1_round2_queue`
@@ -74,9 +75,16 @@ The recovered queue is live again:
   - GPU 1 is occupied by `extract_readout_states.py`
   - the post-restart log shows InternVL loading successfully from the cached local model path
   - the run has moved past the earlier proxy failure and is actively generating on GPU 1
-- intentionally not relaunched yet:
+  - the live shard count has reached `19`
+- intentionally not relaunched:
   - `mind_glsim_cpu_queue`
   - `mind_halp_cpu_queue`
+- current memory snapshot during this audit:
+  - `125 GiB` total RAM
+  - `56 GiB` to `81 GiB` available RAM across repeated checks
+  - swap is present and mostly free
+  - no lingering `run_halp.py` or `run_glsim.py` workers remain
+  - no partial `halp.*` or `glsim.*` outputs were found under `outputs/round2_2026_04/`
 
 ## Main Matrix State
 
@@ -171,35 +179,30 @@ That means the paper can still claim superiority over simple output confidence m
 ## Immediate Priority
 
 1. Let the GPU 1 extraction queue finish the missing readout and adversarial cache work.
-2. Resume comparator scoring only after the host is stable, and do not restart both heavy CPU comparator queues at the same time.
-3. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
+2. Do not relaunch HALP and GLSim as separate queues.
+3. Start the new unified serial queue only after the current GPU queue is fully idle.
+4. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
 
-## Recovery Split
+## Unified Queue Policy
 
-The recovered execution shape should be:
+The split queue design is now retired.
 
-- one GPU 1 tmux queue for GPU-bound readout and eval-cache extraction only
-- one CPU tmux queue for `GLSim`
-- one CPU tmux queue for `HALP`
+- New queue script:
+  - `scripts/queue/mind_round2_unified_serial.sh`
+- Old split runners now refuse future direct launches:
+  - `scripts/queue/mind_round2_gpu1_serial.sh`
+  - `scripts/queue/mind_round2_glsim_cpu_serial.sh`
+  - `scripts/queue/mind_round2_halp_cpu_serial.sh`
 
-That split matches the observed failure. The GPU queue itself did not fail on readout extraction. It failed when a comparator step was run inside the same queue with `--device cuda`.
+The new policy is:
 
-## Live Relaunch
+- one task at a time only
+- GPU extraction first
+- HALP next, one run at a time
+- GLSim after HALP, one run at a time
+- lighter CPU pipeline stages only after comparator runs finish
+- memory and GPU state logged before and after every step
+- a virtual memory cap set to `80%` of total RAM
+- a hard memory gate that refuses to start a new step if available RAM is below `10 GiB`
 
-The recovery queues are now mounted and alive in tmux:
-
-- `mind_gpu1_round2_queue`
-- `mind_glsim_cpu_queue`
-- `mind_halp_cpu_queue`
-
-Current live heads:
-
-- GPU 1: `internvl3.5-8b` `POPE popular` readout extraction under `scripts/queue/mind_round2_gpu1_serial.sh`
-- CPU GLSim queue: `qwen3-vl-8b` `POPE popular` `image_grouped`
-- CPU HALP queue: `qwen3-vl-8b` `POPE popular` `image_grouped`
-
-The relaunch is using the serial scripts that survived the queue cleanup:
-
-- `scripts/queue/mind_round2_gpu1_serial.sh`
-- `scripts/queue/mind_round2_glsim_cpu_serial.sh`
-- `scripts/queue/mind_round2_halp_cpu_serial.sh`
+The unified queue has been prepared, but it has not been launched yet because the current GPU extraction queue is still active. That is intentional. The queue guard now refuses to start while another MIND extraction process is alive.
