@@ -7,6 +7,7 @@ import argparse
 from dataclasses import replace
 import json
 from pathlib import Path
+import re
 from typing import Iterable, Sequence
 
 import torch
@@ -26,6 +27,27 @@ def build_cache_output_path(
     shard_index: int,
 ) -> Path:
     return output_root / model_name / dataset_name / split / f"shard-{shard_index:05d}.pt"
+
+
+SHARD_FILE_PATTERN = re.compile(r"^shard-(\d{5})\.pt$")
+
+
+def collect_completed_shard_indices(output_dir: Path) -> list[int]:
+    if not output_dir.exists():
+        return []
+    indices: list[int] = []
+    for shard_path in sorted(output_dir.glob("shard-*.pt")):
+        match = SHARD_FILE_PATTERN.match(shard_path.name)
+        if match is None:
+            raise ValueError(f"Unexpected shard filename in {output_dir}: {shard_path.name}")
+        indices.append(int(match.group(1)))
+    expected_prefix = list(range(len(indices)))
+    if indices != expected_prefix:
+        raise ValueError(
+            f"Readout output directory {output_dir} must contain a contiguous shard prefix "
+            f"starting at 0; found {indices!r}."
+        )
+    return indices
 
 
 def load_normalized_records(path: Path) -> list[HallucinationRecord]:
@@ -99,21 +121,52 @@ def run_extraction(
         raise ValueError("batch_size must be positive")
 
     model_config = load_yaml_config(model_config_path, ModelConfig)
-    wrapper = create_model_wrapper(model_config)
-    processor = wrapper.load_processor()
-    model = wrapper.load_model(device=device)
-
     records = load_normalized_records(records_path)
     records = resolve_image_paths(records, image_root=image_root)
     if limit > 0:
         records = records[:limit]
 
+    output_dir = output_root / model_config.name / dataset_name / split
+    completed_indices = set(collect_completed_shard_indices(output_dir))
     output_paths: list[Path] = []
+    total_shards = (len(records) + shard_size - 1) // shard_size if records else 0
+    for shard_index in completed_indices:
+        if shard_index >= total_shards:
+            raise ValueError(
+                f"Readout output directory {output_dir} contains shard {shard_index:05d}, "
+                f"but only {total_shards} shards are expected."
+            )
+
+    if len(completed_indices) == total_shards:
+        return [
+            build_cache_output_path(
+                output_root=output_root,
+                model_name=model_config.name,
+                dataset_name=dataset_name,
+                split=split,
+                shard_index=shard_index,
+            )
+            for shard_index in range(total_shards)
+        ]
+
+    wrapper = create_model_wrapper(model_config)
+    processor = wrapper.load_processor()
+    model = wrapper.load_model(device=device)
 
     with torch.inference_mode():
         for shard_index, shard_records in enumerate(
             iter_record_shards(records, shard_size=shard_size)
         ):
+            output_path = build_cache_output_path(
+                output_root=output_root,
+                model_name=model_config.name,
+                dataset_name=dataset_name,
+                split=split,
+                shard_index=shard_index,
+            )
+            output_paths.append(output_path)
+            if shard_index in completed_indices:
+                continue
             shard_entries: list[dict[str, object]] = []
             for start in range(0, len(shard_records), batch_size):
                 shard_entries.extend(
@@ -126,15 +179,7 @@ def run_extraction(
                         max_new_tokens=max_new_tokens,
                     )
                 )
-            output_path = build_cache_output_path(
-                output_root=output_root,
-                model_name=model_config.name,
-                dataset_name=dataset_name,
-                split=split,
-                shard_index=shard_index,
-            )
             save_prefill_cache_shard(shard_entries, output_path)
-            output_paths.append(output_path)
     return output_paths
 
 

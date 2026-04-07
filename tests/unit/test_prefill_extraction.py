@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
 import torch
 
 from mind.data import HallucinationRecord
@@ -227,6 +228,127 @@ def test_extract_readout_run_extraction_batches_records(tmp_path: Path, monkeypa
     second_shard = torch.load(output_paths[1], weights_only=False)
     assert [row["sample_id"] for row in first_shard] == ["sample-0", "sample-1", "sample-2", "sample-3"]
     assert [row["sample_id"] for row in second_shard] == ["sample-4"]
+
+
+def test_extract_readout_run_extraction_resumes_from_contiguous_partial_prefix(
+    tmp_path: Path, monkeypatch
+) -> None:
+    records = [
+        HallucinationRecord(
+            sample_id=f"sample-{index}",
+            image_id=index,
+            image_path=f"{index}.jpg",
+            question=f"Q{index}?",
+            label=index % 2,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        )
+        for index in range(5)
+    ]
+    batch_sizes: list[int] = []
+    model_load_calls: list[str] = []
+
+    class FakeWrapper:
+        def load_processor(self):
+            return "processor"
+
+        def load_model(self, device: str):
+            model_load_calls.append(device)
+            return "model"
+
+    monkeypatch.setattr(
+        extract_readout_states,
+        "load_yaml_config",
+        lambda path, config_cls: type("Config", (), {"name": "qwen3-vl-8b"})(),
+    )
+    monkeypatch.setattr(extract_readout_states, "create_model_wrapper", lambda config: FakeWrapper())
+    monkeypatch.setattr(extract_readout_states, "load_normalized_records", lambda path: list(records))
+    monkeypatch.setattr(
+        extract_readout_states,
+        "extract_prefill_readout_entries",
+        lambda **kwargs: (
+            batch_sizes.append(len(kwargs["records"]))
+            or [{"sample_id": record.sample_id} for record in kwargs["records"]]
+        ),
+    )
+
+    existing_shard = tmp_path / "readouts" / "qwen3-vl-8b" / "pope" / "popular" / "shard-00000.pt"
+    existing_shard.parent.mkdir(parents=True, exist_ok=True)
+    torch.save([{"sample_id": "sample-0"}, {"sample_id": "sample-1"}], existing_shard)
+
+    output_paths = extract_readout_states.run_extraction(
+        records_path=tmp_path / "popular.jsonl",
+        model_config_path=tmp_path / "model.yaml",
+        output_root=tmp_path / "readouts",
+        dataset_name="pope",
+        split="popular",
+        image_root=None,
+        device="cuda:0",
+        shard_size=2,
+        batch_size=2,
+        max_new_tokens=1,
+        limit=0,
+    )
+
+    assert model_load_calls == ["cuda:0"]
+    assert batch_sizes == [2, 1]
+    assert [path.name for path in output_paths] == [
+        "shard-00000.pt",
+        "shard-00001.pt",
+        "shard-00002.pt",
+    ]
+    resumed_shard = torch.load(output_paths[1], weights_only=False)
+    final_shard = torch.load(output_paths[2], weights_only=False)
+    assert [row["sample_id"] for row in resumed_shard] == ["sample-2", "sample-3"]
+    assert [row["sample_id"] for row in final_shard] == ["sample-4"]
+
+
+def test_extract_readout_run_extraction_rejects_non_contiguous_partial_shards(
+    tmp_path: Path, monkeypatch
+) -> None:
+    records = [
+        HallucinationRecord(
+            sample_id=f"sample-{index}",
+            image_id=index,
+            image_path=f"{index}.jpg",
+            question=f"Q{index}?",
+            label=index % 2,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        )
+        for index in range(6)
+    ]
+
+    monkeypatch.setattr(
+        extract_readout_states,
+        "load_yaml_config",
+        lambda path, config_cls: type("Config", (), {"name": "qwen3-vl-8b"})(),
+    )
+    monkeypatch.setattr(extract_readout_states, "load_normalized_records", lambda path: list(records))
+
+    shard_root = tmp_path / "readouts" / "qwen3-vl-8b" / "pope" / "popular"
+    shard_root.mkdir(parents=True, exist_ok=True)
+    torch.save([{"sample_id": "sample-0"}], shard_root / "shard-00000.pt")
+    torch.save([{"sample_id": "sample-4"}], shard_root / "shard-00002.pt")
+
+    with pytest.raises(ValueError, match="contiguous shard prefix"):
+        extract_readout_states.run_extraction(
+            records_path=tmp_path / "popular.jsonl",
+            model_config_path=tmp_path / "model.yaml",
+            output_root=tmp_path / "readouts",
+            dataset_name="pope",
+            split="popular",
+            image_root=None,
+            device="cuda:0",
+            shard_size=2,
+            batch_size=2,
+            max_new_tokens=1,
+            limit=0,
+        )
 
 
 def test_load_normalized_records_reads_jsonl_rows(tmp_path: Path) -> None:
