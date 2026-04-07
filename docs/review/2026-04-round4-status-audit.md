@@ -139,3 +139,13 @@ That means the paper can still claim superiority over simple output confidence m
 1. Fix the queue brittle points first: readout resume, retries, object-heldout validation, and lock files.
 2. Relaunch GPU 1 with extraction-only work, starting from `internvl3.5-8b` `POPE popular` readouts.
 3. Move `GLSim` and `HALP` into separate CPU-side tmux queues so a comparator failure does not waste GPU time.
+
+## Recovery Split
+
+The recovered execution shape should be:
+
+- one GPU 1 tmux queue for GPU-bound readout and eval-cache extraction only
+- one CPU tmux queue for `GLSim`
+- one CPU tmux queue for `HALP`
+
+That split matches the observed failure. The GPU queue itself did not fail on readout extraction. It failed when a comparator step was run inside the same queue with `--device cuda`.
