@@ -6,9 +6,11 @@ cd "$ROOT_DIR"
 
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
 GPU_ID="${GPU_ID:-1}"
-export CUDA_VISIBLE_DEVICES="$GPU_ID"
+RETRY_ATTEMPTS="${RETRY_ATTEMPTS:-3}"
+RETRY_DELAY_SECONDS="${RETRY_DELAY_SECONDS:-60}"
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_gpu_queue_20260407.log}"
 
-QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log}"
+export CUDA_VISIBLE_DEVICES="$GPU_ID"
 mkdir -p "$(dirname "$QUEUE_LOG")"
 
 timestamp() {
@@ -19,19 +21,38 @@ log() {
   echo "[$(timestamp)] $*" | tee -a "$QUEUE_LOG"
 }
 
-run_logged() {
-  local name="$1"
+command_string() {
+  printf '%q ' "$@"
+}
+
+run_with_retries() {
+  local step_name="$1"
   shift
-  log "START $name"
-  set +e
-  "$@" 2>&1 | tee -a "$QUEUE_LOG"
-  local status=${PIPESTATUS[0]}
-  set -e
-  if [[ "$status" -ne 0 ]]; then
-    log "FAIL $name (exit=$status)"
-    exit "$status"
-  fi
-  log "DONE $name"
+  local -a cmd=("$@")
+  local attempt=1
+  local status=0
+  local cmd_text
+  cmd_text="$(command_string "${cmd[@]}")"
+  while (( attempt <= RETRY_ATTEMPTS )); do
+    log "START $step_name (attempt ${attempt}/${RETRY_ATTEMPTS})"
+    log "CMD $cmd_text"
+    set +e
+    "${cmd[@]}" 2>&1 | tee -a "$QUEUE_LOG"
+    status=${PIPESTATUS[0]}
+    set -e
+    if [[ "$status" -eq 0 ]]; then
+      log "DONE $step_name"
+      return 0
+    fi
+    if (( attempt == RETRY_ATTEMPTS )); then
+      log "FAIL $step_name (exit=$status)"
+      return "$status"
+    fi
+    log "RETRY $step_name after exit=$status; sleeping ${RETRY_DELAY_SECONDS}s"
+    sleep "$RETRY_DELAY_SECONDS"
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
 jsonl_rows() {
@@ -87,11 +108,8 @@ ensure_readouts() {
     log "SKIP $step_name complete ($existing/$expected shards)"
     return
   fi
-  if [[ "$existing" -gt 0 ]]; then
-    archive_partial_dir "$shard_dir"
-  fi
 
-  run_logged "$step_name" \
+  run_with_retries "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_readout_states.py \
         --records "$records_path" \
@@ -110,57 +128,6 @@ ensure_readouts() {
     log "FAIL $step_name wrote $existing/$expected shards"
     exit 1
   fi
-}
-
-ensure_glsim() {
-  local step_name="$1"
-  local readout_path="$2"
-  local model_config="$3"
-  local experiment_name="$4"
-  local split_strategy="$5"
-  local num_folds="$6"
-
-  local report_root="outputs/round2_2026_04/reports/${experiment_name}"
-  if [[ -f "${report_root}/glsim.json" && -f "${report_root}/glsim_results.csv" && -f "${report_root}/glsim_selection.csv" ]]; then
-    log "SKIP $step_name complete"
-    return
-  fi
-
-  run_logged "$step_name" \
-    conda run --no-capture-output -n "$CONDA_ENV" \
-      python scripts/run_glsim.py \
-        --readout-path "$readout_path" \
-        --model-config "$model_config" \
-        --output-root outputs/round2_2026_04/reports \
-        --experiment-name "$experiment_name" \
-        --device cuda \
-        --split-strategy "$split_strategy" \
-        --num-folds "$num_folds" \
-        --bootstrap-resamples 1000
-}
-
-ensure_halp() {
-  local step_name="$1"
-  local readout_path="$2"
-  local experiment_name="$3"
-  local split_strategy="$4"
-  local num_folds="$5"
-
-  local report_root="outputs/round2_2026_04/reports/${experiment_name}"
-  if [[ -f "${report_root}/halp.json" && -f "${report_root}/halp_results.csv" && -f "${report_root}/halp_selection.csv" ]]; then
-    log "SKIP $step_name complete"
-    return
-  fi
-
-  run_logged "$step_name" \
-    conda run --no-capture-output -n "$CONDA_ENV" \
-      python scripts/run_halp.py \
-        --readout-path "$readout_path" \
-        --output-root outputs/round2_2026_04/reports \
-        --experiment-name "$experiment_name" \
-        --split-strategy "$split_strategy" \
-        --num-folds "$num_folds" \
-        --bootstrap-resamples 1000
 }
 
 ensure_eval_cache() {
@@ -186,7 +153,7 @@ ensure_eval_cache() {
     archive_partial_dir "$shard_dir"
   fi
 
-  run_logged "$step_name" \
+  run_with_retries "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_eval_states.py \
         --records "$records_path" \
@@ -209,134 +176,58 @@ ensure_eval_cache() {
   fi
 }
 
-queue_model_gpu_work() {
-  local model_name="$1"
-  local model_config="$2"
-  local popular_report="$3"
-  local dash_report="$4"
-  local needs_dash_repair="$5"
-
-  local popular_readout="outputs/round2_2026_04/readouts/${model_name}/pope/popular"
-  local dash_readout="outputs/round2_2026_04/readouts/${model_name}/dash-b/main"
-
-  ensure_readouts \
-    "${model_name} pope popular readouts" \
-    "$model_config" \
-    "$model_name" \
-    "pope" \
-    "popular" \
-    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014"
-
-  if [[ "$needs_dash_repair" == "yes" ]]; then
-    ensure_readouts \
-      "${model_name} dash-b readouts" \
-      "$model_config" \
-      "$model_name" \
-      "dash-b" \
-      "main" \
-      "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
-      "data/dash_b"
-  else
-    log "SKIP ${model_name} dash-b readouts already complete"
-  fi
-
-  ensure_glsim \
-    "${model_name} pope popular GLSim image_grouped" \
-    "$popular_readout" \
-    "$model_config" \
-    "$popular_report" \
-    "image_grouped" \
-    "5"
-  ensure_glsim \
-    "${model_name} pope popular GLSim object_heldout" \
-    "$popular_readout" \
-    "$model_config" \
-    "${popular_report}-object-heldout" \
-    "object_heldout" \
-    "2"
-
-  ensure_glsim \
-    "${model_name} dash-b GLSim image_grouped" \
-    "$dash_readout" \
-    "$model_config" \
-    "$dash_report" \
-    "image_grouped" \
-    "5"
-  ensure_glsim \
-    "${model_name} dash-b GLSim object_heldout" \
-    "$dash_readout" \
-    "$model_config" \
-    "${dash_report}-object-heldout" \
-    "object_heldout" \
-    "2"
-}
-
-queue_model_halp() {
-  local model_name="$1"
-  local popular_report="$2"
-  local dash_report="$3"
-
-  local popular_readout="outputs/round2_2026_04/readouts/${model_name}/pope/popular"
-  local dash_readout="outputs/round2_2026_04/readouts/${model_name}/dash-b/main"
-
-  ensure_halp \
-    "${model_name} pope popular HALP image_grouped" \
-    "$popular_readout" \
-    "$popular_report" \
-    "image_grouped" \
-    "5"
-  ensure_halp \
-    "${model_name} pope popular HALP object_heldout" \
-    "$popular_readout" \
-    "${popular_report}-object-heldout" \
-    "object_heldout" \
-    "2"
-
-  ensure_halp \
-    "${model_name} dash-b HALP image_grouped" \
-    "$dash_readout" \
-    "$dash_report" \
-    "image_grouped" \
-    "5"
-  ensure_halp \
-    "${model_name} dash-b HALP object_heldout" \
-    "$dash_readout" \
-    "${dash_report}-object-heldout" \
-    "object_heldout" \
-    "2"
-}
-
 main() {
-  log "GPU1 queue starting"
+  log "GPU queue starting"
   log "root=$ROOT_DIR"
   log "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
   log "conda_env=$CONDA_ENV"
 
-  queue_model_gpu_work \
-    "qwen3-vl-8b" \
-    "configs/models/qwen3_vl_8b_local.yaml" \
-    "round2-qwen3-vl-8b-popular-final" \
-    "round2-qwen3-vl-8b-dash-b" \
-    "no"
-  queue_model_gpu_work \
-    "internvl3.5-8b" \
+  ensure_readouts \
+    "internvl3.5-8b pope popular readouts" \
     "configs/models/internvl3_5_8b.yaml" \
-    "round2-internvl3.5-8b-popular" \
-    "round2-internvl3.5-8b-dash-b" \
-    "yes"
-  queue_model_gpu_work \
-    "llava-onevision-7b" \
+    "internvl3.5-8b" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4"
+  ensure_readouts \
+    "llava-onevision-7b pope popular readouts" \
     "configs/models/llava_onevision_7b.yaml" \
-    "round2-llava-onevision-7b-popular" \
-    "round2-llava-onevision-7b-dash-b" \
-    "yes"
-  queue_model_gpu_work \
-    "molmo-7b-d-0924" \
+    "llava-onevision-7b" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4"
+  ensure_readouts \
+    "molmo-7b-d-0924 pope popular readouts" \
     "configs/models/molmo_7b_d_0924.yaml" \
-    "round2-molmo-7b-d-0924-popular" \
-    "round2-molmo-7b-d-0924-dash-b" \
-    "no"
+    "molmo-7b-d-0924" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4"
+
+  ensure_readouts \
+    "internvl3.5-8b dash-b readouts" \
+    "configs/models/internvl3_5_8b.yaml" \
+    "internvl3.5-8b" \
+    "dash-b" \
+    "main" \
+    "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
+    "data/dash_b" \
+    "4"
+  ensure_readouts \
+    "llava-onevision-7b dash-b readouts" \
+    "configs/models/llava_onevision_7b.yaml" \
+    "llava-onevision-7b" \
+    "dash-b" \
+    "main" \
+    "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
+    "data/dash_b" \
+    "4"
 
   ensure_eval_cache \
     "qwen3-vl-8b pope adversarial eval cache" \
@@ -355,24 +246,7 @@ main() {
     "data/coco/val2014" \
     "4"
 
-  queue_model_halp \
-    "qwen3-vl-8b" \
-    "round2-qwen3-vl-8b-popular-final" \
-    "round2-qwen3-vl-8b-dash-b"
-  queue_model_halp \
-    "internvl3.5-8b" \
-    "round2-internvl3.5-8b-popular" \
-    "round2-internvl3.5-8b-dash-b"
-  queue_model_halp \
-    "llava-onevision-7b" \
-    "round2-llava-onevision-7b-popular" \
-    "round2-llava-onevision-7b-dash-b"
-  queue_model_halp \
-    "molmo-7b-d-0924" \
-    "round2-molmo-7b-d-0924-popular" \
-    "round2-molmo-7b-d-0924-dash-b"
-
-  log "GPU1 queue completed"
+  log "GPU queue completed"
 }
 
 main "$@"
