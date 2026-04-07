@@ -2,24 +2,35 @@
 
 Date: 2026-04-07
 
-This note records the live round-two state after checking the process list, GPU owners, output roots, report directories, and job logs.
+This note records the live round-two state after checking the process list, GPU owners, output roots, report directories, and the serial queue log.
 
 ## Live Queue
 
-The live machine state has changed materially since the earlier audit.
+The previous GPU 1 queue did not finish. It stopped after one successful step.
 
-- GPU 0 is still occupied by `magformer` training via `python tools/train.py`.
-- GPU 1 is now reserved for MIND through tmux session `mind_gpu1_round2_queue`.
+- GPU 0 is still occupied by `magformer`.
+- GPU 1 is now free.
+- The tmux session `mind_gpu1_round2_queue` no longer exists.
 - The queue log is:
   - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log`
-- The first live MIND job is:
-  - `python scripts/extract_readout_states.py`
-  - model: `qwen3-vl-8b`
-  - benchmark: `POPE popular`
-  - split: `popular`
-  - output root: `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
 
-The queue is serial and resumable. It skips completed outputs and archives partial readout trees before reruns.
+The queue completed:
+
+- `qwen3-vl-8b`
+- benchmark: `POPE popular`
+- stage: readout extraction
+- output root: `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
+- result: complete (`47/47` shards)
+
+The queue then failed on the next step:
+
+- `qwen3-vl-8b`
+- benchmark: `POPE popular`
+- stage: `GLSim image_grouped`
+- command: `python scripts/run_glsim.py ... --device cuda --split-strategy image_grouped`
+- result: killed with `exit=137`
+
+So the queue failure was not a readout failure. It was the first comparator step being run on the GPU queue.
 
 ## Main Matrix State
 
@@ -78,20 +89,20 @@ The tracked paper table already exists:
 
 ## Comparator State
 
-`outputs/round2_2026_04/readouts/` now exists, and comparator recovery is now live on GPU 1.
+`outputs/round2_2026_04/readouts/` exists, but the recovery queue is no longer live.
 
 | Model | POPE popular readouts | DASH-B readouts | Status |
 | --- | --- | --- | --- |
-| Qwen3-VL-8B | running | present, complete (`42` shards) | current live queue head |
-| InternVL3.5-8B | queued | partial (`36` shards) | queued for popular extraction, then DASH-B repair |
-| LLaVA-OneVision-7B | queued | partial (`7` shards) | queued for popular extraction, then DASH-B repair |
-| Molmo-7B-D-0924 | queued | present, complete after rerun (`42` shards in `main/`) | queued for popular extraction only |
+| Qwen3-VL-8B | complete (`47` shards) | complete (`42` shards) | readouts are usable; GLSim failed before writing results |
+| InternVL3.5-8B | missing | partial (`36` shards) | still needs popular readouts and DASH-B repair |
+| LLaVA-OneVision-7B | missing | partial (`7` shards) | still needs popular readouts and DASH-B repair |
+| Molmo-7B-D-0924 | missing | complete after rerun (`42` shards in `main/`) | still needs popular readouts |
 
 No HALP output directories are present.
 
 No GLSim output directories are present.
 
-So comparator scoring is still missing, but the readout recovery path is no longer stalled. The live tmux queue is now moving through the missing readout coverage first.
+So comparator scoring is still missing. The next recovery pass needs to split GPU-only extraction from CPU-side comparator runs instead of keeping them in one queue.
 
 ## What The Current Results Already Say
 
@@ -106,12 +117,13 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Execution Problems That Are Still Real
 
-- GPU occupancy alone is misleading. The machine can look busy while MIND is idle, or it can look mostly quiet while a long model load is still alive.
-- The readout extraction layer is still brittle. Qwen and Molmo reached a clean `42`-shard DASH-B endpoint, while InternVL and especially LLaVA stopped partway and left no active writer behind.
-- The queue layer was previously too informal. Without a persistent runner, stopped shells looked too much like finished work.
+- GPU occupancy alone is misleading. The machine can look busy while MIND is idle, or it can look quiet after a killed job.
+- The readout extraction layer still lacks true resume semantics. The old queue compensated by archiving partial trees, which is wasteful and fragile.
+- The queue shape was wrong. It mixed GPU-bound extraction with comparator runs that can be moved to CPU-side persistent queues.
+- There is still no lock-file guard against duplicate writers targeting the same output root.
 
 ## Immediate Priority
 
-1. Finish the missing comparator readout coverage, starting with `POPE popular`, because HALP and GLSim still have no usable popular inputs there.
-2. Run GLSim on both main benchmarks once the readouts for a model are complete.
-3. Run HALP after the GPU-heavy readout and GLSim steps finish.
+1. Fix the queue brittle points first: readout resume, retries, object-heldout validation, and lock files.
+2. Relaunch GPU 1 with extraction-only work, starting from `internvl3.5-8b` `POPE popular` readouts.
+3. Move `GLSim` and `HALP` into separate CPU-side tmux queues so a comparator failure does not waste GPU time.
