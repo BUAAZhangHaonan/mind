@@ -149,3 +149,23 @@ The recovered execution shape should be:
 - one CPU tmux queue for `HALP`
 
 That split matches the observed failure. The GPU queue itself did not fail on readout extraction. It failed when a comparator step was run inside the same queue with `--device cuda`.
+
+## Live Relaunch
+
+The recovery queues are now mounted and alive in tmux:
+
+- `mind_gpu1_round2_queue`
+- `mind_glsim_cpu_queue`
+- `mind_halp_cpu_queue`
+
+Current live heads:
+
+- GPU 1: `internvl3.5-8b` `POPE popular` readout extraction under `scripts/queue/mind_round2_gpu1_serial.sh`
+- CPU GLSim queue: `qwen3-vl-8b` `POPE popular` `image_grouped`
+- CPU HALP queue: `qwen3-vl-8b` `POPE popular` `image_grouped`
+
+The relaunch is using the serial scripts that survived the queue cleanup:
+
+- `scripts/queue/mind_round2_gpu1_serial.sh`
+- `scripts/queue/mind_round2_glsim_cpu_serial.sh`
+- `scripts/queue/mind_round2_halp_cpu_serial.sh`
