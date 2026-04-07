@@ -6,14 +6,20 @@ This note records the live round-two state after checking the process list, GPU 
 
 ## Live Queue
 
-There are no live MIND jobs now.
+The live machine state has changed materially since the earlier audit.
 
-The GPUs are occupied, but not by MIND:
+- GPU 0 is still occupied by `magformer` training via `python tools/train.py`.
+- GPU 1 is now reserved for MIND through tmux session `mind_gpu1_round2_queue`.
+- The queue log is:
+  - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log`
+- The first live MIND job is:
+  - `python scripts/extract_readout_states.py`
+  - model: `qwen3-vl-8b`
+  - benchmark: `POPE popular`
+  - split: `popular`
+  - output root: `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
 
-- GPU 0: `magformer` training via `python tools/train.py`
-- GPU 1: `magformer` training via `python train_net_mgm_0831.py`
-
-That means the MIND queue is empty. Any unfinished round-two work is not still running. It is either already complete on disk or still missing.
+The queue is serial and resumable. It skips completed outputs and archives partial readout trees before reruns.
 
 ## Main Matrix State
 
@@ -55,7 +61,10 @@ Each one now contains:
 - `ablations.csv`
 - `split_sensitivity.csv`
 
-The missing piece is the tracked paper table. `docs/tables/round2/table1_dash_b.md` and `.csv` have not been generated yet.
+The tracked paper table already exists:
+
+- `docs/tables/round2/table1_dash_b.md`
+- `docs/tables/round2/table1_dash_b.csv`
 
 ## Supplementary State
 
@@ -69,20 +78,20 @@ The missing piece is the tracked paper table. `docs/tables/round2/table1_dash_b.
 
 ## Comparator State
 
-`outputs/round2_2026_04/readouts/` now exists, but comparator coverage is still incomplete.
+`outputs/round2_2026_04/readouts/` now exists, and comparator recovery is now live on GPU 1.
 
 | Model | POPE popular readouts | DASH-B readouts | Status |
 | --- | --- | --- | --- |
-| Qwen3-VL-8B | missing | present, likely complete (`42` shards) | DASH-B only |
-| InternVL3.5-8B | missing | partial (`36` shards) | stalled before completion |
-| LLaVA-OneVision-7B | missing | partial (`7` shards) | stalled early |
-| Molmo-7B-D-0924 | missing | present, complete after rerun (`42` shards in `main/`) | DASH-B only |
+| Qwen3-VL-8B | running | present, complete (`42` shards) | current live queue head |
+| InternVL3.5-8B | queued | partial (`36` shards) | queued for popular extraction, then DASH-B repair |
+| LLaVA-OneVision-7B | queued | partial (`7` shards) | queued for popular extraction, then DASH-B repair |
+| Molmo-7B-D-0924 | queued | present, complete after rerun (`42` shards in `main/`) | queued for popular extraction only |
 
 No HALP output directories are present.
 
 No GLSim output directories are present.
 
-So comparator execution has not actually started yet at the scoring stage. The project only has partial shared readout extraction, and only for DASH-B.
+So comparator scoring is still missing, but the readout recovery path is no longer stalled. The live tmux queue is now moving through the missing readout coverage first.
 
 ## What The Current Results Already Say
 
@@ -97,12 +106,12 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Execution Problems That Are Still Real
 
-- GPU occupancy alone is misleading. The machine can look busy while MIND is completely idle.
+- GPU occupancy alone is misleading. The machine can look busy while MIND is idle, or it can look mostly quiet while a long model load is still alive.
 - The readout extraction layer is still brittle. Qwen and Molmo reached a clean `42`-shard DASH-B endpoint, while InternVL and especially LLaVA stopped partway and left no active writer behind.
-- The report layer is now ahead of the paper layer. The saved DASH-B reports exist, but the tracked table files and paper docs still lag them.
+- The queue layer was previously too informal. Without a persistent runner, stopped shells looked too much like finished work.
 
 ## Immediate Priority
 
-1. Generate the tracked DASH-B main table from the already-complete saved report trees.
-2. Finish the missing comparator readout coverage, starting with `POPE popular`, because HALP and GLSim still have no usable popular inputs.
-3. Run HALP and GLSim before spending more effort on lower-priority supplementary tables.
+1. Finish the missing comparator readout coverage, starting with `POPE popular`, because HALP and GLSim still have no usable popular inputs there.
+2. Run GLSim on both main benchmarks once the readouts for a model are complete.
+3. Run HALP after the GPU-heavy readout and GLSim steps finish.
