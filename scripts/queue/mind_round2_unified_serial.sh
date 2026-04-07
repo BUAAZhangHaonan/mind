@@ -52,11 +52,15 @@ command_string() {
 }
 
 memory_available_gb() {
-  free -g | awk '/^Mem:/ {print $7}'
+  awk '/^MemAvailable:/ {print int($2 / 1024 / 1024)}' /proc/meminfo
 }
 
 total_memory_gb() {
-  free -g | awk '/^Mem:/ {print $2}'
+  awk '/^MemTotal:/ {print int($2 / 1024 / 1024)}' /proc/meminfo
+}
+
+total_memory_kb() {
+  awk '/^MemTotal:/ {print $2}' /proc/meminfo
 }
 
 log_resource_state() {
@@ -71,18 +75,19 @@ log_resource_state() {
 }
 
 set_virtual_memory_limit() {
-  local total_gb limit_gb limit_kb
+  local total_gb total_kb limit_gb limit_kb
   total_gb="$(total_memory_gb)"
+  total_kb="$(total_memory_kb)"
   if [[ -z "$total_gb" || "$total_gb" -le 0 ]]; then
-    log "FAIL could not resolve total system RAM from free -g"
+    log "FAIL could not resolve total system RAM from /proc/meminfo"
     exit 1
   fi
-  limit_gb=$(( total_gb * 80 / 100 ))
-  if [[ "$limit_gb" -lt 1 ]]; then
-    log "FAIL computed virtual memory limit is too small: ${limit_gb}G"
+  limit_kb=$(( total_kb * 80 / 100 ))
+  limit_gb=$(( limit_kb / 1024 / 1024 ))
+  if [[ "$limit_kb" -lt 1048576 ]]; then
+    log "FAIL computed virtual memory limit is too small: ${limit_kb} KB"
     exit 1
   fi
-  limit_kb=$(( limit_gb * 1024 * 1024 ))
   ulimit -v "$limit_kb"
   log "ulimit -v set to ${limit_kb} KB (${limit_gb}G of ${total_gb}G total RAM)"
 }
