@@ -6,18 +6,22 @@ This note records the live round-two state after checking the process list, GPU 
 
 ## Live Queue
 
-The original GPU 1 queue did not finish. It stopped after one successful step, and was then relaunched in a split recovery shape.
+The original GPU 1 queue did not finish. It stopped after one successful step, was relaunched in a split recovery shape, and then the server crashed hard enough to drop all SSH sessions and clear every tmux queue.
 
-- GPU 0 is still occupied by `magformer`.
-- GPU 1 is now assigned to the recovered MIND extraction queue.
-- Active tmux sessions:
+Post-restart audit:
+
+- GPU 0 is idle right now, but it remains off-limits for this project.
+- GPU 1 is the only GPU allowed for MIND work.
+- The restart cleared all old tmux sessions, including:
   - `mind_gpu1_round2_queue`
   - `mind_glsim_cpu_queue`
   - `mind_halp_cpu_queue`
-- Active queue logs:
+- The pre-crash logs are still available:
   - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log`
   - `outputs/round2_2026_04/job_logs/mind_glsim_cpu_queue_20260407.log`
   - `outputs/round2_2026_04/job_logs/mind_halp_cpu_queue_20260407.log`
+- The recovered post-restart GPU log is now:
+  - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407_postrestart.log`
 
 The queue completed:
 
@@ -42,35 +46,37 @@ The last queue timestamps in the saved log are:
 
 So the queue failure was not a readout failure. It was the first comparator step being run on the GPU queue.
 
+Crash diagnosis for this pass:
+
+- the GPU extraction queue and the CPU comparator queues died for different reasons
+- the GPU queue hit a post-restart proxy failure while loading InternVL from a Hub repo id
+- both CPU comparator queues were killed with `exit=137` while loading and scoring the full `qwen3-vl-8b` popular readout cache
+- the strongest concrete host-risk signal is the pair of CPU comparator jobs, not the GPU extraction itself
+
 Recovery decision for this pass:
 
 - keep `qwen3-vl-8b` `POPE popular` readouts as complete and do not rerun them
-- relaunch GPU 1 with extraction-only work
-- move `GLSim` and `HALP` into separate CPU-side persistent queues
+- keep MIND on GPU 1 only
+- relaunch only the GPU extraction queue first
+- leave the CPU comparator queues paused until the host is stable again
+- force the queue onto cached local model paths or offline cached Hub paths so the dead proxy does not break extraction
 
-The recovered queues are now live:
+The recovered queue is live again:
 
+- tmux session:
+  - `mind_gpu1_round2_queue`
 - GPU queue current step:
   - `internvl3.5-8b`
   - benchmark: `POPE popular`
   - stage: readout extraction
   - output root: `outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular/`
-- CPU comparator queue current step:
-  - `qwen3-vl-8b`
-  - benchmark: `POPE popular`
-  - stage: `GLSim image_grouped`
-  - output root: `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/`
-- CPU comparator queue current step:
-  - `qwen3-vl-8b`
-  - benchmark: `POPE popular`
-  - stage: `HALP image_grouped`
-  - output root: `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/`
-
-Current health check:
-
-- the GPU queue log shows `internvl3.5-8b` model loading and active generation on GPU 1
-- `run_glsim.py` and `run_halp.py` are both alive on CPU and consuming real CPU time
-- no duplicate writers are targeting the same readout root
+- health check:
+  - GPU 1 is occupied by `extract_readout_states.py`
+  - the post-restart log shows InternVL loading successfully from the cached local model path
+  - the run has moved past the earlier proxy failure and is actively generating on GPU 1
+- intentionally not relaunched yet:
+  - `mind_glsim_cpu_queue`
+  - `mind_halp_cpu_queue`
 
 ## Main Matrix State
 
@@ -129,7 +135,7 @@ The tracked paper table already exists:
 
 ## Comparator State
 
-`outputs/round2_2026_04/readouts/` exists, but the recovery queue is no longer live.
+`outputs/round2_2026_04/readouts/` exists. The GPU recovery queue is live again, while the CPU comparator queues remain intentionally paused after the crash.
 
 | Model | POPE popular readouts | DASH-B readouts | Status |
 | --- | --- | --- | --- |
@@ -138,11 +144,11 @@ The tracked paper table already exists:
 | LLaVA-OneVision-7B | missing | partial (`7` shards) | still needs popular readouts and DASH-B repair |
 | Molmo-7B-D-0924 | missing | complete after rerun (`42` shards in `main/`) | still needs popular readouts |
 
-No HALP output directories are present.
+No HALP output directories are present yet.
 
-No GLSim output directories are present.
+No GLSim output directories are present yet.
 
-So comparator scoring is still missing. The next recovery pass needs to split GPU-only extraction from CPU-side comparator runs instead of keeping them in one queue.
+So comparator scoring is still missing. The queue shape has been corrected, but the CPU comparator side now needs to be resumed more carefully than before.
 
 ## What The Current Results Already Say
 
@@ -157,16 +163,16 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Execution Problems That Are Still Real
 
-- GPU occupancy alone is misleading. The machine can look busy while MIND is idle, or it can look quiet after a killed job.
-- The readout extraction layer still lacks true resume semantics. The old queue compensated by archiving partial trees, which is wasteful and fragile.
-- The queue shape was wrong. It mixed GPU-bound extraction with comparator runs that can be moved to CPU-side persistent queues.
-- There is still no lock-file guard against duplicate writers targeting the same output root.
+- GPU occupancy alone is misleading. A job can spend a long time in model load before GPU utilization spikes, and a machine can also look idle after a killed queue.
+- The old CPU comparator shape was unsafe for this host. `GLSim` and `HALP` both load full readout caches, and the two `qwen3-vl-8b` runs were both killed with `exit=137`.
+- The post-restart proxy state broke repo-id model loading for InternVL. Cached local model paths or offline cached Hub loads are required now.
+- The pipeline now has lock-file guards and retry wrappers, but host-level load still needs operational discipline.
 
 ## Immediate Priority
 
-1. Fix the queue brittle points first: readout resume, retries, object-heldout validation, and lock files.
-2. Relaunch GPU 1 with extraction-only work, starting from `internvl3.5-8b` `POPE popular` readouts.
-3. Move `GLSim` and `HALP` into separate CPU-side tmux queues so a comparator failure does not waste GPU time.
+1. Let the GPU 1 extraction queue finish the missing readout and adversarial cache work.
+2. Resume comparator scoring only after the host is stable, and do not restart both heavy CPU comparator queues at the same time.
+3. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
 
 ## Recovery Split
 
