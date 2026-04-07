@@ -89,45 +89,7 @@ def test_evaluate_halp_nested_selects_best_probe() -> None:
     assert set(selection["selected_probe"]) == {"good_probe"}
 
 
-def test_evaluate_halp_nested_filters_object_heldout_to_supported_objects() -> None:
-    rows: list[dict[str, object]] = []
-    objects = ["dog", "dog", "cat", "cat", "bus", "bus", "cup", "cup", "tree", "tree"]
-    labels = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
-    for index, (object_name, label) in enumerate(zip(objects, labels)):
-        rows.append(
-            {
-                "sample_id": f"sample-{index}",
-                "image_id": index,
-                "ground_truth_label": 0,
-                "answer_label": label,
-                "label": label,
-                "subset": "popular",
-                "object_name": object_name,
-            }
-        )
-
-    metadata = pd.DataFrame(rows)
-    good_frame = metadata.assign(feature_0=[float(label) for label in labels])
-    bad_frame = metadata.assign(feature_0=[0.5 for _ in labels])
-
-    metrics, results, _selection = evaluate_halp_nested(
-        {
-            "good_probe": good_frame,
-            "bad_probe": bad_frame,
-        },
-        split_strategy="object_heldout",
-        num_folds=2,
-        random_state=13,
-        inner_candidate_folds=(2,),
-        supported_object_names=["dog", "cat", "bus", "cup"],
-        probe_config=HALPProbeConfig(hidden_dims=(8, 4), batch_size=2, epochs=10, random_state=7),
-    )
-
-    assert metrics["roc_auc"] > 0.95
-    assert set(results["object_name"]) == {"dog", "cat", "bus", "cup"}
-
-
-def test_evaluate_halp_nested_rejects_supported_object_mismatch() -> None:
+def test_evaluate_halp_nested_filters_to_supported_objects() -> None:
     rows: list[dict[str, object]] = []
     for index in range(16):
         label = 1 if index % 2 == 0 else 0

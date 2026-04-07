@@ -110,34 +110,6 @@ def load_reference_stats(
     return stats_map
 
 
-def load_supported_reference_objects(
-    reference_root: Path,
-    model_name: str,
-    *,
-    bank_scope: str = "object",
-) -> set[str]:
-    counts_path = reference_root / model_name / "reference_counts.csv"
-    if not counts_path.exists():
-        raise ValueError(f"Missing reference_counts.csv under {reference_root / model_name}")
-    counts = pd.read_csv(counts_path)
-    if "object_name" not in counts.columns:
-        raise ValueError(f"reference_counts.csv is missing object_name: {counts_path}")
-    if "bank_scope" in counts.columns:
-        expected_scope = "shared" if bank_scope == "shared" else "object"
-        counts = counts[counts["bank_scope"] == expected_scope]
-    if bank_scope in {"object", "shuffled_object"}:
-        counts = counts[counts["object_name"] != "__shared__"]
-    elif bank_scope == "shared":
-        counts = counts[counts["object_name"] == "__shared__"]
-    if "supports_manifold" in counts.columns:
-        supports = counts["supports_manifold"]
-        if supports.dtype == bool:
-            counts = counts[supports]
-        else:
-            counts = counts[supports.astype(str).str.lower() == "true"]
-    return {str(object_name) for object_name in counts["object_name"].dropna().astype(str).unique().tolist()}
-
-
 def load_reference_support_counts(
     reference_root: Path,
     model_name: str,
@@ -182,7 +154,7 @@ def load_reference_support_counts(
 def prepare_object_heldout_frame(
     frame: pd.DataFrame,
     *,
-    supported_object_names: set[str] | Sequence[str],
+    supported_object_names: set[str] | Sequence[str] | None,
     requested_num_folds: int,
     context: str,
 ) -> tuple[pd.DataFrame, dict[str, int]]:
@@ -195,11 +167,15 @@ def prepare_object_heldout_frame(
         for object_name in working_frame["object_name"].tolist()
         if object_name and object_name.lower() != "nan"
     }
-    supported_object_names = {
-        str(object_name)
-        for object_name in supported_object_names
-        if str(object_name) and str(object_name).lower() != "nan"
-    }
+    supported_object_names = (
+        {
+            str(object_name)
+            for object_name in supported_object_names
+            if str(object_name) and str(object_name).lower() != "nan"
+        }
+        if supported_object_names is not None
+        else set(frame_object_names)
+    )
     retained_object_names = sorted(frame_object_names & supported_object_names)
     if not retained_object_names:
         raise ValueError(
@@ -212,6 +188,11 @@ def prepare_object_heldout_frame(
             f"{len(retained_object_names)} objects for requested_num_folds={int(requested_num_folds)}."
         )
     filtered = working_frame[working_frame["object_name"].isin(retained_object_names)].reset_index(drop=True)
+    if filtered["label"].nunique() < 2:
+        raise ValueError(
+            f"{context} retained {len(retained_object_names)} supported objects "
+            "but does not preserve both classes."
+        )
     return filtered, {
         "frame_object_count": len(frame_object_names),
         "supported_object_count": len(retained_object_names),
@@ -366,49 +347,6 @@ def _format_missing_reference_coverage(missing_entries: list[dict[str, object]])
 
 def feature_columns(frame: pd.DataFrame) -> list[str]:
     return [column for column in frame.columns if column not in METADATA_COLUMNS]
-
-
-def prepare_object_heldout_frame(
-    frame: pd.DataFrame,
-    *,
-    supported_object_names: Sequence[str] | None,
-    requested_num_folds: int,
-    context: str,
-) -> tuple[pd.DataFrame, dict[str, int]]:
-    if "object_name" not in frame.columns:
-        raise ValueError(f"{context} is missing object_name for object_heldout evaluation.")
-    frame_object_names = {
-        str(object_name)
-        for object_name in frame["object_name"].dropna().astype(str).unique().tolist()
-    }
-    supported_object_set = (
-        {str(object_name) for object_name in supported_object_names}
-        if supported_object_names is not None
-        else set(frame_object_names)
-    )
-    retained_objects = sorted(frame_object_names & supported_object_set)
-    if not retained_objects:
-        raise ValueError(f"No supported objects remain for {context} object_heldout evaluation.")
-    if len(retained_objects) < max(2, int(requested_num_folds)):
-        raise ValueError(
-            f"{context} object_heldout has too few supported objects "
-            f"({len(retained_objects)}) for {int(requested_num_folds)} folds."
-        )
-    filtered = (
-        frame[frame["object_name"].astype(str).isin(retained_objects)]
-        .copy()
-        .reset_index(drop=True)
-    )
-    if filtered["label"].nunique() < 2:
-        raise ValueError(
-            f"{context} object_heldout retained {len(retained_objects)} supported objects "
-            "but does not preserve both classes."
-        )
-    return filtered, {
-        "frame_object_count": len(frame_object_names),
-        "supported_object_count": len(retained_objects),
-        "retained_row_count": int(len(filtered)),
-    }
 
 
 def drift_only_columns(frame: pd.DataFrame) -> list[str]:

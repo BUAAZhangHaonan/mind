@@ -88,9 +88,11 @@ ensure_glsim() {
   local readout_path="$2"
   local expected_shards="$3"
   local model_config="$4"
-  local experiment_name="$5"
-  local split_strategy="$6"
-  local num_folds="$7"
+  local reference_root="$5"
+  local model_name="$6"
+  local experiment_name="$7"
+  local split_strategy="$8"
+  local num_folds="$9"
 
   local report_root="outputs/round2_2026_04/reports/${experiment_name}"
   if [[ -f "${report_root}/glsim.json" && -f "${report_root}/glsim_results.csv" && -f "${report_root}/glsim_selection.csv" ]]; then
@@ -108,6 +110,8 @@ ensure_glsim() {
         --output-root outputs/round2_2026_04/reports \
         --experiment-name "$experiment_name" \
         --device cpu \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
         --split-strategy "$split_strategy" \
         --num-folds "$num_folds" \
         --bootstrap-resamples 1000
@@ -127,6 +131,8 @@ queue_model_glsim() {
     "$popular_readout" \
     "47" \
     "$model_config" \
+    "outputs/round2_2026_04/reference_banks" \
+    "$model_name" \
     "$popular_report" \
     "image_grouped" \
     "5"
@@ -135,6 +141,8 @@ queue_model_glsim() {
     "$popular_readout" \
     "47" \
     "$model_config" \
+    "outputs/round2_2026_04/reference_banks" \
+    "$model_name" \
     "${popular_report}-object-heldout" \
     "object_heldout" \
     "2"
@@ -143,6 +151,8 @@ queue_model_glsim() {
     "$dash_readout" \
     "42" \
     "$model_config" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "$model_name" \
     "$dash_report" \
     "image_grouped" \
     "5"
@@ -151,6 +161,8 @@ queue_model_glsim() {
     "$dash_readout" \
     "42" \
     "$model_config" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "$model_name" \
     "${dash_report}-object-heldout" \
     "object_heldout" \
     "2"

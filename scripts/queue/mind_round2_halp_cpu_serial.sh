@@ -87,9 +87,11 @@ ensure_halp() {
   local step_name="$1"
   local readout_path="$2"
   local expected_shards="$3"
-  local experiment_name="$4"
-  local split_strategy="$5"
-  local num_folds="$6"
+  local reference_root="$4"
+  local model_name="$5"
+  local experiment_name="$6"
+  local split_strategy="$7"
+  local num_folds="$8"
 
   local report_root="outputs/round2_2026_04/reports/${experiment_name}"
   if [[ -f "${report_root}/halp.json" && -f "${report_root}/halp_results.csv" && -f "${report_root}/halp_selection.csv" ]]; then
@@ -105,6 +107,8 @@ ensure_halp() {
         --readout-path "$readout_path" \
         --output-root outputs/round2_2026_04/reports \
         --experiment-name "$experiment_name" \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
         --split-strategy "$split_strategy" \
         --num-folds "$num_folds" \
         --bootstrap-resamples 1000
@@ -122,6 +126,8 @@ queue_model_halp() {
     "${model_name} pope popular HALP image_grouped" \
     "$popular_readout" \
     "47" \
+    "outputs/round2_2026_04/reference_banks" \
+    "$model_name" \
     "$popular_report" \
     "image_grouped" \
     "5"
@@ -129,6 +135,8 @@ queue_model_halp() {
     "${model_name} pope popular HALP object_heldout" \
     "$popular_readout" \
     "47" \
+    "outputs/round2_2026_04/reference_banks" \
+    "$model_name" \
     "${popular_report}-object-heldout" \
     "object_heldout" \
     "2"
@@ -136,6 +144,8 @@ queue_model_halp() {
     "${model_name} dash-b HALP image_grouped" \
     "$dash_readout" \
     "42" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "$model_name" \
     "$dash_report" \
     "image_grouped" \
     "5"
@@ -143,6 +153,8 @@ queue_model_halp() {
     "${model_name} dash-b HALP object_heldout" \
     "$dash_readout" \
     "42" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "$model_name" \
     "${dash_report}-object-heldout" \
     "object_heldout" \
     "2"

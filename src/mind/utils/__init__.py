@@ -1,4 +1,4 @@
-"""Utility helpers for MIND scripts."""
+"""Shared runtime utilities."""
 
 from .locks import output_root_lock
 

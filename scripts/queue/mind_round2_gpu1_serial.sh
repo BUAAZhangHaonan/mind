@@ -8,7 +8,7 @@ CONDA_ENV="${CONDA_ENV:-mind-py311}"
 GPU_ID="${GPU_ID:-1}"
 export CUDA_VISIBLE_DEVICES="$GPU_ID"
 
-QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_recovery_queue_20260407.log}"
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log}"
 mkdir -p "$(dirname "$QUEUE_LOG")"
 
 timestamp() {
@@ -19,36 +19,28 @@ log() {
   echo "[$(timestamp)] $*" | tee -a "$QUEUE_LOG"
 }
 
-command_string() {
-  printf '%q ' "$@"
-}
-
-run_with_retry() {
-  local step_name="$1"
+run_with_retries() {
+  local name="$1"
   shift
-  local -a cmd=("$@")
-  local attempt=1
-  local max_attempts=3
-  local delay_seconds=60
-
-  while true; do
-    log "START $step_name (attempt ${attempt}/${max_attempts})"
-    log "CMD $(command_string "${cmd[@]}")"
+  local attempt
+  local status
+  for attempt in 1 2 3; do
+    log "START $name attempt=$attempt"
     set +e
-    "${cmd[@]}" 2>&1 | tee -a "$QUEUE_LOG"
-    local status=${PIPESTATUS[0]}
+    "$@" 2>&1 | tee -a "$QUEUE_LOG"
+    status=${PIPESTATUS[0]}
     set -e
     if [[ "$status" -eq 0 ]]; then
-      log "DONE $step_name"
+      log "DONE $name attempt=$attempt"
       return 0
     fi
-    if (( attempt >= max_attempts )); then
-      log "FAIL $step_name (exit=$status, attempts=$attempt)"
-      return "$status"
+    if [[ "$attempt" -lt 3 ]]; then
+      log "RETRY $name attempt=$attempt exit=$status sleep=60"
+      sleep 60
+      continue
     fi
-    log "RETRY $step_name in ${delay_seconds}s (exit=$status, next_attempt=$((attempt + 1))/${max_attempts})"
-    sleep "$delay_seconds"
-    attempt=$((attempt + 1))
+    log "FAIL $name (exit=$status attempts=$attempt)"
+    exit "$status"
   done
 }
 
@@ -106,7 +98,7 @@ ensure_readouts() {
     return
   fi
 
-  run_with_retry "$step_name" \
+  run_with_retries "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_readout_states.py \
         --records "$records_path" \
@@ -150,7 +142,7 @@ ensure_eval_cache() {
     archive_partial_dir "$shard_dir"
   fi
 
-  run_with_retry "$step_name" \
+  run_with_retries "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_eval_states.py \
         --records "$records_path" \
@@ -174,11 +166,10 @@ ensure_eval_cache() {
 }
 
 main() {
-  log "GPU1 recovery queue starting"
+  log "GPU1 extraction queue starting"
   log "root=$ROOT_DIR"
   log "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
   log "conda_env=$CONDA_ENV"
-  log "scope=gpu_only"
 
   ensure_readouts \
     "internvl3.5-8b pope popular readouts" \
@@ -187,7 +178,9 @@ main() {
     "pope" \
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014"
+    "data/coco/val2014" \
+    "4"
+
   ensure_readouts \
     "llava-onevision-7b pope popular readouts" \
     "configs/models/llava_onevision_7b.yaml" \
@@ -195,7 +188,9 @@ main() {
     "pope" \
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014"
+    "data/coco/val2014" \
+    "4"
+
   ensure_readouts \
     "molmo-7b-d-0924 pope popular readouts" \
     "configs/models/molmo_7b_d_0924.yaml" \
@@ -203,7 +198,8 @@ main() {
     "pope" \
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014"
+    "data/coco/val2014" \
+    "4"
 
   ensure_readouts \
     "internvl3.5-8b dash-b readouts" \
@@ -212,7 +208,9 @@ main() {
     "dash-b" \
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
-    "data/dash_b"
+    "data/dash_b" \
+    "4"
+
   ensure_readouts \
     "llava-onevision-7b dash-b readouts" \
     "configs/models/llava_onevision_7b.yaml" \
@@ -220,7 +218,8 @@ main() {
     "dash-b" \
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
-    "data/dash_b"
+    "data/dash_b" \
+    "4"
 
   ensure_eval_cache \
     "qwen3-vl-8b pope adversarial eval cache" \
@@ -230,6 +229,7 @@ main() {
     "adversarial" \
     "data/coco/val2014" \
     "8"
+
   ensure_eval_cache \
     "internvl3.5-8b pope adversarial eval cache" \
     "configs/models/internvl3_5_8b.yaml" \
@@ -239,7 +239,7 @@ main() {
     "data/coco/val2014" \
     "4"
 
-  log "GPU1 recovery queue completed"
+  log "GPU1 extraction queue completed"
 }
 
 main "$@"
