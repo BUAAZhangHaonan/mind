@@ -173,7 +173,7 @@ def test_collect_completed_shard_indices_rejects_gapped_prefix(tmp_path: Path) -
     torch.save([{"sample_id": "sample-0"}], output_dir / "shard-00000.pt")
     torch.save([{"sample_id": "sample-2"}], output_dir / "shard-00002.pt")
 
-    with pytest.raises(ValueError, match="missing indices \\[1\\]"):
+    with pytest.raises(ValueError, match="Missing indices \\[1\\]"):
         extract_readout_states.collect_completed_shard_indices(
             output_dir,
             expected_shards=3,

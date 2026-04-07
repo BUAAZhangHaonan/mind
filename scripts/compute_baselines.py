@@ -34,6 +34,7 @@ from mind.evaluation.baselines import (
     validate_object_heldout_reference_support,
 )
 from mind.evaluation.metrics import write_results_table
+from mind.utils import output_root_lock
 
 
 KNOWN_MODEL_IDS = {
@@ -328,74 +329,78 @@ def main(argv: list[str] | None = None) -> int:
     ablations = load_existing_frame(output_paths["ablations"])
     split_sensitivity = load_existing_frame(output_paths["split_sensitivity"])
 
-    group_column = resolve_group_column(args.split_strategy)
-    for variant_name, (variant_frame, columns) in variants.items():
-        evaluation_frame = variant_frame
-        if args.split_strategy == "object_heldout":
-            evaluation_frame, support = validate_object_heldout_reference_support(
-                evaluation_frame,
-                reference_root=args.reference_root,
-                model_name=args.model_name,
-                bank_scope=args.bank_scope,
-                num_folds=args.num_folds,
-            )
-            print(
-                "[compute_baselines] object_heldout support "
-                f"variant={variant_name} frame_objects={support['frame_object_count']} "
-                f"supported_objects={support['supported_object_count']} "
-                f"retained_rows={support['retained_row_count']}"
-            )
-        metrics, results = evaluate_feature_frame(
-            evaluation_frame,
-            columns=columns,
-            split_strategy=args.split_strategy,
-            test_size=args.test_size,
-            random_state=args.random_state,
-            num_folds=args.num_folds,
-        )
-        results_path = output_paths["variant_results"] / f"{variant_name}.csv"
-        write_results_table(results, results_path)
-        print(f"[compute_baselines] wrote {results_path}")
-        confidence_intervals = compute_bootstrap_confidence_intervals(
-            results,
-            group_column=group_column,
-            n_resamples=args.bootstrap_resamples,
-            random_state=args.bootstrap_random_state,
-        )
-        baselines[variant_name] = {
-            **metrics,
-            "confidence_intervals": confidence_intervals,
-            "result_path": str(results_path),
-        }
-        ablations = merge_metric_rows(
-            ablations,
-            pd.DataFrame([{"variant": variant_name, **metrics}]),
-            key_columns=["variant"],
-        )
-
-        output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
-        ablations.to_csv(output_paths["ablations"], index=False)
-        print(f"[compute_baselines] updated {output_paths['baselines']}")
-        print(f"[compute_baselines] updated {output_paths['ablations']}")
-        for random_state in split_seeds:
-            seed_metrics, _ = evaluate_feature_frame(
+    with output_root_lock(
+        output_paths["baselines"].parent,
+        command=f"compute_baselines:{args.experiment_name}:{args.split_strategy}:{args.bank_scope}",
+    ):
+        group_column = resolve_group_column(args.split_strategy)
+        for variant_name, (variant_frame, columns) in variants.items():
+            evaluation_frame = variant_frame
+            if args.split_strategy == "object_heldout":
+                evaluation_frame, support = validate_object_heldout_reference_support(
+                    evaluation_frame,
+                    reference_root=args.reference_root,
+                    model_name=args.model_name,
+                    bank_scope=args.bank_scope,
+                    num_folds=args.num_folds,
+                )
+                print(
+                    "[compute_baselines] object_heldout support "
+                    f"variant={variant_name} frame_objects={support['frame_object_count']} "
+                    f"supported_objects={support['supported_object_count']} "
+                    f"retained_rows={support['retained_row_count']}"
+                )
+            metrics, results = evaluate_feature_frame(
                 evaluation_frame,
                 columns=columns,
                 split_strategy=args.split_strategy,
                 test_size=args.test_size,
-                random_state=int(random_state),
+                random_state=args.random_state,
                 num_folds=args.num_folds,
             )
-            split_sensitivity = merge_metric_rows(
-                split_sensitivity,
-                pd.DataFrame([{"variant": variant_name, "random_state": int(random_state), **seed_metrics}]),
-                key_columns=["variant", "random_state"],
+            results_path = output_paths["variant_results"] / f"{variant_name}.csv"
+            write_results_table(results, results_path)
+            print(f"[compute_baselines] wrote {results_path}")
+            confidence_intervals = compute_bootstrap_confidence_intervals(
+                results,
+                group_column=group_column,
+                n_resamples=args.bootstrap_resamples,
+                random_state=args.bootstrap_random_state,
             )
-            split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
-            print(
-                f"[compute_baselines] updated {output_paths['split_sensitivity']} "
-                f"for {variant_name} seed {int(random_state)}"
+            baselines[variant_name] = {
+                **metrics,
+                "confidence_intervals": confidence_intervals,
+                "result_path": str(results_path),
+            }
+            ablations = merge_metric_rows(
+                ablations,
+                pd.DataFrame([{"variant": variant_name, **metrics}]),
+                key_columns=["variant"],
             )
+
+            output_paths["baselines"].write_text(json.dumps(baselines, indent=2, sort_keys=True), encoding="utf-8")
+            ablations.to_csv(output_paths["ablations"], index=False)
+            print(f"[compute_baselines] updated {output_paths['baselines']}")
+            print(f"[compute_baselines] updated {output_paths['ablations']}")
+            for random_state in split_seeds:
+                seed_metrics, _ = evaluate_feature_frame(
+                    evaluation_frame,
+                    columns=columns,
+                    split_strategy=args.split_strategy,
+                    test_size=args.test_size,
+                    random_state=int(random_state),
+                    num_folds=args.num_folds,
+                )
+                split_sensitivity = merge_metric_rows(
+                    split_sensitivity,
+                    pd.DataFrame([{"variant": variant_name, "random_state": int(random_state), **seed_metrics}]),
+                    key_columns=["variant", "random_state"],
+                )
+                split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
+                print(
+                    f"[compute_baselines] updated {output_paths['split_sensitivity']} "
+                    f"for {variant_name} seed {int(random_state)}"
+                )
     print(output_paths["baselines"])
     print(output_paths["ablations"])
     print(output_paths["split_sensitivity"])

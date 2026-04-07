@@ -12,6 +12,7 @@ import torch
 from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
 from mind.evaluation import compute_object_hallucination_label
 from mind.manifolds import resolve_reference_scope_key
+from mind.utils import output_root_lock
 
 
 def build_feature_output_path(
@@ -186,14 +187,18 @@ def main(argv: list[str] | None = None) -> int:
     cache_entries = load_cache_entries(args.cache_path)
     reference_bank = load_reference_bank(args.reference_root, args.model_name, bank_scope=args.bank_scope)
     reference_stats = load_reference_stats(args.reference_root, args.model_name, bank_scope=args.bank_scope)
-    frame = build_feature_frame(
-        cache_entries=cache_entries,
-        reference_bank=reference_bank,
-        reference_stats=reference_stats,
-        bank_scope=args.bank_scope,
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_parquet(output_path, index=False)
+    with output_root_lock(
+        output_path.parent,
+        command=f"compute_drift:{args.experiment_name}:{args.split}:{args.bank_scope}",
+    ):
+        frame = build_feature_frame(
+            cache_entries=cache_entries,
+            reference_bank=reference_bank,
+            reference_stats=reference_stats,
+            bank_scope=args.bank_scope,
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(output_path, index=False)
     print(output_path)
     return 0
 

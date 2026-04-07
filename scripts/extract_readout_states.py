@@ -16,6 +16,7 @@ from mind.config import ModelConfig, load_yaml_config
 from mind.data import HallucinationRecord
 from mind.extractors import extract_prefill_readout_entries, save_prefill_cache_shard
 from mind.models import create_model_wrapper
+from mind.utils import output_root_lock
 
 
 def build_cache_output_path(
@@ -49,8 +50,9 @@ def collect_completed_shard_indices(
     if indices != expected_prefix:
         missing_indices = sorted(set(expected_prefix) - set(indices))
         raise ValueError(
-            f"Readout output directory {output_dir} must contain a contiguous shard prefix "
-            f"starting at 0; missing indices {missing_indices!r}, found {indices!r}."
+            f"Readout output directory {output_dir} is non-contiguous; it must contain a "
+            f"contiguous shard prefix starting at 0. Missing indices {missing_indices!r}, "
+            f"found {indices!r}."
         )
     if expected_shards is not None:
         extra_indices = [index for index in indices if index >= expected_shards]
@@ -164,33 +166,37 @@ def run_extraction(
     processor = wrapper.load_processor()
     model = wrapper.load_model(device=device)
 
-    with torch.inference_mode():
-        for shard_index, shard_records in enumerate(
-            iter_record_shards(records, shard_size=shard_size)
-        ):
-            output_path = build_cache_output_path(
-                output_root=output_root,
-                model_name=model_config.name,
-                dataset_name=dataset_name,
-                split=split,
-                shard_index=shard_index,
-            )
-            output_paths.append(output_path)
-            if shard_index in completed_indices:
-                continue
-            shard_entries: list[dict[str, object]] = []
-            for start in range(0, len(shard_records), batch_size):
-                shard_entries.extend(
-                    extract_prefill_readout_entries(
-                        model=model,
-                        processor=processor,
-                        wrapper=wrapper,
-                        records=shard_records[start : start + batch_size],
-                        device=device,
-                        max_new_tokens=max_new_tokens,
-                    )
+    with output_root_lock(
+        output_dir,
+        command=f"extract_readout_states:{model_config.name}:{dataset_name}:{split}",
+    ):
+        with torch.inference_mode():
+            for shard_index, shard_records in enumerate(
+                iter_record_shards(records, shard_size=shard_size)
+            ):
+                output_path = build_cache_output_path(
+                    output_root=output_root,
+                    model_name=model_config.name,
+                    dataset_name=dataset_name,
+                    split=split,
+                    shard_index=shard_index,
                 )
-            save_prefill_cache_shard(shard_entries, output_path)
+                output_paths.append(output_path)
+                if shard_index in completed_indices:
+                    continue
+                shard_entries: list[dict[str, object]] = []
+                for start in range(0, len(shard_records), batch_size):
+                    shard_entries.extend(
+                        extract_prefill_readout_entries(
+                            model=model,
+                            processor=processor,
+                            wrapper=wrapper,
+                            records=shard_records[start : start + batch_size],
+                            device=device,
+                            max_new_tokens=max_new_tokens,
+                        )
+                    )
+                save_prefill_cache_shard(shard_entries, output_path)
     return output_paths
 
 
