@@ -142,34 +142,34 @@ def run_extraction(
 
     output_dir = output_root / model_config.name / dataset_name / split
     total_shards = (len(records) + shard_size - 1) // shard_size if records else 0
-    completed_indices = set(
-        collect_completed_shard_indices(
-            output_dir,
-            expected_shards=total_shards,
-        )
-    )
-    output_paths: list[Path] = []
-
-    if len(completed_indices) == total_shards:
-        return [
-            build_cache_output_path(
-                output_root=output_root,
-                model_name=model_config.name,
-                dataset_name=dataset_name,
-                split=split,
-                shard_index=shard_index,
-            )
-            for shard_index in range(total_shards)
-        ]
-
-    wrapper = create_model_wrapper(model_config)
-    processor = wrapper.load_processor()
-    model = wrapper.load_model(device=device)
-
     with output_root_lock(
         output_dir,
         command=f"extract_readout_states:{model_config.name}:{dataset_name}:{split}",
     ):
+        completed_indices = set(
+            collect_completed_shard_indices(
+                output_dir,
+                expected_shards=total_shards,
+            )
+        )
+        output_paths: list[Path] = []
+
+        if len(completed_indices) == total_shards:
+            return [
+                build_cache_output_path(
+                    output_root=output_root,
+                    model_name=model_config.name,
+                    dataset_name=dataset_name,
+                    split=split,
+                    shard_index=shard_index,
+                )
+                for shard_index in range(total_shards)
+            ]
+
+        wrapper = create_model_wrapper(model_config)
+        processor = wrapper.load_processor()
+        model = wrapper.load_model(device=device)
+
         with torch.inference_mode():
             for shard_index, shard_records in enumerate(
                 iter_record_shards(records, shard_size=shard_size)
