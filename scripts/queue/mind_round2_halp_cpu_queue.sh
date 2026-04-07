@@ -83,9 +83,11 @@ ensure_halp() {
   local step_name="$1"
   local readout_path="$2"
   local expected_shards="$3"
-  local experiment_name="$4"
-  local split_strategy="$5"
-  local num_folds="$6"
+  local model_name="$4"
+  local reference_root="$5"
+  local experiment_name="$6"
+  local split_strategy="$7"
+  local num_folds="$8"
 
   wait_for_complete_readouts "$step_name" "$readout_path" "$expected_shards"
 
@@ -103,7 +105,10 @@ ensure_halp() {
         --experiment-name "$experiment_name" \
         --split-strategy "$split_strategy" \
         --num-folds "$num_folds" \
-        --bootstrap-resamples 1000
+        --bootstrap-resamples 1000 \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
+        --bank-scope object
 }
 
 main() {
@@ -115,6 +120,8 @@ main() {
     "qwen3-vl-8b pope popular HALP image_grouped" \
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" \
     "47" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-qwen3-vl-8b-popular-final" \
     "image_grouped" \
     "5"
@@ -122,6 +129,8 @@ main() {
     "qwen3-vl-8b pope popular HALP object_heldout" \
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" \
     "47" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-qwen3-vl-8b-popular-final-object-heldout" \
     "object_heldout" \
     "2"
@@ -129,6 +138,8 @@ main() {
     "qwen3-vl-8b dash-b HALP image_grouped" \
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" \
     "42" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-qwen3-vl-8b-dash-b" \
     "image_grouped" \
     "5"
@@ -136,6 +147,8 @@ main() {
     "qwen3-vl-8b dash-b HALP object_heldout" \
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" \
     "42" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-qwen3-vl-8b-dash-b-object-heldout" \
     "object_heldout" \
     "2"
@@ -144,6 +157,8 @@ main() {
     "molmo-7b-d-0924 dash-b HALP image_grouped" \
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" \
     "42" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-molmo-7b-d-0924-dash-b" \
     "image_grouped" \
     "5"
@@ -151,6 +166,8 @@ main() {
     "molmo-7b-d-0924 dash-b HALP object_heldout" \
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" \
     "42" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-molmo-7b-d-0924-dash-b-object-heldout" \
     "object_heldout" \
     "2"
@@ -159,6 +176,8 @@ main() {
     "internvl3.5-8b pope popular HALP image_grouped" \
     "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" \
     "47" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-internvl3.5-8b-popular" \
     "image_grouped" \
     "5"
@@ -166,6 +185,8 @@ main() {
     "internvl3.5-8b pope popular HALP object_heldout" \
     "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" \
     "47" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-internvl3.5-8b-popular-object-heldout" \
     "object_heldout" \
     "2"
@@ -173,6 +194,8 @@ main() {
     "llava-onevision-7b pope popular HALP image_grouped" \
     "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" \
     "47" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-llava-onevision-7b-popular" \
     "image_grouped" \
     "5"
@@ -180,6 +203,8 @@ main() {
     "llava-onevision-7b pope popular HALP object_heldout" \
     "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" \
     "47" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-llava-onevision-7b-popular-object-heldout" \
     "object_heldout" \
     "2"
@@ -187,6 +212,8 @@ main() {
     "molmo-7b-d-0924 pope popular HALP image_grouped" \
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" \
     "47" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-molmo-7b-d-0924-popular" \
     "image_grouped" \
     "5"
@@ -194,6 +221,8 @@ main() {
     "molmo-7b-d-0924 pope popular HALP object_heldout" \
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" \
     "47" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-molmo-7b-d-0924-popular-object-heldout" \
     "object_heldout" \
     "2"
@@ -202,6 +231,8 @@ main() {
     "internvl3.5-8b dash-b HALP image_grouped" \
     "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" \
     "42" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-internvl3.5-8b-dash-b" \
     "image_grouped" \
     "5"
@@ -209,6 +240,8 @@ main() {
     "internvl3.5-8b dash-b HALP object_heldout" \
     "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" \
     "42" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-internvl3.5-8b-dash-b-object-heldout" \
     "object_heldout" \
     "2"
@@ -216,6 +249,8 @@ main() {
     "llava-onevision-7b dash-b HALP image_grouped" \
     "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" \
     "42" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-llava-onevision-7b-dash-b" \
     "image_grouped" \
     "5"
@@ -223,6 +258,8 @@ main() {
     "llava-onevision-7b dash-b HALP object_heldout" \
     "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" \
     "42" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-llava-onevision-7b-dash-b-object-heldout" \
     "object_heldout" \
     "2"

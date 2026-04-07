@@ -66,14 +66,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.split_strategy == "object_heldout":
         if args.reference_root is None or not args.model_name:
             raise ValueError("--reference-root and --model-name are required for object_heldout HALP.")
-        supported_object_names = validate_object_heldout_reference_support(
-            next(iter(candidate_frames.values())),
+        base_frame = next(iter(candidate_frames.values()))
+        filtered_frame, support = validate_object_heldout_reference_support(
+            base_frame,
             reference_root=args.reference_root,
             model_name=args.model_name,
             bank_scope=args.bank_scope,
             num_folds=args.num_folds,
         )
-        print(f"[run_halp] object_heldout support objects={len(supported_object_names)}")
+        allowed_sample_ids = set(filtered_frame["sample_id"].astype(str).tolist())
+        candidate_frames = {
+            probe_name: probe_frame[
+                probe_frame["sample_id"].astype(str).isin(allowed_sample_ids)
+            ].reset_index(drop=True)
+            for probe_name, probe_frame in candidate_frames.items()
+        }
+        supported_object_names = sorted(filtered_frame["object_name"].drop_duplicates().astype(str).tolist())
+        print(
+            "[run_halp] object_heldout support "
+            f"frame_objects={support['frame_object_count']} "
+            f"supported_objects={support['supported_object_count']} "
+            f"retained_rows={support['retained_row_count']}"
+        )
     metrics, results, selection = evaluate_halp_nested(
         candidate_frames,
         split_strategy=args.split_strategy,

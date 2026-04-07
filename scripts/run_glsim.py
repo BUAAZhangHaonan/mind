@@ -98,14 +98,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.split_strategy == "object_heldout":
         if args.reference_root is None or not args.model_name:
             raise ValueError("--reference-root and --model-name are required for object_heldout GLSim.")
-        supported_object_names = validate_object_heldout_reference_support(
+        filtered_score_frame, support = validate_object_heldout_reference_support(
             score_frame,
             reference_root=args.reference_root,
             model_name=args.model_name,
             bank_scope=args.bank_scope,
             num_folds=args.num_folds,
         )
-        print(f"[run_glsim] object_heldout support objects={len(supported_object_names)}")
+        score_frame = filtered_score_frame
+        supported_object_names = sorted(score_frame["object_name"].drop_duplicates().astype(str).tolist())
+        print(
+            "[run_glsim] object_heldout support "
+            f"frame_objects={support['frame_object_count']} "
+            f"supported_objects={support['supported_object_count']} "
+            f"retained_rows={support['retained_row_count']}"
+        )
     metrics, results, selection = evaluate_glsim_nested(
         score_frame,
         image_layers=image_layers,

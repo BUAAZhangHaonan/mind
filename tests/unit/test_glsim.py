@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from mind.comparators.glsim import (
     evaluate_glsim_nested,
@@ -56,9 +55,9 @@ def test_evaluate_glsim_nested_selects_best_config() -> None:
     assert set(selection["selected_config"]) == {"i0_t0_k1_w0.50"}
 
 
-def test_evaluate_glsim_nested_rejects_supported_object_mismatch() -> None:
+def test_evaluate_glsim_nested_filters_to_supported_objects() -> None:
     rows: list[dict[str, object]] = []
-    for index in range(12):
+    for index in range(16):
         label = 1 if index % 2 == 0 else 0
         rows.append(
             {
@@ -75,15 +74,19 @@ def test_evaluate_glsim_nested_rejects_supported_object_mismatch() -> None:
         )
     score_frame = pd.DataFrame(rows)
 
-    with pytest.raises(ValueError, match="object coverage mismatch"):
-        evaluate_glsim_nested(
-            score_frame,
-            image_layers=[0],
-            text_layers=[0],
-            k_values=[1],
-            w_values=[0.5],
-            split_strategy="object_heldout",
-            num_folds=2,
-            random_state=13,
-            supported_object_names=["object-0", "object-1"],
-        )
+    metrics, results, selection = evaluate_glsim_nested(
+        score_frame,
+        image_layers=[0],
+        text_layers=[0],
+        k_values=[1],
+        w_values=[0.5],
+        split_strategy="object_heldout",
+        num_folds=2,
+        random_state=13,
+        inner_candidate_folds=(2,),
+        supported_object_names=["object-0", "object-1", "object-2", "object-3"],
+    )
+
+    assert metrics["roc_auc"] > 0.95
+    assert set(results["object_name"]) <= {"object-0", "object-1", "object-2", "object-3"}
+    assert set(selection["selected_config"]) == {"i0_t0_k1_w0.50"}

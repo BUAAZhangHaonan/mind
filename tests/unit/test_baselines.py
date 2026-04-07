@@ -540,7 +540,7 @@ def test_validate_object_heldout_reference_support_accepts_healthy_overlap(
         ]
     )
 
-    supported = validate_object_heldout_reference_support(
+    filtered, support = validate_object_heldout_reference_support(
         frame,
         reference_root=reference_root,
         model_name="qwen3-vl-8b",
@@ -548,7 +548,8 @@ def test_validate_object_heldout_reference_support_accepts_healthy_overlap(
         num_folds=2,
     )
 
-    assert supported == ["cat", "dog"]
+    assert sorted(filtered["object_name"].unique().tolist()) == ["cat", "dog"]
+    assert support["supported_object_count"] == 2
 
 
 def test_validate_object_heldout_reference_support_fails_on_zero_overlap(

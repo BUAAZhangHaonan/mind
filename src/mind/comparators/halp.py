@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from mind.evaluation.baselines import (
     build_train_eval_splits,
     compute_bootstrap_confidence_intervals,
+    prepare_object_heldout_frame,
     resolve_highest_valid_num_folds,
 )
 from mind.evaluation.metrics import compute_binary_metrics, compute_object_hallucination_label
@@ -216,29 +217,6 @@ def _predict_probe(
     return predictions, scores
 
 
-def _validate_supported_object_names(
-    frame: pd.DataFrame,
-    *,
-    supported_object_names: Sequence[str],
-    context: str,
-) -> None:
-    observed_object_names = {
-        str(object_name)
-        for object_name in frame["object_name"].dropna().astype(str).tolist()
-        if str(object_name) and str(object_name).lower() != "nan"
-    }
-    expected_object_names = {
-        str(object_name)
-        for object_name in supported_object_names
-        if str(object_name) and str(object_name).lower() != "nan"
-    }
-    if observed_object_names != expected_object_names:
-        raise ValueError(
-            f"{context} object coverage mismatch: observed={len(observed_object_names)} "
-            f"expected={len(expected_object_names)}"
-        )
-
-
 def _evaluate_probe_on_splits(
     frame: pd.DataFrame,
     *,
@@ -321,12 +299,24 @@ def evaluate_halp_nested(
     if not candidate_frames:
         raise ValueError("candidate_frames must not be empty")
     base_frame = next(iter(candidate_frames.values())).sort_values("sample_id").reset_index(drop=True)
-    if split_strategy == "object_heldout" and supported_object_names is not None:
-        _validate_supported_object_names(
+    if split_strategy == "object_heldout":
+        base_frame, _ = prepare_object_heldout_frame(
             base_frame,
-            supported_object_names=supported_object_names,
+            supported_object_names=(
+                supported_object_names
+                if supported_object_names is not None
+                else set(base_frame["object_name"].astype(str).tolist())
+            ),
+            requested_num_folds=num_folds,
             context="HALP object_heldout",
         )
+        allowed_sample_ids = set(base_frame["sample_id"].astype(str).tolist())
+        candidate_frames = {
+            probe_name: probe_frame[
+                probe_frame["sample_id"].astype(str).isin(allowed_sample_ids)
+            ].sort_values("sample_id").reset_index(drop=True)
+            for probe_name, probe_frame in candidate_frames.items()
+        }
     outer_splits = _build_sample_id_splits(
         base_frame,
         split_strategy=split_strategy,

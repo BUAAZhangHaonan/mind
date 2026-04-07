@@ -84,9 +84,11 @@ ensure_glsim() {
   local readout_path="$2"
   local expected_shards="$3"
   local model_config="$4"
-  local experiment_name="$5"
-  local split_strategy="$6"
-  local num_folds="$7"
+  local model_name="$5"
+  local reference_root="$6"
+  local experiment_name="$7"
+  local split_strategy="$8"
+  local num_folds="$9"
 
   wait_for_complete_readouts "$step_name" "$readout_path" "$expected_shards"
 
@@ -106,7 +108,10 @@ ensure_glsim() {
         --device cpu \
         --split-strategy "$split_strategy" \
         --num-folds "$num_folds" \
-        --bootstrap-resamples 1000
+        --bootstrap-resamples 1000 \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
+        --bank-scope object
 }
 
 main() {
@@ -119,6 +124,8 @@ main() {
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" \
     "47" \
     "configs/models/qwen3_vl_8b_local.yaml" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-qwen3-vl-8b-popular-final" \
     "image_grouped" \
     "5"
@@ -127,6 +134,8 @@ main() {
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" \
     "47" \
     "configs/models/qwen3_vl_8b_local.yaml" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-qwen3-vl-8b-popular-final-object-heldout" \
     "object_heldout" \
     "2"
@@ -135,6 +144,8 @@ main() {
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" \
     "42" \
     "configs/models/qwen3_vl_8b_local.yaml" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-qwen3-vl-8b-dash-b" \
     "image_grouped" \
     "5"
@@ -143,6 +154,8 @@ main() {
     "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" \
     "42" \
     "configs/models/qwen3_vl_8b_local.yaml" \
+    "qwen3-vl-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-qwen3-vl-8b-dash-b-object-heldout" \
     "object_heldout" \
     "2"
@@ -152,6 +165,8 @@ main() {
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" \
     "42" \
     "configs/models/molmo_7b_d_0924.yaml" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-molmo-7b-d-0924-dash-b" \
     "image_grouped" \
     "5"
@@ -160,6 +175,8 @@ main() {
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" \
     "42" \
     "configs/models/molmo_7b_d_0924.yaml" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-molmo-7b-d-0924-dash-b-object-heldout" \
     "object_heldout" \
     "2"
@@ -169,6 +186,8 @@ main() {
     "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" \
     "47" \
     "configs/models/internvl3_5_8b.yaml" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-internvl3.5-8b-popular" \
     "image_grouped" \
     "5"
@@ -177,6 +196,8 @@ main() {
     "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" \
     "47" \
     "configs/models/internvl3_5_8b.yaml" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-internvl3.5-8b-popular-object-heldout" \
     "object_heldout" \
     "2"
@@ -185,6 +206,8 @@ main() {
     "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" \
     "47" \
     "configs/models/llava_onevision_7b.yaml" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-llava-onevision-7b-popular" \
     "image_grouped" \
     "5"
@@ -193,6 +216,8 @@ main() {
     "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" \
     "47" \
     "configs/models/llava_onevision_7b.yaml" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-llava-onevision-7b-popular-object-heldout" \
     "object_heldout" \
     "2"
@@ -201,6 +226,8 @@ main() {
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" \
     "47" \
     "configs/models/molmo_7b_d_0924.yaml" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-molmo-7b-d-0924-popular" \
     "image_grouped" \
     "5"
@@ -209,6 +236,8 @@ main() {
     "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" \
     "47" \
     "configs/models/molmo_7b_d_0924.yaml" \
+    "molmo-7b-d-0924" \
+    "outputs/round2_2026_04/reference_banks" \
     "round2-molmo-7b-d-0924-popular-object-heldout" \
     "object_heldout" \
     "2"
@@ -218,6 +247,8 @@ main() {
     "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" \
     "42" \
     "configs/models/internvl3_5_8b.yaml" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-internvl3.5-8b-dash-b" \
     "image_grouped" \
     "5"
@@ -226,6 +257,8 @@ main() {
     "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" \
     "42" \
     "configs/models/internvl3_5_8b.yaml" \
+    "internvl3.5-8b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-internvl3.5-8b-dash-b-object-heldout" \
     "object_heldout" \
     "2"
@@ -234,6 +267,8 @@ main() {
     "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" \
     "42" \
     "configs/models/llava_onevision_7b.yaml" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-llava-onevision-7b-dash-b" \
     "image_grouped" \
     "5"
@@ -242,6 +277,8 @@ main() {
     "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" \
     "42" \
     "configs/models/llava_onevision_7b.yaml" \
+    "llava-onevision-7b" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-llava-onevision-7b-dash-b-object-heldout" \
     "object_heldout" \
     "2"

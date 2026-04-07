@@ -330,9 +330,10 @@ def main(argv: list[str] | None = None) -> int:
 
     group_column = resolve_group_column(args.split_strategy)
     for variant_name, (variant_frame, columns) in variants.items():
+        evaluation_frame = variant_frame
         if args.split_strategy == "object_heldout":
-            supported_object_names = validate_object_heldout_reference_support(
-                variant_frame,
+            evaluation_frame, support = validate_object_heldout_reference_support(
+                evaluation_frame,
                 reference_root=args.reference_root,
                 model_name=args.model_name,
                 bank_scope=args.bank_scope,
@@ -340,10 +341,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(
                 "[compute_baselines] object_heldout support "
-                f"variant={variant_name} objects={len(supported_object_names)}"
+                f"variant={variant_name} frame_objects={support['frame_object_count']} "
+                f"supported_objects={support['supported_object_count']} "
+                f"retained_rows={support['retained_row_count']}"
             )
         metrics, results = evaluate_feature_frame(
-            variant_frame,
+            evaluation_frame,
             columns=columns,
             split_strategy=args.split_strategy,
             test_size=args.test_size,
@@ -376,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[compute_baselines] updated {output_paths['ablations']}")
         for random_state in split_seeds:
             seed_metrics, _ = evaluate_feature_frame(
-                variant_frame,
+                evaluation_frame,
                 columns=columns,
                 split_strategy=args.split_strategy,
                 test_size=args.test_size,
