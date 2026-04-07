@@ -11,6 +11,7 @@ The previous GPU 1 queue did not finish. It stopped after one successful step.
 - GPU 0 is still occupied by `magformer`.
 - GPU 1 is now free.
 - The tmux session `mind_gpu1_round2_queue` no longer exists.
+- There is no live MIND Python process on either GPU.
 - The queue log is:
   - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log`
 
@@ -30,7 +31,18 @@ The queue then failed on the next step:
 - command: `python scripts/run_glsim.py ... --device cuda --split-strategy image_grouped`
 - result: killed with `exit=137`
 
+The last queue timestamps in the saved log are:
+
+- `[2026-04-07 15:48:00] DONE qwen3-vl-8b pope popular readouts`
+- `[2026-04-07 15:58:16] FAIL qwen3-vl-8b pope popular GLSim image_grouped (exit=137)`
+
 So the queue failure was not a readout failure. It was the first comparator step being run on the GPU queue.
+
+Recovery decision for this pass:
+
+- keep `qwen3-vl-8b` `POPE popular` readouts as complete and do not rerun them
+- relaunch GPU 1 with extraction-only work
+- move `GLSim` and `HALP` into separate CPU-side persistent queues
 
 ## Main Matrix State
 
