@@ -1,0 +1,598 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# MIND round-two unified serial queue.
+#
+# Scheduling policy:
+# - Run exactly one MIND task at a time.
+# - GPU extraction must finish before any memory-heavy comparator work starts.
+# - HALP and GLSim must never run concurrently. Both load large readout caches
+#   into system RAM and can trigger host-wide OOM events if launched together.
+# - The queue applies a per-process virtual memory ceiling at 80% of total RAM,
+#   logs system memory and GPU state before and after every step, and retries a
+#   step once if it dies with exit code 137.
+# - GPU 1 is the only GPU allowed for MIND work. GPU 0 is off-limits.
+#
+# This queue replaces the older split queue scripts. It will refuse to start if
+# another MIND extraction queue is still active, because parallel queues are the
+# root scheduling failure that caused the recent crash.
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT_DIR"
+
+CONDA_ENV="${CONDA_ENV:-mind-py311}"
+GPU_ID="${GPU_ID:-1}"
+if [[ "$GPU_ID" != "1" ]]; then
+  echo "MIND is restricted to GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
+  exit 1
+fi
+
+export CUDA_VISIBLE_DEVICES="$GPU_ID"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260407.log}"
+SAFE_AVAILABLE_GB="${SAFE_AVAILABLE_GB:-10}"
+MEMORY_CHECK_SLEEP_SECONDS="${MEMORY_CHECK_SLEEP_SECONDS:-60}"
+MEMORY_CHECK_ATTEMPTS="${MEMORY_CHECK_ATTEMPTS:-3}"
+OOM_RETRY_SLEEP_SECONDS="${OOM_RETRY_SLEEP_SECONDS:-120}"
+
+mkdir -p "$(dirname "$QUEUE_LOG")"
+
+timestamp() {
+  date '+%Y-%m-%d %H:%M:%S'
+}
+
+log() {
+  echo "[$(timestamp)] $*" | tee -a "$QUEUE_LOG"
+}
+
+command_string() {
+  printf '%q ' "$@"
+}
+
+memory_available_gb() {
+  free -g | awk '/^Mem:/ {print $7}'
+}
+
+total_memory_gb() {
+  free -g | awk '/^Mem:/ {print $2}'
+}
+
+log_resource_state() {
+  local label="$1"
+  log "RESOURCE ${label}"
+  {
+    echo "--- free -h ---"
+    free -h
+    echo "--- nvidia-smi ---"
+    nvidia-smi --query-gpu=index,uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader
+  } | tee -a "$QUEUE_LOG"
+}
+
+set_virtual_memory_limit() {
+  local total_gb limit_gb limit_kb
+  total_gb="$(total_memory_gb)"
+  if [[ -z "$total_gb" || "$total_gb" -le 0 ]]; then
+    log "FAIL could not resolve total system RAM from free -g"
+    exit 1
+  fi
+  limit_gb=$(( total_gb * 80 / 100 ))
+  if [[ "$limit_gb" -lt 1 ]]; then
+    log "FAIL computed virtual memory limit is too small: ${limit_gb}G"
+    exit 1
+  fi
+  limit_kb=$(( limit_gb * 1024 * 1024 ))
+  ulimit -v "$limit_kb"
+  log "ulimit -v set to ${limit_kb} KB (${limit_gb}G of ${total_gb}G total RAM)"
+}
+
+wait_for_safe_memory() {
+  local attempt available_gb
+  for attempt in $(seq 1 "$MEMORY_CHECK_ATTEMPTS"); do
+    available_gb="$(memory_available_gb)"
+    log "MEMORY-GATE attempt=${attempt}/${MEMORY_CHECK_ATTEMPTS} available=${available_gb}G threshold=${SAFE_AVAILABLE_GB}G"
+    if [[ "$available_gb" -ge "$SAFE_AVAILABLE_GB" ]]; then
+      return 0
+    fi
+    log_resource_state "memory gate low-memory attempt ${attempt}"
+    if [[ "$attempt" -lt "$MEMORY_CHECK_ATTEMPTS" ]]; then
+      log "WAIT low available memory; sleeping ${MEMORY_CHECK_SLEEP_SECONDS}s"
+      sleep "$MEMORY_CHECK_SLEEP_SECONDS"
+    fi
+  done
+  log "FAIL insufficient memory: available RAM stayed below ${SAFE_AVAILABLE_GB}G after ${MEMORY_CHECK_ATTEMPTS} checks"
+  return 1
+}
+
+kill_lingering_cpu_comparators() {
+  local pids
+  pids="$(ps -eo pid=,cmd= | awk '/python scripts\/run_(halp|glsim)\.py/ {print $1}')"
+  if [[ -z "$pids" ]]; then
+    log "No lingering HALP/GLSim CPU processes found"
+    return
+  fi
+  log "KILL lingering CPU comparator processes: ${pids//$'\n'/ }"
+  while read -r pid; do
+    [[ -z "$pid" ]] && continue
+    kill "$pid" 2>/dev/null || true
+  done <<< "$pids"
+  sleep 5
+  while read -r pid; do
+    [[ -z "$pid" ]] && continue
+    if kill -0 "$pid" 2>/dev/null; then
+      log "KILL -9 lingering comparator PID=$pid"
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done <<< "$pids"
+}
+
+cleanup_partial_comparator_outputs() {
+  local kind report_root metrics results selection present_count
+  for report_root in outputs/round2_2026_04/reports/*; do
+    [[ -d "$report_root" ]] || continue
+    for kind in glsim halp; do
+      metrics="${report_root}/${kind}.json"
+      results="${report_root}/${kind}_results.csv"
+      selection="${report_root}/${kind}_selection.csv"
+      present_count=0
+      [[ -f "$metrics" ]] && present_count=$((present_count + 1))
+      [[ -f "$results" ]] && present_count=$((present_count + 1))
+      [[ -f "$selection" ]] && present_count=$((present_count + 1))
+      if [[ "$present_count" -gt 0 && "$present_count" -lt 3 ]]; then
+        log "CLEAN partial ${kind} output under ${report_root}"
+        rm -f "$metrics" "$results" "$selection"
+      fi
+    done
+  done
+}
+
+require_no_active_mind_extraction_queue() {
+  local active
+  active="$(ps -eo pid=,cmd= | awk '/python scripts\/extract_(readout_states|eval_states)\.py/ {print $1 ":" substr($0, index($0,$2))}')"
+  if [[ -n "$active" ]]; then
+    log "DEFER unified queue: active MIND extraction already running"
+    while read -r line; do
+      [[ -z "$line" ]] && continue
+      log "ACTIVE ${line}"
+    done <<< "$active"
+    log "Let the current GPU extraction queue finish before starting the unified queue."
+    return 1
+  fi
+  return 0
+}
+
+jsonl_rows() {
+  grep -cve '^[[:space:]]*$' "$1"
+}
+
+expected_shards() {
+  local records_path="$1"
+  local shard_size="$2"
+  local rows
+  rows="$(jsonl_rows "$records_path")"
+  echo $(((rows + shard_size - 1) / shard_size))
+}
+
+shard_count() {
+  local shard_dir="$1"
+  if [[ ! -d "$shard_dir" ]]; then
+    echo 0
+    return
+  fi
+  find "$shard_dir" -maxdepth 1 -name 'shard-*.pt' | wc -l | tr -d ' '
+}
+
+report_complete() {
+  local report_root="$1"
+  shift
+  local required_path
+  for required_path in "$@"; do
+    [[ -f "${report_root}/${required_path}" ]] || return 1
+  done
+  return 0
+}
+
+require_path() {
+  local path="$1"
+  local reason="$2"
+  if [[ ! -e "$path" ]]; then
+    log "FAIL missing prerequisite: ${path} (${reason})"
+    exit 1
+  fi
+}
+
+run_serial_step() {
+  local step_name="$1"
+  shift
+  local -a cmd=("$@")
+  local cmd_text status
+  cmd_text="$(command_string "${cmd[@]}")"
+  log_resource_state "before ${step_name}"
+  wait_for_safe_memory || exit 1
+  log "START ${step_name}"
+  log "CMD ${cmd_text}"
+  set +e
+  "${cmd[@]}" 2>&1 | tee -a "$QUEUE_LOG"
+  status=${PIPESTATUS[0]}
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    log "DONE ${step_name}"
+    log_resource_state "after ${step_name}"
+    return 0
+  fi
+  if [[ "$status" -eq 137 ]]; then
+    log "OOM ${step_name} exit=137; sleeping ${OOM_RETRY_SLEEP_SECONDS}s before retry"
+    sleep "$OOM_RETRY_SLEEP_SECONDS"
+    log_resource_state "oom recovery before retry ${step_name}"
+    wait_for_safe_memory || exit 137
+    log "RETRY ${step_name}"
+    set +e
+    "${cmd[@]}" 2>&1 | tee -a "$QUEUE_LOG"
+    status=${PIPESTATUS[0]}
+    set -e
+    if [[ "$status" -eq 0 ]]; then
+      log "DONE ${step_name} after retry"
+      log_resource_state "after retry ${step_name}"
+      return 0
+    fi
+    if [[ "$status" -eq 137 ]]; then
+      log "FAIL ${step_name}: exit=137 even after retry"
+      exit 137
+    fi
+  fi
+  log "FAIL ${step_name}: exit=${status}"
+  exit "$status"
+}
+
+ensure_readouts() {
+  local step_name="$1"
+  local model_config="$2"
+  local model_name="$3"
+  local dataset_name="$4"
+  local split_name="$5"
+  local records_path="$6"
+  local image_root="$7"
+  local batch_size="$8"
+  local shard_dir expected existing
+
+  shard_dir="outputs/round2_2026_04/readouts/${model_name}/${dataset_name}/${split_name}"
+  expected="$(expected_shards "$records_path" 64)"
+  existing="$(shard_count "$shard_dir")"
+  if [[ "$existing" -eq "$expected" && "$expected" -gt 0 ]]; then
+    log "SKIP ${step_name} complete (${existing}/${expected} shards)"
+    return
+  fi
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/extract_readout_states.py \
+        --records "$records_path" \
+        --model-config "$model_config" \
+        --output-root outputs/round2_2026_04/readouts \
+        --dataset-name "$dataset_name" \
+        --split "$split_name" \
+        --image-root "$image_root" \
+        --device cuda \
+        --shard-size 64 \
+        --batch-size "$batch_size" \
+        --max-new-tokens 1
+
+  existing="$(shard_count "$shard_dir")"
+  if [[ "$existing" -ne "$expected" ]]; then
+    log "FAIL ${step_name}: wrote ${existing}/${expected} shards"
+    exit 1
+  fi
+}
+
+ensure_eval_cache() {
+  local step_name="$1"
+  local model_config="$2"
+  local model_name="$3"
+  local records_path="$4"
+  local split_name="$5"
+  local image_root="$6"
+  local batch_size="$7"
+  local shard_dir expected existing
+
+  shard_dir="outputs/round2_2026_04/cache/${model_name}/pope/${split_name}"
+  expected="$(expected_shards "$records_path" 128)"
+  existing="$(shard_count "$shard_dir")"
+  if [[ "$existing" -eq "$expected" && "$expected" -gt 0 ]]; then
+    log "SKIP ${step_name} complete (${existing}/${expected} shards)"
+    return
+  fi
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/extract_eval_states.py \
+        --records "$records_path" \
+        --model-config "$model_config" \
+        --output-root outputs/round2_2026_04/cache \
+        --dataset-name pope \
+        --split "$split_name" \
+        --image-root "$image_root" \
+        --device cuda \
+        --shard-size 128 \
+        --batch-size "$batch_size" \
+        --selected-layers 16 \
+        --layer-range middle \
+        --max-new-tokens 1
+
+  existing="$(shard_count "$shard_dir")"
+  if [[ "$existing" -ne "$expected" ]]; then
+    log "FAIL ${step_name}: wrote ${existing}/${expected} shards"
+    exit 1
+  fi
+}
+
+ensure_halp() {
+  local step_name="$1"
+  local readout_path="$2"
+  local expected_shards="$3"
+  local reference_root="$4"
+  local model_name="$5"
+  local experiment_name="$6"
+  local split_strategy="$7"
+  local num_folds="$8"
+  local report_root="outputs/round2_2026_04/reports/${experiment_name}"
+
+  if report_complete "$report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
+    log "SKIP ${step_name} complete"
+    return
+  fi
+  require_path "$readout_path" "${step_name} requires readout cache"
+  if [[ "$(shard_count "$readout_path")" -ne "$expected_shards" ]]; then
+    log "FAIL ${step_name}: expected ${expected_shards} readout shards under ${readout_path}"
+    exit 1
+  fi
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/run_halp.py \
+        --readout-path "$readout_path" \
+        --output-root outputs/round2_2026_04/reports \
+        --experiment-name "$experiment_name" \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
+        --split-strategy "$split_strategy" \
+        --num-folds "$num_folds" \
+        --bootstrap-resamples 1000
+}
+
+ensure_glsim() {
+  local step_name="$1"
+  local readout_path="$2"
+  local expected_shards="$3"
+  local model_config="$4"
+  local reference_root="$5"
+  local model_name="$6"
+  local experiment_name="$7"
+  local split_strategy="$8"
+  local num_folds="$9"
+  local report_root="outputs/round2_2026_04/reports/${experiment_name}"
+
+  if report_complete "$report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
+    log "SKIP ${step_name} complete"
+    return
+  fi
+  require_path "$readout_path" "${step_name} requires readout cache"
+  if [[ "$(shard_count "$readout_path")" -ne "$expected_shards" ]]; then
+    log "FAIL ${step_name}: expected ${expected_shards} readout shards under ${readout_path}"
+    exit 1
+  fi
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/run_glsim.py \
+        --readout-path "$readout_path" \
+        --model-config "$model_config" \
+        --output-root outputs/round2_2026_04/reports \
+        --experiment-name "$experiment_name" \
+        --device cpu \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
+        --split-strategy "$split_strategy" \
+        --num-folds "$num_folds" \
+        --bootstrap-resamples 1000
+}
+
+ensure_features() {
+  local step_name="$1"
+  local cache_path="$2"
+  local reference_root="$3"
+  local model_name="$4"
+  local experiment_name="$5"
+  local split_name="$6"
+  local bank_scope="$7"
+  local features_path="outputs/round2_2026_04/features/${experiment_name}/${split_name}.parquet"
+
+  if [[ -f "$features_path" ]]; then
+    log "SKIP ${step_name} complete"
+    return
+  fi
+  require_path "$cache_path" "${step_name} requires eval cache"
+  require_path "$reference_root/${model_name}/reference_counts.csv" "${step_name} requires reference bank stats"
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/compute_drift.py \
+        --cache-path "$cache_path" \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
+        --output-root outputs/round2_2026_04/features \
+        --experiment-name "$experiment_name" \
+        --split "$split_name" \
+        --bank-scope "$bank_scope"
+}
+
+ensure_baseline_report() {
+  local step_name="$1"
+  local features_path="$2"
+  local cache_path="$3"
+  local reference_root="$4"
+  local model_name="$5"
+  local experiment_name="$6"
+  local split_strategy="$7"
+  local num_folds="$8"
+  local bank_scope="$9"
+  shift 9
+  local variants_csv=("$@")
+  local report_root="outputs/round2_2026_04/reports/${experiment_name}"
+  local variant_csv
+
+  if report_complete "$report_root" "baselines.json" "ablations.csv" "split_sensitivity.csv"; then
+    local complete="1"
+    for variant_csv in "${variants_csv[@]}"; do
+      [[ -f "${report_root}/variant_results/${variant_csv}.csv" ]] || complete="0"
+    done
+    if [[ "$complete" == "1" ]]; then
+      log "SKIP ${step_name} complete"
+      return
+    fi
+  fi
+
+  require_path "$features_path" "${step_name} requires features"
+  require_path "$cache_path" "${step_name} requires eval cache"
+  require_path "$reference_root/${model_name}/reference_counts.csv" "${step_name} requires reference bank stats"
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/compute_baselines.py \
+        --features-path "$features_path" \
+        --cache-path "$cache_path" \
+        --reference-root "$reference_root" \
+        --model-name "$model_name" \
+        --output-root outputs/round2_2026_04/reports \
+        --experiment-name "$experiment_name" \
+        --split-strategy "$split_strategy" \
+        --num-folds "$num_folds" \
+        --bank-scope "$bank_scope" \
+        --full-variant raw_plus_calibrated_simple
+}
+
+ensure_reference_bank() {
+  local step_name="$1"
+  local reference_cache="$2"
+  local output_root="$3"
+  local model_name="$4"
+  local bank_scope="$5"
+
+  if [[ -f "${output_root}/${model_name}/reference_counts.csv" ]]; then
+    log "SKIP ${step_name} complete"
+    return
+  fi
+  require_path "$reference_cache" "${step_name} requires reference cache"
+
+  run_serial_step "$step_name" \
+    conda run --no-capture-output -n "$CONDA_ENV" \
+      python scripts/build_manifolds.py \
+        --reference-cache "$reference_cache" \
+        --output-root "$output_root" \
+        --model-name "$model_name" \
+        --bank-scope "$bank_scope"
+}
+
+phase_gpu_extraction() {
+  log "PHASE gpu extraction"
+  ensure_readouts "internvl3.5-8b pope popular readouts" "configs/models/internvl3_5_8b_local.yaml" "internvl3.5-8b" "pope" "popular" "outputs/round2_2026_04/normalized/pope/popular.jsonl" "data/coco/val2014" "4"
+  ensure_readouts "llava-onevision-7b pope popular readouts" "configs/models/llava_onevision_7b_local.yaml" "llava-onevision-7b" "pope" "popular" "outputs/round2_2026_04/normalized/pope/popular.jsonl" "data/coco/val2014" "4"
+  ensure_readouts "molmo-7b-d-0924 pope popular readouts" "configs/models/molmo_7b_d_0924.yaml" "molmo-7b-d-0924" "pope" "popular" "outputs/round2_2026_04/normalized/pope/popular.jsonl" "data/coco/val2014" "4"
+  ensure_readouts "internvl3.5-8b dash-b readouts" "configs/models/internvl3_5_8b_local.yaml" "internvl3.5-8b" "dash-b" "main" "outputs/round2_2026_04/normalized/dash-b/main.jsonl" "data/dash_b" "4"
+  ensure_readouts "llava-onevision-7b dash-b readouts" "configs/models/llava_onevision_7b_local.yaml" "llava-onevision-7b" "dash-b" "main" "outputs/round2_2026_04/normalized/dash-b/main.jsonl" "data/dash_b" "4"
+  ensure_eval_cache "qwen3-vl-8b pope adversarial eval cache" "configs/models/qwen3_vl_8b_local.yaml" "qwen3-vl-8b" "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" "adversarial" "data/coco/val2014" "8"
+  ensure_eval_cache "internvl3.5-8b pope adversarial eval cache" "configs/models/internvl3_5_8b_local.yaml" "internvl3.5-8b" "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" "adversarial" "data/coco/val2014" "4"
+}
+
+phase_halp() {
+  log "PHASE halp"
+  ensure_halp "qwen3-vl-8b pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final" "image_grouped" "5"
+  ensure_halp "qwen3-vl-8b pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final-object-heldout" "object_heldout" "2"
+  ensure_halp "qwen3-vl-8b dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b" "image_grouped" "5"
+  ensure_halp "qwen3-vl-8b dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b-object-heldout" "object_heldout" "2"
+
+  ensure_halp "internvl3.5-8b pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular" "image_grouped" "5"
+  ensure_halp "internvl3.5-8b pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular-object-heldout" "object_heldout" "2"
+  ensure_halp "internvl3.5-8b dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b" "image_grouped" "5"
+  ensure_halp "internvl3.5-8b dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b-object-heldout" "object_heldout" "2"
+
+  ensure_halp "llava-onevision-7b pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular" "image_grouped" "5"
+  ensure_halp "llava-onevision-7b pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular-object-heldout" "object_heldout" "2"
+  ensure_halp "llava-onevision-7b dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b" "image_grouped" "5"
+  ensure_halp "llava-onevision-7b dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b-object-heldout" "object_heldout" "2"
+
+  ensure_halp "molmo-7b-d-0924 pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular" "image_grouped" "5"
+  ensure_halp "molmo-7b-d-0924 pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular-object-heldout" "object_heldout" "2"
+  ensure_halp "molmo-7b-d-0924 dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b" "image_grouped" "5"
+  ensure_halp "molmo-7b-d-0924 dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b-object-heldout" "object_heldout" "2"
+}
+
+phase_glsim() {
+  log "PHASE glsim"
+  ensure_glsim "qwen3-vl-8b pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final" "image_grouped" "5"
+  ensure_glsim "qwen3-vl-8b pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final-object-heldout" "object_heldout" "2"
+  ensure_glsim "qwen3-vl-8b dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b" "image_grouped" "5"
+  ensure_glsim "qwen3-vl-8b dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b-object-heldout" "object_heldout" "2"
+
+  ensure_glsim "internvl3.5-8b pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular" "image_grouped" "5"
+  ensure_glsim "internvl3.5-8b pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular-object-heldout" "object_heldout" "2"
+  ensure_glsim "internvl3.5-8b dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b" "image_grouped" "5"
+  ensure_glsim "internvl3.5-8b dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b-object-heldout" "object_heldout" "2"
+
+  ensure_glsim "llava-onevision-7b pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular" "image_grouped" "5"
+  ensure_glsim "llava-onevision-7b pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular-object-heldout" "object_heldout" "2"
+  ensure_glsim "llava-onevision-7b dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b" "image_grouped" "5"
+  ensure_glsim "llava-onevision-7b dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b-object-heldout" "object_heldout" "2"
+
+  ensure_glsim "molmo-7b-d-0924 pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular" "image_grouped" "5"
+  ensure_glsim "molmo-7b-d-0924 pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular-object-heldout" "object_heldout" "2"
+  ensure_glsim "molmo-7b-d-0924 dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b" "image_grouped" "5"
+  ensure_glsim "molmo-7b-d-0924 dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b-object-heldout" "object_heldout" "2"
+}
+
+phase_adversarial_cpu() {
+  log "PHASE adversarial cpu pipeline"
+  ensure_features "qwen3-vl-8b pope adversarial features" "outputs/round2_2026_04/cache/qwen3-vl-8b/pope/adversarial" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-adversarial" "adversarial" "object"
+  ensure_baseline_report "qwen3-vl-8b pope adversarial baselines" "outputs/round2_2026_04/features/round2-qwen3-vl-8b-adversarial/adversarial.parquet" "outputs/round2_2026_04/cache/qwen3-vl-8b/pope/adversarial" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-adversarial" "image_grouped" "5" "object" "full" "drift_only" "no_manifold" "linear_probe" "output_p_yes" "output_logit_margin" "output_chosen_answer_confidence"
+
+  ensure_features "internvl3.5-8b pope adversarial features" "outputs/round2_2026_04/cache/internvl3.5-8b/pope/adversarial" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-adversarial" "adversarial" "object"
+  ensure_baseline_report "internvl3.5-8b pope adversarial baselines" "outputs/round2_2026_04/features/round2-internvl3.5-8b-adversarial/adversarial.parquet" "outputs/round2_2026_04/cache/internvl3.5-8b/pope/adversarial" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-adversarial" "image_grouped" "5" "object" "full" "drift_only" "no_manifold" "linear_probe" "output_p_yes" "output_logit_margin" "output_chosen_answer_confidence"
+
+  ensure_features "llava-onevision-7b pope adversarial features" "outputs/round2_2026_04/cache/llava-onevision-7b/pope/adversarial" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-adversarial" "adversarial" "object"
+  ensure_baseline_report "llava-onevision-7b pope adversarial baselines" "outputs/round2_2026_04/features/round2-llava-onevision-7b-adversarial/adversarial.parquet" "outputs/round2_2026_04/cache/llava-onevision-7b/pope/adversarial" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-adversarial" "image_grouped" "5" "object" "full" "drift_only" "no_manifold" "linear_probe" "output_p_yes" "output_logit_margin" "output_chosen_answer_confidence"
+
+  ensure_features "molmo-7b-d-0924 pope adversarial features" "outputs/round2_2026_04/cache/molmo-7b-d-0924/pope/adversarial" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-adversarial" "adversarial" "object"
+  ensure_baseline_report "molmo-7b-d-0924 pope adversarial baselines" "outputs/round2_2026_04/features/round2-molmo-7b-d-0924-adversarial/adversarial.parquet" "outputs/round2_2026_04/cache/molmo-7b-d-0924/pope/adversarial" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-adversarial" "image_grouped" "5" "object" "full" "drift_only" "no_manifold" "linear_probe" "output_p_yes" "output_logit_margin" "output_chosen_answer_confidence"
+}
+
+phase_blocked_late_cpu_work() {
+  log "PHASE late cpu pipeline"
+  log "FAIL late CPU pipeline is still blocked by missing round-two prerequisites:"
+  log "- qwen3-vl-8b POPE popular eval cache is missing under outputs/round2_2026_04/cache/qwen3-vl-8b/pope/popular"
+  log "- internvl3.5-8b POPE popular eval cache is missing under outputs/round2_2026_04/cache/internvl3.5-8b/pope/popular"
+  log "- qwen3-vl-8b and internvl3.5-8b POPE reference caches are missing, so shared/shuffled controls and bank-size ablations cannot be rebuilt faithfully"
+  log "- layer-count ablation still needs a dedicated runner that derives drift features from the full readout caches"
+  exit 1
+}
+
+main() {
+  log "Unified MIND round-two serial queue starting"
+  log "root=${ROOT_DIR}"
+  log "gpu_id=${GPU_ID}"
+  log "conda_env=${CONDA_ENV}"
+  set_virtual_memory_limit
+  kill_lingering_cpu_comparators
+  cleanup_partial_comparator_outputs
+  if ! require_no_active_mind_extraction_queue; then
+    exit 0
+  fi
+  phase_gpu_extraction
+  phase_halp
+  phase_glsim
+  phase_adversarial_cpu
+  phase_blocked_late_cpu_work
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

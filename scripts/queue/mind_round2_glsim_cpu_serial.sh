@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "This split queue has been replaced by scripts/queue/mind_round2_unified_serial.sh. Do not launch split queues directly." >&2
+exit 1
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
