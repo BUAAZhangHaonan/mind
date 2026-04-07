@@ -32,7 +32,11 @@ def build_cache_output_path(
 SHARD_FILE_PATTERN = re.compile(r"^shard-(\d{5})\.pt$")
 
 
-def collect_completed_shard_indices(output_dir: Path) -> list[int]:
+def collect_completed_shard_indices(
+    output_dir: Path,
+    *,
+    expected_shards: int | None = None,
+) -> list[int]:
     if not output_dir.exists():
         return []
     indices: list[int] = []
@@ -43,10 +47,18 @@ def collect_completed_shard_indices(output_dir: Path) -> list[int]:
         indices.append(int(match.group(1)))
     expected_prefix = list(range(len(indices)))
     if indices != expected_prefix:
+        missing_indices = sorted(set(expected_prefix) - set(indices))
         raise ValueError(
             f"Readout output directory {output_dir} must contain a contiguous shard prefix "
-            f"starting at 0; found {indices!r}."
+            f"starting at 0; missing indices {missing_indices!r}, found {indices!r}."
         )
+    if expected_shards is not None:
+        extra_indices = [index for index in indices if index >= expected_shards]
+        if extra_indices:
+            raise ValueError(
+                f"Readout output directory {output_dir} contains shard indices beyond the "
+                f"expected range 0..{expected_shards - 1}: {extra_indices!r}."
+            )
     return indices
 
 
@@ -127,15 +139,14 @@ def run_extraction(
         records = records[:limit]
 
     output_dir = output_root / model_config.name / dataset_name / split
-    completed_indices = set(collect_completed_shard_indices(output_dir))
-    output_paths: list[Path] = []
     total_shards = (len(records) + shard_size - 1) // shard_size if records else 0
-    for shard_index in completed_indices:
-        if shard_index >= total_shards:
-            raise ValueError(
-                f"Readout output directory {output_dir} contains shard {shard_index:05d}, "
-                f"but only {total_shards} shards are expected."
-            )
+    completed_indices = set(
+        collect_completed_shard_indices(
+            output_dir,
+            expected_shards=total_shards,
+        )
+    )
+    output_paths: list[Path] = []
 
     if len(completed_indices) == total_shards:
         return [
