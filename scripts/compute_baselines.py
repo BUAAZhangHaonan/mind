@@ -31,6 +31,7 @@ from mind.evaluation.baselines import (
     load_reference_stats,
     resolve_feature_variant_frame,
     resolve_yes_no_token_ids,
+    validate_object_heldout_reference_support,
 )
 from mind.evaluation.metrics import write_results_table
 
@@ -329,6 +330,18 @@ def main(argv: list[str] | None = None) -> int:
 
     group_column = resolve_group_column(args.split_strategy)
     for variant_name, (variant_frame, columns) in variants.items():
+        if args.split_strategy == "object_heldout":
+            supported_object_names = validate_object_heldout_reference_support(
+                variant_frame,
+                reference_root=args.reference_root,
+                model_name=args.model_name,
+                bank_scope=args.bank_scope,
+                num_folds=args.num_folds,
+            )
+            print(
+                "[compute_baselines] object_heldout support "
+                f"variant={variant_name} objects={len(supported_object_names)}"
+            )
         metrics, results = evaluate_feature_frame(
             variant_frame,
             columns=columns,

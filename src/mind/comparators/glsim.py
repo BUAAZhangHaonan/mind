@@ -221,6 +221,29 @@ def _score_columns(image_layer: int, text_layer: int, k: int) -> tuple[str, str]
     )
 
 
+def _validate_supported_object_names(
+    frame: pd.DataFrame,
+    *,
+    supported_object_names: Sequence[str],
+    context: str,
+) -> None:
+    observed_object_names = {
+        str(object_name)
+        for object_name in frame["object_name"].dropna().astype(str).tolist()
+        if str(object_name) and str(object_name).lower() != "nan"
+    }
+    expected_object_names = {
+        str(object_name)
+        for object_name in supported_object_names
+        if str(object_name) and str(object_name).lower() != "nan"
+    }
+    if observed_object_names != expected_object_names:
+        raise ValueError(
+            f"{context} object coverage mismatch: observed={len(observed_object_names)} "
+            f"expected={len(expected_object_names)}"
+        )
+
+
 def _evaluate_config_on_splits(
     frame: pd.DataFrame,
     *,
@@ -264,8 +287,15 @@ def evaluate_glsim_nested(
     random_state: int = 13,
     num_folds: int = 5,
     inner_candidate_folds: Sequence[int] = (3, 2),
+    supported_object_names: Sequence[str] | None = None,
 ) -> tuple[dict[str, float], pd.DataFrame, pd.DataFrame]:
     base_frame = score_frame.sort_values("sample_id").reset_index(drop=True)
+    if split_strategy == "object_heldout" and supported_object_names is not None:
+        _validate_supported_object_names(
+            base_frame,
+            supported_object_names=supported_object_names,
+            context="GLSim object_heldout",
+        )
     outer_splits = _build_sample_id_splits(
         base_frame,
         split_strategy=split_strategy,

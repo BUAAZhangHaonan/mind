@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 import torch
 
 from mind.comparators.halp import (
@@ -87,3 +88,34 @@ def test_evaluate_halp_nested_selects_best_probe() -> None:
     assert metrics["roc_auc"] > 0.95
     assert set(results["selected_probe"]) == {"good_probe"}
     assert set(selection["selected_probe"]) == {"good_probe"}
+
+
+def test_evaluate_halp_nested_rejects_supported_object_mismatch() -> None:
+    rows: list[dict[str, object]] = []
+    for index in range(12):
+        label = 1 if index % 2 == 0 else 0
+        rows.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0,
+                "answer_label": 1 if label else 0,
+                "label": label,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+            }
+        )
+
+    metadata = pd.DataFrame(rows)
+    probe_frame = metadata.assign(feature_0=[float(row["label"]) for row in rows])
+
+    with pytest.raises(ValueError, match="object coverage mismatch"):
+        evaluate_halp_nested(
+            {"probe": probe_frame},
+            split_strategy="object_heldout",
+            num_folds=2,
+            random_state=13,
+            inner_candidate_folds=(2,),
+            probe_config=HALPProbeConfig(hidden_dims=(8, 4), batch_size=4, epochs=10, random_state=7),
+            supported_object_names=["object-0", "object-1"],
+        )

@@ -110,6 +110,125 @@ def load_reference_stats(
     return stats_map
 
 
+def load_reference_support_counts(
+    reference_root: Path,
+    model_name: str,
+    *,
+    bank_scope: str = "object",
+) -> pd.DataFrame:
+    counts_path = reference_root / model_name / "reference_counts.csv"
+    normalized_scope = "object" if bank_scope == "shuffled_object" else bank_scope
+    if counts_path.exists():
+        counts = pd.read_csv(counts_path)
+        if "bank_scope" in counts.columns:
+            counts = counts[counts["bank_scope"] == normalized_scope].copy()
+        if "count" in counts.columns:
+            counts = counts[counts["count"].fillna(0).astype(int) > 0].copy()
+        if "object_name" in counts.columns:
+            counts["object_name"] = counts["object_name"].astype(str)
+        return counts.reset_index(drop=True)
+
+    model_root = reference_root / model_name
+    if normalized_scope == "shared":
+        shared_root = model_root / "__shared__"
+        if not shared_root.exists():
+            raise ValueError(f"Missing shared reference bank under {shared_root}.")
+        return pd.DataFrame([{"bank_scope": "shared", "object_name": "__shared__", "count": 1}])
+
+    object_rows: list[dict[str, object]] = []
+    for object_dir in sorted(model_root.iterdir() if model_root.exists() else []):
+        if not object_dir.is_dir() or object_dir.name == "__shared__":
+            continue
+        if not any(object_dir.glob("layer-*.pt")):
+            continue
+        object_rows.append(
+            {
+                "bank_scope": normalized_scope,
+                "object_name": object_dir.name,
+                "count": 1,
+            }
+        )
+    return pd.DataFrame(object_rows)
+
+
+def prepare_object_heldout_frame(
+    frame: pd.DataFrame,
+    *,
+    supported_object_names: set[str] | Sequence[str],
+    requested_num_folds: int,
+    context: str,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    if "object_name" not in frame.columns:
+        raise ValueError(f"{context} requires an object_name column for object-heldout evaluation.")
+    working_frame = frame.copy()
+    working_frame["object_name"] = working_frame["object_name"].astype(str)
+    frame_object_names = {
+        object_name
+        for object_name in working_frame["object_name"].tolist()
+        if object_name and object_name.lower() != "nan"
+    }
+    supported_object_names = {
+        str(object_name)
+        for object_name in supported_object_names
+        if str(object_name) and str(object_name).lower() != "nan"
+    }
+    retained_object_names = sorted(frame_object_names & supported_object_names)
+    if not retained_object_names:
+        raise ValueError(
+            f"No supported objects remain for {context}. "
+            f"frame_objects={len(frame_object_names)} supported_objects={len(supported_object_names)}"
+        )
+    if len(retained_object_names) < max(2, int(requested_num_folds)):
+        raise ValueError(
+            f"{context} has too few supported objects for object-heldout evaluation: "
+            f"{len(retained_object_names)} objects for requested_num_folds={int(requested_num_folds)}."
+        )
+    filtered = working_frame[working_frame["object_name"].isin(retained_object_names)].reset_index(drop=True)
+    return filtered, {
+        "frame_object_count": len(frame_object_names),
+        "supported_object_count": len(retained_object_names),
+        "retained_row_count": int(len(filtered)),
+    }
+
+
+def validate_object_heldout_reference_support(
+    frame: pd.DataFrame,
+    *,
+    reference_root: Path,
+    model_name: str,
+    bank_scope: str = "object",
+    num_folds: int = 5,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    if bank_scope == "shared":
+        shared_root = reference_root / model_name / "__shared__"
+        if not shared_root.exists():
+            raise ValueError(f"Missing shared reference bank under {shared_root}.")
+        filtered, support = prepare_object_heldout_frame(
+            frame,
+            supported_object_names=set(frame["object_name"].astype(str).tolist()),
+            requested_num_folds=num_folds,
+            context=f"{model_name}/{bank_scope}",
+        )
+        return filtered, support
+
+    support_counts = load_reference_support_counts(
+        reference_root,
+        model_name,
+        bank_scope=bank_scope,
+    )
+    if support_counts.empty:
+        raise ValueError(
+            f"Reference support counts are empty for {model_name} under {reference_root} ({bank_scope})."
+        )
+    filtered, support = prepare_object_heldout_frame(
+        frame,
+        supported_object_names=set(support_counts["object_name"].astype(str).tolist()),
+        requested_num_folds=num_folds,
+        context=f"{model_name}/{bank_scope}",
+    )
+    return filtered, support
+
+
 def load_label_overrides(overrides: Path | pd.DataFrame) -> pd.DataFrame:
     if isinstance(overrides, pd.DataFrame):
         override_frame = overrides.copy()

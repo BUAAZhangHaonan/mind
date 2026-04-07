@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,9 +21,11 @@ from mind.evaluation.baselines import (
     evaluate_feature_frame,
     evaluate_feature_frame_across_random_states,
     load_cache_entries,
+    prepare_object_heldout_frame,
     resolve_feature_variant_frame,
     resolve_highest_valid_num_folds,
     resolve_yes_no_token_ids,
+    validate_object_heldout_reference_support,
 )
 
 
@@ -431,6 +434,151 @@ def test_evaluate_feature_frame_uses_image_grouped_out_of_fold_results() -> None
     assert sorted(results["sample_id"].tolist()) == sorted(frame["sample_id"].tolist())
     assert "pr_auc" in metrics
     assert "tpr_at_fpr_0.01" in metrics
+
+
+def test_prepare_object_heldout_frame_filters_to_supported_objects() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index,
+                "object_name": object_name,
+                "label": label,
+                "raw_drift_0": float(index),
+            }
+            for index, (object_name, label) in enumerate(
+                [
+                    ("dog", 0),
+                    ("dog", 1),
+                    ("cat", 0),
+                    ("cat", 1),
+                    ("bus", 0),
+                    ("bus", 1),
+                ]
+            )
+        ]
+    )
+
+    filtered, support = prepare_object_heldout_frame(
+        frame,
+        supported_object_names={"dog", "cat"},
+        requested_num_folds=2,
+        context="unit-test",
+    )
+
+    assert set(filtered["object_name"]) == {"dog", "cat"}
+    assert support["frame_object_count"] == 3
+    assert support["supported_object_count"] == 2
+    assert support["retained_row_count"] == 4
+
+
+def test_prepare_object_heldout_frame_rejects_zero_supported_objects() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index,
+                "object_name": "dog",
+                "label": index % 2,
+                "raw_drift_0": float(index),
+            }
+            for index in range(4)
+        ]
+    )
+
+    with pytest.raises(ValueError, match="No supported objects"):
+        prepare_object_heldout_frame(
+            frame,
+            supported_object_names={"cat"},
+            requested_num_folds=2,
+            context="unit-test",
+        )
+
+
+def test_prepare_object_heldout_frame_rejects_too_few_supported_objects() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index,
+                "object_name": "dog" if index < 2 else "cat",
+                "label": index % 2,
+                "raw_drift_0": float(index),
+            }
+            for index in range(4)
+        ]
+    )
+
+    with pytest.raises(ValueError, match="too few supported objects"):
+        prepare_object_heldout_frame(
+            frame,
+            supported_object_names={"dog"},
+            requested_num_folds=2,
+            context="unit-test",
+        )
+
+
+def test_validate_object_heldout_reference_support_accepts_healthy_overlap(
+    tmp_path: Path,
+) -> None:
+    reference_root = tmp_path / "reference_banks"
+    model_root = reference_root / "qwen3-vl-8b"
+    model_root.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {"bank_scope": "object", "object_name": "dog", "layer_index": 9, "count": 4},
+            {"bank_scope": "object", "object_name": "cat", "layer_index": 9, "count": 4},
+        ]
+    ).to_csv(model_root / "reference_counts.csv", index=False)
+
+    frame = pd.DataFrame(
+        [
+            {"sample_id": "sample-1", "image_id": 1, "object_name": "dog", "label": 0},
+            {"sample_id": "sample-2", "image_id": 2, "object_name": "cat", "label": 1},
+            {"sample_id": "sample-3", "image_id": 3, "object_name": "dog", "label": 1},
+            {"sample_id": "sample-4", "image_id": 4, "object_name": "cat", "label": 0},
+        ]
+    )
+
+    supported = validate_object_heldout_reference_support(
+        frame,
+        reference_root=reference_root,
+        model_name="qwen3-vl-8b",
+        bank_scope="object",
+        num_folds=2,
+    )
+
+    assert supported == ["cat", "dog"]
+
+
+def test_validate_object_heldout_reference_support_fails_on_zero_overlap(
+    tmp_path: Path,
+) -> None:
+    reference_root = tmp_path / "reference_banks"
+    model_root = reference_root / "qwen3-vl-8b"
+    model_root.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {"bank_scope": "object", "object_name": "dog", "layer_index": 9, "count": 4},
+            {"bank_scope": "object", "object_name": "cat", "layer_index": 9, "count": 4},
+        ]
+    ).to_csv(model_root / "reference_counts.csv", index=False)
+
+    frame = pd.DataFrame(
+        [
+            {"sample_id": "sample-1", "image_id": 1, "object_name": "horse", "label": 0},
+            {"sample_id": "sample-2", "image_id": 2, "object_name": "zebra", "label": 1},
+        ]
+    )
+
+    with pytest.raises(ValueError, match="No supported objects"):
+        validate_object_heldout_reference_support(
+            frame,
+            reference_root=reference_root,
+            model_name="qwen3-vl-8b",
+            bank_scope="object",
+            num_folds=2,
+        )
 
 
 def test_resolve_yes_no_token_ids_keeps_single_token_variants_only() -> None:

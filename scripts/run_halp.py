@@ -11,7 +11,11 @@ import pandas as pd
 
 from mind.comparators import HALPProbeConfig, build_halp_probe_frames, evaluate_halp_nested
 from mind.comparators.halp import summarize_halp_results
-from mind.evaluation.baselines import apply_label_overrides_to_entries, load_cache_entries
+from mind.evaluation.baselines import (
+    apply_label_overrides_to_entries,
+    load_cache_entries,
+    validate_object_heldout_reference_support,
+)
 from mind.evaluation.metrics import write_results_table
 
 
@@ -32,6 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--dropout", type=float, default=0.3)
     parser.add_argument("--hidden-dims", default="512,256,128")
+    parser.add_argument("--reference-root", type=Path, default=None)
+    parser.add_argument("--model-name", default="")
+    parser.add_argument("--bank-scope", choices=["object", "shared", "shuffled_object"], default="object")
     return parser
 
 
@@ -55,6 +62,18 @@ def main(argv: list[str] | None = None) -> int:
         readout_entries = apply_label_overrides_to_entries(readout_entries, args.label_overrides)
 
     candidate_frames = build_halp_probe_frames(readout_entries)
+    supported_object_names: list[str] | None = None
+    if args.split_strategy == "object_heldout":
+        if args.reference_root is None or not args.model_name:
+            raise ValueError("--reference-root and --model-name are required for object_heldout HALP.")
+        supported_object_names = validate_object_heldout_reference_support(
+            next(iter(candidate_frames.values())),
+            reference_root=args.reference_root,
+            model_name=args.model_name,
+            bank_scope=args.bank_scope,
+            num_folds=args.num_folds,
+        )
+        print(f"[run_halp] object_heldout support objects={len(supported_object_names)}")
     metrics, results, selection = evaluate_halp_nested(
         candidate_frames,
         split_strategy=args.split_strategy,
@@ -70,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             epochs=args.epochs,
             random_state=args.random_state,
         ),
+        supported_object_names=supported_object_names,
     )
     summary = summarize_halp_results(
         results,

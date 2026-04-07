@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from mind.comparators.glsim import (
     evaluate_glsim_nested,
@@ -53,3 +54,36 @@ def test_evaluate_glsim_nested_selects_best_config() -> None:
     assert metrics["roc_auc"] > 0.95
     assert set(results["selected_config"]) == {"i0_t0_k1_w0.50"}
     assert set(selection["selected_config"]) == {"i0_t0_k1_w0.50"}
+
+
+def test_evaluate_glsim_nested_rejects_supported_object_mismatch() -> None:
+    rows: list[dict[str, object]] = []
+    for index in range(12):
+        label = 1 if index % 2 == 0 else 0
+        rows.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0,
+                "answer_label": 1 if label else 0,
+                "label": label,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+                "global_i0_t0": float(label),
+                "local_i0_t0_k1": float(label),
+            }
+        )
+    score_frame = pd.DataFrame(rows)
+
+    with pytest.raises(ValueError, match="object coverage mismatch"):
+        evaluate_glsim_nested(
+            score_frame,
+            image_layers=[0],
+            text_layers=[0],
+            k_values=[1],
+            w_values=[0.5],
+            split_strategy="object_heldout",
+            num_folds=2,
+            random_state=13,
+            supported_object_names=["object-0", "object-1"],
+        )

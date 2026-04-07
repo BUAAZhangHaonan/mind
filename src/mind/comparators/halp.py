@@ -216,6 +216,29 @@ def _predict_probe(
     return predictions, scores
 
 
+def _validate_supported_object_names(
+    frame: pd.DataFrame,
+    *,
+    supported_object_names: Sequence[str],
+    context: str,
+) -> None:
+    observed_object_names = {
+        str(object_name)
+        for object_name in frame["object_name"].dropna().astype(str).tolist()
+        if str(object_name) and str(object_name).lower() != "nan"
+    }
+    expected_object_names = {
+        str(object_name)
+        for object_name in supported_object_names
+        if str(object_name) and str(object_name).lower() != "nan"
+    }
+    if observed_object_names != expected_object_names:
+        raise ValueError(
+            f"{context} object coverage mismatch: observed={len(observed_object_names)} "
+            f"expected={len(expected_object_names)}"
+        )
+
+
 def _evaluate_probe_on_splits(
     frame: pd.DataFrame,
     *,
@@ -293,10 +316,17 @@ def evaluate_halp_nested(
     num_folds: int = 5,
     inner_candidate_folds: Sequence[int] = (3, 2),
     probe_config: HALPProbeConfig = HALPProbeConfig(),
+    supported_object_names: Sequence[str] | None = None,
 ) -> tuple[dict[str, float], pd.DataFrame, pd.DataFrame]:
     if not candidate_frames:
         raise ValueError("candidate_frames must not be empty")
     base_frame = next(iter(candidate_frames.values())).sort_values("sample_id").reset_index(drop=True)
+    if split_strategy == "object_heldout" and supported_object_names is not None:
+        _validate_supported_object_names(
+            base_frame,
+            supported_object_names=supported_object_names,
+            context="HALP object_heldout",
+        )
     outer_splits = _build_sample_id_splits(
         base_frame,
         split_strategy=split_strategy,

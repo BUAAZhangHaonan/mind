@@ -20,10 +20,13 @@ from .baselines import (
     load_cache_entries,
     load_label_overrides,
     load_reference_bank,
+    load_reference_support_counts,
     load_reference_stats,
+    prepare_object_heldout_frame,
     resolve_feature_variant_frame,
     resolve_highest_valid_num_folds,
     resolve_yes_no_token_ids,
+    validate_object_heldout_reference_support,
 )
 from .metrics import (
     canonicalize_result_frame,
@@ -58,10 +61,13 @@ __all__ = [
     "load_cache_entries",
     "load_label_overrides",
     "load_reference_bank",
+    "load_reference_support_counts",
     "load_reference_stats",
+    "prepare_object_heldout_frame",
     "resolve_feature_variant_frame",
     "resolve_highest_valid_num_folds",
     "resolve_yes_no_token_ids",
+    "validate_object_heldout_reference_support",
     "write_metrics_report",
     "write_results_table",
 ]
