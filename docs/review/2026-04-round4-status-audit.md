@@ -6,14 +6,18 @@ This note records the live round-two state after checking the process list, GPU 
 
 ## Live Queue
 
-The previous GPU 1 queue did not finish. It stopped after one successful step.
+The original GPU 1 queue did not finish. It stopped after one successful step, and was then relaunched in a split recovery shape.
 
 - GPU 0 is still occupied by `magformer`.
-- GPU 1 is now free.
-- The tmux session `mind_gpu1_round2_queue` no longer exists.
-- There is no live MIND Python process on either GPU.
-- The queue log is:
+- GPU 1 is now assigned to the recovered MIND extraction queue.
+- Active tmux sessions:
+  - `mind_gpu1_round2_queue`
+  - `mind_glsim_cpu_queue`
+  - `mind_halp_cpu_queue`
+- Active queue logs:
   - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log`
+  - `outputs/round2_2026_04/job_logs/mind_glsim_cpu_queue_20260407.log`
+  - `outputs/round2_2026_04/job_logs/mind_halp_cpu_queue_20260407.log`
 
 The queue completed:
 
@@ -23,7 +27,7 @@ The queue completed:
 - output root: `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
 - result: complete (`47/47` shards)
 
-The queue then failed on the next step:
+The original queue then failed on the next step:
 
 - `qwen3-vl-8b`
 - benchmark: `POPE popular`
@@ -43,6 +47,30 @@ Recovery decision for this pass:
 - keep `qwen3-vl-8b` `POPE popular` readouts as complete and do not rerun them
 - relaunch GPU 1 with extraction-only work
 - move `GLSim` and `HALP` into separate CPU-side persistent queues
+
+The recovered queues are now live:
+
+- GPU queue current step:
+  - `internvl3.5-8b`
+  - benchmark: `POPE popular`
+  - stage: readout extraction
+  - output root: `outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular/`
+- CPU comparator queue current step:
+  - `qwen3-vl-8b`
+  - benchmark: `POPE popular`
+  - stage: `GLSim image_grouped`
+  - output root: `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/`
+- CPU comparator queue current step:
+  - `qwen3-vl-8b`
+  - benchmark: `POPE popular`
+  - stage: `HALP image_grouped`
+  - output root: `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/`
+
+Current health check:
+
+- the GPU queue log shows `internvl3.5-8b` model loading and active generation on GPU 1
+- `run_glsim.py` and `run_halp.py` are both alive on CPU and consuming real CPU time
+- no duplicate writers are targeting the same readout root
 
 ## Main Matrix State
 
