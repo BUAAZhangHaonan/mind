@@ -6,11 +6,9 @@ cd "$ROOT_DIR"
 
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
 GPU_ID="${GPU_ID:-1}"
-RETRY_ATTEMPTS="${RETRY_ATTEMPTS:-3}"
-RETRY_DELAY_SECONDS="${RETRY_DELAY_SECONDS:-60}"
-QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_gpu_queue_20260407.log}"
-
 export CUDA_VISIBLE_DEVICES="$GPU_ID"
+
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_recovery_queue_20260407.log}"
 mkdir -p "$(dirname "$QUEUE_LOG")"
 
 timestamp() {
@@ -25,34 +23,33 @@ command_string() {
   printf '%q ' "$@"
 }
 
-run_with_retries() {
+run_with_retry() {
   local step_name="$1"
   shift
   local -a cmd=("$@")
   local attempt=1
-  local status=0
-  local cmd_text
-  cmd_text="$(command_string "${cmd[@]}")"
-  while (( attempt <= RETRY_ATTEMPTS )); do
-    log "START $step_name (attempt ${attempt}/${RETRY_ATTEMPTS})"
-    log "CMD $cmd_text"
+  local max_attempts=3
+  local delay_seconds=60
+
+  while true; do
+    log "START $step_name (attempt ${attempt}/${max_attempts})"
+    log "CMD $(command_string "${cmd[@]}")"
     set +e
     "${cmd[@]}" 2>&1 | tee -a "$QUEUE_LOG"
-    status=${PIPESTATUS[0]}
+    local status=${PIPESTATUS[0]}
     set -e
     if [[ "$status" -eq 0 ]]; then
       log "DONE $step_name"
       return 0
     fi
-    if (( attempt == RETRY_ATTEMPTS )); then
-      log "FAIL $step_name (exit=$status)"
+    if (( attempt >= max_attempts )); then
+      log "FAIL $step_name (exit=$status, attempts=$attempt)"
       return "$status"
     fi
-    log "RETRY $step_name after exit=$status; sleeping ${RETRY_DELAY_SECONDS}s"
-    sleep "$RETRY_DELAY_SECONDS"
+    log "RETRY $step_name in ${delay_seconds}s (exit=$status, next_attempt=$((attempt + 1))/${max_attempts})"
+    sleep "$delay_seconds"
     attempt=$((attempt + 1))
   done
-  return 1
 }
 
 jsonl_rows() {
@@ -109,7 +106,7 @@ ensure_readouts() {
     return
   fi
 
-  run_with_retries "$step_name" \
+  run_with_retry "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_readout_states.py \
         --records "$records_path" \
@@ -153,7 +150,7 @@ ensure_eval_cache() {
     archive_partial_dir "$shard_dir"
   fi
 
-  run_with_retries "$step_name" \
+  run_with_retry "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_eval_states.py \
         --records "$records_path" \
@@ -177,10 +174,11 @@ ensure_eval_cache() {
 }
 
 main() {
-  log "GPU queue starting"
+  log "GPU1 recovery queue starting"
   log "root=$ROOT_DIR"
   log "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
   log "conda_env=$CONDA_ENV"
+  log "scope=gpu_only"
 
   ensure_readouts \
     "internvl3.5-8b pope popular readouts" \
@@ -189,8 +187,7 @@ main() {
     "pope" \
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014" \
-    "4"
+    "data/coco/val2014"
   ensure_readouts \
     "llava-onevision-7b pope popular readouts" \
     "configs/models/llava_onevision_7b.yaml" \
@@ -198,8 +195,7 @@ main() {
     "pope" \
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014" \
-    "4"
+    "data/coco/val2014"
   ensure_readouts \
     "molmo-7b-d-0924 pope popular readouts" \
     "configs/models/molmo_7b_d_0924.yaml" \
@@ -207,8 +203,7 @@ main() {
     "pope" \
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
-    "data/coco/val2014" \
-    "4"
+    "data/coco/val2014"
 
   ensure_readouts \
     "internvl3.5-8b dash-b readouts" \
@@ -217,8 +212,7 @@ main() {
     "dash-b" \
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
-    "data/dash_b" \
-    "4"
+    "data/dash_b"
   ensure_readouts \
     "llava-onevision-7b dash-b readouts" \
     "configs/models/llava_onevision_7b.yaml" \
@@ -226,8 +220,7 @@ main() {
     "dash-b" \
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
-    "data/dash_b" \
-    "4"
+    "data/dash_b"
 
   ensure_eval_cache \
     "qwen3-vl-8b pope adversarial eval cache" \
@@ -246,7 +239,7 @@ main() {
     "data/coco/val2014" \
     "4"
 
-  log "GPU queue completed"
+  log "GPU1 recovery queue completed"
 }
 
 main "$@"
