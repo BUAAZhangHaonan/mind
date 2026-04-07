@@ -1,0 +1,6 @@
+name: llava-onevision-7b
+model_id: /home/team/zhanghaonan/.cache/huggingface/hub/models--llava-hf--llava-onevision-qwen2-7b-ov-hf/snapshots/0d50680527681998e456c7b78950205bedd8a068
+family: llava_onevision
+dtype: float16
+attn_implementation: sdpa
+trust_remote_code: true

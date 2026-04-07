@@ -9,6 +9,12 @@ RETRY_ATTEMPTS="${RETRY_ATTEMPTS:-3}"
 RETRY_DELAY_SECONDS="${RETRY_DELAY_SECONDS:-60}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
 QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_glsim_cpu_queue_20260407.log}"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-4}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-4}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-4}"
 
 mkdir -p "$(dirname "$QUEUE_LOG")"
 
@@ -180,12 +186,12 @@ main() {
     "round2-qwen3-vl-8b-dash-b"
   queue_model_glsim \
     "internvl3.5-8b" \
-    "configs/models/internvl3_5_8b.yaml" \
+    "configs/models/internvl3_5_8b_local.yaml" \
     "round2-internvl3.5-8b-popular" \
     "round2-internvl3.5-8b-dash-b"
   queue_model_glsim \
     "llava-onevision-7b" \
-    "configs/models/llava_onevision_7b.yaml" \
+    "configs/models/llava_onevision_7b_local.yaml" \
     "round2-llava-onevision-7b-popular" \
     "round2-llava-onevision-7b-dash-b"
   queue_model_glsim \

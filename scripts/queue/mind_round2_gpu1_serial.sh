@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
 GPU_ID="${GPU_ID:-1}"
 export CUDA_VISIBLE_DEVICES="$GPU_ID"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 
 QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log}"
 mkdir -p "$(dirname "$QUEUE_LOG")"
@@ -173,7 +175,7 @@ main() {
 
   ensure_readouts \
     "internvl3.5-8b pope popular readouts" \
-    "configs/models/internvl3_5_8b.yaml" \
+    "configs/models/internvl3_5_8b_local.yaml" \
     "internvl3.5-8b" \
     "pope" \
     "popular" \
@@ -183,7 +185,7 @@ main() {
 
   ensure_readouts \
     "llava-onevision-7b pope popular readouts" \
-    "configs/models/llava_onevision_7b.yaml" \
+    "configs/models/llava_onevision_7b_local.yaml" \
     "llava-onevision-7b" \
     "pope" \
     "popular" \
@@ -203,7 +205,7 @@ main() {
 
   ensure_readouts \
     "internvl3.5-8b dash-b readouts" \
-    "configs/models/internvl3_5_8b.yaml" \
+    "configs/models/internvl3_5_8b_local.yaml" \
     "internvl3.5-8b" \
     "dash-b" \
     "main" \
@@ -213,7 +215,7 @@ main() {
 
   ensure_readouts \
     "llava-onevision-7b dash-b readouts" \
-    "configs/models/llava_onevision_7b.yaml" \
+    "configs/models/llava_onevision_7b_local.yaml" \
     "llava-onevision-7b" \
     "dash-b" \
     "main" \
@@ -232,7 +234,7 @@ main() {
 
   ensure_eval_cache \
     "internvl3.5-8b pope adversarial eval cache" \
-    "configs/models/internvl3_5_8b.yaml" \
+    "configs/models/internvl3_5_8b_local.yaml" \
     "internvl3.5-8b" \
     "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" \
     "adversarial" \
