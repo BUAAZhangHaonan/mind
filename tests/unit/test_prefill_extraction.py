@@ -34,6 +34,18 @@ assert READOUT_SPEC is not None and READOUT_SPEC.loader is not None
 READOUT_SPEC.loader.exec_module(extract_readout_states)
 
 
+def _fake_readout_entry(sample_id: str) -> dict[str, object]:
+    return {
+        "sample_id": sample_id,
+        "query_token_index": 2,
+        "vision_token_span": [0, 1],
+        "object_token_index": 1,
+        "object_token_id": 11,
+        "full_hidden_states": torch.zeros((4, 3, 2), dtype=torch.float32),
+        "vision_features": torch.zeros((2, 2), dtype=torch.float32),
+    }
+
+
 def test_select_middle_layers_picks_middle_half_evenly() -> None:
     selected = select_middle_layers(total_layers=32, count=4)
 
@@ -217,7 +229,7 @@ def test_extract_readout_run_extraction_batches_records(tmp_path: Path, monkeypa
         "extract_prefill_readout_entries",
         lambda **kwargs: (
             batch_sizes.append(len(kwargs["records"]))
-            or [{"sample_id": record.sample_id} for record in kwargs["records"]]
+            or [_fake_readout_entry(record.sample_id) for record in kwargs["records"]]
         ),
     )
 
@@ -299,7 +311,7 @@ def test_extract_readout_run_extraction_resumes_from_completed_prefix(tmp_path: 
         "extract_prefill_readout_entries",
         lambda **kwargs: (
             batch_sizes.append(len(kwargs["records"]))
-            or [{"sample_id": record.sample_id} for record in kwargs["records"]]
+            or [_fake_readout_entry(record.sample_id) for record in kwargs["records"]]
         ),
     )
 
@@ -390,7 +402,7 @@ def test_extract_readout_run_extraction_resumes_from_contiguous_partial_prefix(
         "extract_prefill_readout_entries",
         lambda **kwargs: (
             batch_sizes.append(len(kwargs["records"]))
-            or [{"sample_id": record.sample_id} for record in kwargs["records"]]
+            or [_fake_readout_entry(record.sample_id) for record in kwargs["records"]]
         ),
     )
 
@@ -520,7 +532,7 @@ def test_extract_readout_run_extraction_writes_chunked_shard_parts(tmp_path: Pat
         "extract_prefill_readout_entries",
         lambda **kwargs: (
             batch_sizes.append(len(kwargs["records"]))
-            or [{"sample_id": record.sample_id} for record in kwargs["records"]]
+            or [_fake_readout_entry(record.sample_id) for record in kwargs["records"]]
         ),
     )
 
@@ -888,6 +900,14 @@ def test_extract_prefill_entries_falls_back_to_wrapper_prefill_forward_states() 
 
 
 def test_extract_prefill_readout_entries_capture_query_and_vision_boundaries() -> None:
+    class FakeTokenizer:
+        def encode(self, text: str, add_special_tokens: bool = False):
+            assert add_special_tokens is False
+            return {"dog": [11]}.get(text, [1])
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
     class FakeBatch(dict):
         def to(self, device: str):
             self["device"] = device
@@ -895,7 +915,7 @@ def test_extract_prefill_readout_entries_capture_query_and_vision_boundaries() -
 
     class FakeWrapper:
         def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert questions == ["Q1"]
             assert image_paths == ["a.jpg"]
             return FakeBatch(
@@ -906,28 +926,28 @@ def test_extract_prefill_readout_entries_capture_query_and_vision_boundaries() -
             ).to(device)
 
         def resolve_query_token_index(self, processor, *, model_inputs, batch_index: int) -> int:
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert batch_index == 0
             return 2
 
         def resolve_vision_token_span(self, model, processor, *, model_inputs, batch_index: int):
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert batch_index == 0
             return (0, 1)
 
         def extract_preprojector_vision_features(self, model, processor, *, model_inputs, batch_index: int):
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert batch_index == 0
             return torch.tensor([1.0, 2.0, 3.0])
 
         def decode_generation(self, processor, *, generated_ids: torch.Tensor, prompt_input_ids: torch.Tensor) -> str:
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert torch.equal(prompt_input_ids, torch.tensor([[10, 11, 12]]))
             assert torch.equal(generated_ids, torch.tensor([[10, 11, 12, 42]]))
             return "Yes"
 
         def generate(self, model, processor, *, model_inputs, max_new_tokens: int):
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert max_new_tokens == 1
             return model.generate(
                 **model_inputs,
@@ -970,7 +990,7 @@ def test_extract_prefill_readout_entries_capture_query_and_vision_boundaries() -
 
     entries = extract_prefill_readout_entries(
         model=FakeModel(),
-        processor="processor",
+        processor=FakeProcessor(),
         wrapper=FakeWrapper(),
         records=[record],
         device="cuda:0",
@@ -979,11 +999,21 @@ def test_extract_prefill_readout_entries_capture_query_and_vision_boundaries() -
     assert len(entries) == 1
     assert entries[0]["query_token_index"] == 2
     assert entries[0]["vision_token_span"] == [0, 1]
+    assert entries[0]["object_token_index"] == 1
+    assert entries[0]["object_token_id"] == 11
     assert entries[0]["full_hidden_states"].shape == (4, 3, 2)
     assert torch.equal(entries[0]["vision_features"], torch.tensor([1.0, 2.0, 3.0]))
 
 
 def test_extract_prefill_readout_entries_fall_back_to_wrapper_prefill_forward_states() -> None:
+    class FakeTokenizer:
+        def encode(self, text: str, add_special_tokens: bool = False):
+            assert add_special_tokens is False
+            return {"dog": [11]}.get(text, [1])
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
     class FakeBatch(dict):
         def to(self, device: str):
             self["device"] = device
@@ -991,7 +1021,7 @@ def test_extract_prefill_readout_entries_fall_back_to_wrapper_prefill_forward_st
 
     class FakeWrapper:
         def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert questions == ["Q1"]
             assert image_paths == ["a.jpg"]
             return FakeBatch(
@@ -1002,18 +1032,18 @@ def test_extract_prefill_readout_entries_fall_back_to_wrapper_prefill_forward_st
             ).to(device)
 
         def resolve_query_token_index(self, processor, *, model_inputs, batch_index: int) -> int:
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert batch_index == 0
             return 2
 
         def decode_generation(self, processor, *, generated_ids: torch.Tensor, prompt_input_ids: torch.Tensor) -> str:
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert torch.equal(prompt_input_ids, torch.tensor([[10, 11, 12]]))
             assert torch.equal(generated_ids, torch.tensor([[10, 11, 12, 42]]))
             return "Yes"
 
         def extract_prefill_hidden_states(self, model, processor, *, model_inputs):
-            assert processor == "processor"
+            assert isinstance(processor, FakeProcessor)
             assert torch.equal(model_inputs["input_ids"], torch.tensor([[10, 11, 12]]))
             return tuple(
                 torch.full((1, 3, 2), fill_value=float(index))
@@ -1047,7 +1077,7 @@ def test_extract_prefill_readout_entries_fall_back_to_wrapper_prefill_forward_st
 
     entries = extract_prefill_readout_entries(
         model=FakeModel(),
-        processor="processor",
+        processor=FakeProcessor(),
         wrapper=FakeWrapper(),
         records=[record],
         device="cuda:0",
@@ -1055,5 +1085,7 @@ def test_extract_prefill_readout_entries_fall_back_to_wrapper_prefill_forward_st
 
     assert len(entries) == 1
     assert entries[0]["query_token_index"] == 2
+    assert entries[0]["object_token_index"] == 1
+    assert entries[0]["object_token_id"] == 11
     assert entries[0]["full_hidden_states"].shape == (4, 3, 2)
     assert torch.equal(entries[0]["full_hidden_states"][0], torch.full((3, 2), 1.0))

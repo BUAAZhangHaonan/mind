@@ -13,7 +13,7 @@ from mind.comparators import (
     evaluate_glsim_nested,
     resolve_glsim_layer_indices,
 )
-from mind.comparators.glsim import summarize_glsim_results
+from mind.comparators.glsim import resolve_readout_total_layers, summarize_glsim_results
 from mind.config import ModelConfig, load_yaml_config
 from mind.evaluation.baselines import (
     apply_label_overrides_to_entries,
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not readout_entries:
         raise ValueError("Readout cache is empty.")
-    total_layers = int(readout_entries[0]["full_hidden_states"].shape[0])
+    total_layers = resolve_readout_total_layers(readout_entries[0])
     default_layers = resolve_glsim_layer_indices(total_layers)
     image_layers = _parse_int_list(args.image_layers) or default_layers
     text_layers = _parse_int_list(args.text_layers) or default_layers

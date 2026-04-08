@@ -124,6 +124,66 @@ def test_run_halp_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: P
     ]
 
 
+def test_run_halp_writes_metrics_from_compact_readout_cache(tmp_path: Path) -> None:
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    for index in range(12):
+        hallucination_label = 1 if index % 2 == 0 else 0
+        signal = float(hallucination_label)
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0,
+                "parsed_answer": 1 if hallucination_label else 0,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+                "vision_features": torch.tensor(
+                    [
+                        [signal, 0.0],
+                        [signal, 1.0],
+                    ]
+                ),
+                "query_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                "vision_token_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                "readout_format": "compact_comparator_cache_v1",
+                "total_layers": 4,
+            }
+        )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    output_root = tmp_path / "reports"
+    exit_code = run_halp_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-halp-compact",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "3",
+            "--epochs",
+            "8",
+            "--batch-size",
+            "4",
+            "--hidden-dims",
+            "8,4",
+            "--bootstrap-resamples",
+            "50",
+        ]
+    )
+
+    assert exit_code == 0
+    metrics_path = output_root / "smoke-halp-compact" / "halp.json"
+    results_path = output_root / "smoke-halp-compact" / "halp_results.csv"
+    assert metrics_path.exists()
+    assert results_path.exists()
+
+
 def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: Path, monkeypatch) -> None:
     class FakeTokenizer:
         def encode(self, text: str, add_special_tokens: bool = False):
@@ -234,6 +294,120 @@ def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: 
         "fold",
         "selected_config",
     ]
+
+
+def test_run_glsim_writes_metrics_from_compact_readout_cache(tmp_path: Path, monkeypatch) -> None:
+    class FakeTokenizer:
+        def encode(self, text: str, add_special_tokens: bool = False):
+            assert add_special_tokens is False
+            return {"dog": [2]}.get(text, [1])
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+    class FakeWrapper:
+        def load_processor(self):
+            return FakeProcessor()
+
+        def load_model(self, device: str = "cpu"):
+            del device
+            head = torch.nn.Linear(2, 4, bias=False)
+            with torch.no_grad():
+                head.weight.zero_()
+                head.weight[2, 0] = 1.0
+            return type("FakeModel", (), {"get_output_embeddings": lambda self: head})()
+
+    monkeypatch.setattr(
+        run_glsim_script,
+        "load_yaml_config",
+        lambda path, cls: type("Cfg", (), {"name": "fake", "model_id": "fake", "family": "fake"})(),
+    )
+    monkeypatch.setattr(run_glsim_script, "create_model_wrapper", lambda config: FakeWrapper())
+
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    layer_indices = [0, 1]
+    for index in range(12):
+        hallucination_label = 1 if index % 2 == 0 else 0
+        sign = 1.0 if hallucination_label else -1.0
+        vision_slice = torch.stack(
+            [
+                torch.tensor([[2.0 * sign, 0.0], [1.0 * sign, 0.0]], dtype=torch.float32),
+                torch.tensor([[2.0 * sign, 0.0], [1.0 * sign, 0.0]], dtype=torch.float32),
+            ]
+        )
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0,
+                "parsed_answer": 1 if hallucination_label else 0,
+                "subset": "popular",
+                "object_name": "dog",
+                "readout_format": "compact_comparator_cache_v1",
+                "total_layers": 4,
+                "query_hidden_states": torch.tensor(
+                    [
+                        [1.0 * sign, 0.0],
+                        [1.0 * sign, 0.0],
+                        [0.0, 0.0],
+                        [0.0, 0.0],
+                    ],
+                    dtype=torch.float32,
+                ),
+                "object_hidden_states": torch.tensor(
+                    [
+                        [1.0 * sign, 0.0],
+                        [1.0 * sign, 0.0],
+                        [0.0, 0.0],
+                        [0.0, 0.0],
+                    ],
+                    dtype=torch.float32,
+                ),
+                "glsim_layer_indices": layer_indices,
+                "glsim_vision_hidden_states": vision_slice,
+                "object_token_index": 1,
+                "object_token_id": 2,
+            }
+        )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    output_root = tmp_path / "reports"
+    exit_code = run_glsim_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--model-config",
+            "configs/models/qwen3_vl_8b.yaml",
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-glsim-compact",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "3",
+            "--image-layers",
+            "0,1",
+            "--text-layers",
+            "0,1",
+            "--k-values",
+            "1",
+            "--w-values",
+            "0.5",
+            "--bootstrap-resamples",
+            "50",
+            "--device",
+            "cpu",
+        ]
+    )
+
+    assert exit_code == 0
+    metrics_path = output_root / "smoke-glsim-compact" / "glsim.json"
+    results_path = output_root / "smoke-glsim-compact" / "glsim_results.csv"
+    assert metrics_path.exists()
+    assert results_path.exists()
 
 
 def test_parse_stage_list_supports_csv_and_all() -> None:

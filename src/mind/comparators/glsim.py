@@ -70,6 +70,68 @@ def _metadata_row_from_readout_entry(entry: dict[str, object]) -> dict[str, obje
     }
 
 
+def resolve_readout_total_layers(entry: dict[str, object]) -> int:
+    if "query_hidden_states" in entry:
+        return int(torch.as_tensor(entry["query_hidden_states"]).shape[0])
+    return int(torch.as_tensor(entry["full_hidden_states"]).shape[0])
+
+
+def _resolve_query_hidden_states(entry: dict[str, object]) -> torch.Tensor:
+    if "query_hidden_states" in entry:
+        return torch.as_tensor(entry["query_hidden_states"], dtype=torch.float32)
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
+    query_token_index = int(entry["query_token_index"])
+    return full_hidden_states[:, query_token_index, :]
+
+
+def _resolve_object_hidden_states(entry: dict[str, object]) -> torch.Tensor:
+    if "object_hidden_states" in entry:
+        return torch.as_tensor(entry["object_hidden_states"], dtype=torch.float32)
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
+    object_token_index = entry.get("object_token_index")
+    if object_token_index is None:
+        raise ValueError(f"Missing object token index for sample {entry['sample_id']}")
+    return full_hidden_states[:, int(object_token_index), :]
+
+
+def _resolve_object_hidden_states_with_context(
+    entry: dict[str, object],
+    *,
+    context: dict[str, int],
+) -> torch.Tensor:
+    if "object_hidden_states" in entry:
+        return torch.as_tensor(entry["object_hidden_states"], dtype=torch.float32)
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
+    object_token_index = entry.get("object_token_index", context["object_token_index"])
+    return full_hidden_states[:, int(object_token_index), :]
+
+
+def _resolve_glsim_visual_slices(
+    entry: dict[str, object],
+    *,
+    layer_indices: Sequence[int],
+) -> dict[int, torch.Tensor]:
+    if "glsim_vision_hidden_states" in entry:
+        cached_layers = [int(value) for value in entry.get("glsim_layer_indices", [])]
+        layer_to_index = {layer: index for index, layer in enumerate(cached_layers)}
+        missing_layers = [layer for layer in layer_indices if layer not in layer_to_index]
+        if missing_layers:
+            raise ValueError(
+                f"Compact GLSim cache for sample {entry['sample_id']} is missing requested layers: {missing_layers}"
+            )
+        cached = torch.as_tensor(entry["glsim_vision_hidden_states"], dtype=torch.float32)
+        return {layer: cached[layer_to_index[layer]] for layer in layer_indices}
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
+    vision_span = entry.get("vision_token_span")
+    if vision_span is None:
+        raise ValueError(f"Missing vision token span for sample {entry['sample_id']}")
+    vision_start, vision_stop = int(vision_span[0]), int(vision_span[1])
+    return {
+        layer_index: full_hidden_states[layer_index, vision_start : vision_stop + 1, :]
+        for layer_index in layer_indices
+    }
+
+
 def _resolve_tokenizer(processor):
     return getattr(processor, "tokenizer", processor)
 
@@ -83,6 +145,12 @@ def build_object_token_contexts(
     tokenizer = _resolve_tokenizer(processor)
     contexts: dict[str, dict[str, int]] = {}
     for entry in readout_entries:
+        if entry.get("object_token_index") is not None and entry.get("object_token_id") is not None:
+            contexts[str(entry["sample_id"])] = {
+                "object_token_id": int(entry["object_token_id"]),
+                "object_token_index": int(entry["object_token_index"]),
+            }
+            continue
         model_inputs = wrapper.prepare_inputs(
             processor,
             question=str(entry["question"]),
@@ -150,16 +218,12 @@ def build_glsim_score_frame(
     for entry in readout_entries:
         sample_id = str(entry["sample_id"])
         context = contexts[sample_id]
-        full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
-        query_token_index = int(entry["query_token_index"])
-        vision_span = entry.get("vision_token_span")
-        if vision_span is None:
-            raise ValueError(f"Missing vision token span for sample {sample_id}")
-        vision_start, vision_stop = int(vision_span[0]), int(vision_span[1])
-        visual_slices = {
-            layer_index: full_hidden_states[layer_index, vision_start : vision_stop + 1, :]
-            for layer_index in layer_indices
-        }
+        query_hidden_states = _resolve_query_hidden_states(entry)
+        object_hidden_states = _resolve_object_hidden_states_with_context(
+            entry,
+            context=context,
+        )
+        visual_slices = _resolve_glsim_visual_slices(entry, layer_indices=layer_indices)
         row = _metadata_row_from_readout_entry(entry)
         for image_layer in layer_indices:
             visual_hidden = visual_slices[image_layer]
@@ -169,11 +233,11 @@ def build_glsim_score_frame(
                 object_token_id=context["object_token_id"],
             )
             top_indices = torch.argsort(probabilities, descending=True)[: min(max_k, len(probabilities))]
-            query_hidden = full_hidden_states[image_layer, query_token_index, :]
+            query_hidden = query_hidden_states[image_layer, :]
             query_hidden_norm = F.normalize(query_hidden.unsqueeze(0), dim=-1)[0]
             visual_hidden_norm = F.normalize(visual_hidden, dim=-1)
             for text_layer in layer_indices:
-                object_hidden = full_hidden_states[text_layer, context["object_token_index"], :]
+                object_hidden = object_hidden_states[text_layer, :]
                 object_hidden_norm = F.normalize(object_hidden.unsqueeze(0), dim=-1)[0]
                 global_score = torch.dot(query_hidden_norm, object_hidden_norm).item()
                 row[f"global_i{image_layer}_t{text_layer}"] = float(global_score)

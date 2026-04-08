@@ -16,6 +16,7 @@ from mind.config import ModelConfig, load_yaml_config
 from mind.data import HallucinationRecord
 from mind.extractors import extract_prefill_readout_entries
 from mind.extractors.prefill import CHUNKED_CACHE_SHARD_FORMAT
+from mind.extractors.readouts import compact_prefill_readout_entry
 from mind.models import create_model_wrapper
 from mind.utils import output_root_lock
 
@@ -227,14 +228,17 @@ def run_extraction(
                 shard_writer = ChunkedShardWriter(output_path)
                 for start in range(0, len(shard_records), batch_size):
                     shard_writer.append(
-                        extract_prefill_readout_entries(
-                            model=model,
-                            processor=processor,
-                            wrapper=wrapper,
-                            records=shard_records[start : start + batch_size],
-                            device=device,
-                            max_new_tokens=max_new_tokens,
-                        )
+                        [
+                            compact_prefill_readout_entry(entry)
+                            for entry in extract_prefill_readout_entries(
+                                model=model,
+                                processor=processor,
+                                wrapper=wrapper,
+                                records=shard_records[start : start + batch_size],
+                                device=device,
+                                max_new_tokens=max_new_tokens,
+                            )
+                        ]
                     )
                 shard_writer.finalize()
     return output_paths

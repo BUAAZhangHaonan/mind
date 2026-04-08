@@ -13,6 +13,18 @@ from mind.models import parse_yes_no_answer
 from .prefill import resolve_prefill_hidden_states, run_generation_with_prefill_request
 
 
+def resolve_default_glsim_layer_indices(total_layers: int) -> list[int]:
+    if total_layers < 1:
+        raise ValueError("total_layers must be positive")
+    return [
+        0,
+        total_layers // 4,
+        total_layers // 2,
+        (3 * total_layers) // 4,
+        total_layers - 1,
+    ]
+
+
 def stack_prefill_hidden_states(
     hidden_states: Sequence[torch.Tensor],
     *,
@@ -113,6 +125,38 @@ def _resolve_vision_features(
     return torch.as_tensor(features).detach().cpu()
 
 
+def _resolve_tokenizer(processor: Any) -> Any:
+    return getattr(processor, "tokenizer", processor)
+
+
+def _find_subsequence_start(sequence: Sequence[int], subsequence: Sequence[int]) -> int | None:
+    if not subsequence:
+        return None
+    width = len(subsequence)
+    for index in range(0, len(sequence) - width + 1):
+        if list(sequence[index : index + width]) == list(subsequence):
+            return index
+    return None
+
+
+def _resolve_object_token_context(
+    processor: Any,
+    record: HallucinationRecord,
+    *,
+    model_inputs: Any,
+    batch_index: int,
+) -> tuple[int, int]:
+    tokenizer = _resolve_tokenizer(processor)
+    object_token_ids = tokenizer.encode(str(record.object_name), add_special_tokens=False)
+    if not object_token_ids:
+        raise ValueError(f"Could not tokenize object name for sample {record.sample_id}: {record.object_name}")
+    input_ids = model_inputs["input_ids"][batch_index].detach().cpu().tolist()
+    start_index = _find_subsequence_start(input_ids, object_token_ids)
+    if start_index is None:
+        raise ValueError(f"Could not locate object token span for sample {record.sample_id}")
+    return int(start_index), int(object_token_ids[0])
+
+
 def build_prefill_readout_entry(
     *,
     record: HallucinationRecord,
@@ -121,6 +165,8 @@ def build_prefill_readout_entry(
     full_hidden_states: torch.Tensor,
     query_token_index: int,
     vision_token_span: tuple[int, int] | None,
+    object_token_index: int | None = None,
+    object_token_id: int | None = None,
     first_token_logits: torch.Tensor | None,
     vision_features: torch.Tensor | None,
 ) -> dict[str, object]:
@@ -132,6 +178,8 @@ def build_prefill_readout_entry(
             "full_hidden_states": full_hidden_states.detach().cpu(),
             "query_token_index": int(query_token_index),
             "vision_token_span": None if vision_token_span is None else list(vision_token_span),
+            "object_token_index": None if object_token_index is None else int(object_token_index),
+            "object_token_id": None if object_token_id is None else int(object_token_id),
             "first_token_logits": None
             if first_token_logits is None
             else first_token_logits.detach().cpu(),
@@ -139,6 +187,36 @@ def build_prefill_readout_entry(
         }
     )
     return payload
+
+
+def compact_prefill_readout_entry(entry: dict[str, object]) -> dict[str, object]:
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"])
+    query_token_index = int(entry["query_token_index"])
+    vision_token_span = entry.get("vision_token_span")
+    object_token_index = entry.get("object_token_index")
+    if vision_token_span is None:
+        raise ValueError(f"Missing vision token span for sample {entry['sample_id']}")
+    if object_token_index is None:
+        raise ValueError(f"Missing object token index for sample {entry['sample_id']}")
+
+    vision_start, vision_stop = int(vision_token_span[0]), int(vision_token_span[1])
+    vision_token_index = vision_stop
+    total_layers = int(full_hidden_states.shape[0])
+    glsim_layer_indices = resolve_default_glsim_layer_indices(total_layers)
+
+    compact_entry = {key: value for key, value in entry.items() if key != "full_hidden_states"}
+    compact_entry.update(
+        {
+            "readout_format": "compact_comparator_cache_v1",
+            "total_layers": total_layers,
+            "query_hidden_states": full_hidden_states[:, query_token_index, :].clone(),
+            "vision_token_hidden_states": full_hidden_states[:, vision_token_index, :].clone(),
+            "object_hidden_states": full_hidden_states[:, int(object_token_index), :].clone(),
+            "glsim_layer_indices": list(glsim_layer_indices),
+            "glsim_vision_hidden_states": full_hidden_states[glsim_layer_indices, vision_start : vision_stop + 1, :].clone(),
+        }
+    )
+    return compact_entry
 
 
 def extract_prefill_readout_entries(
@@ -175,6 +253,25 @@ def extract_prefill_readout_entries(
 
     entries: list[dict[str, object]] = []
     for batch_index, record in enumerate(records):
+        query_token_index = _resolve_query_token_index(
+            wrapper,
+            processor,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+        )
+        vision_token_span = _resolve_vision_token_span(
+            wrapper,
+            model,
+            processor,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+        )
+        object_token_index, object_token_id = _resolve_object_token_context(
+            processor,
+            record,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+        )
         full_hidden_states = stack_prefill_hidden_states(
             prefill_hidden_states,
             batch_index=batch_index,
@@ -190,19 +287,10 @@ def extract_prefill_readout_entries(
                 answer_text=answer_text,
                 parsed_answer=parse_yes_no_answer(answer_text),
                 full_hidden_states=full_hidden_states,
-                query_token_index=_resolve_query_token_index(
-                    wrapper,
-                    processor,
-                    model_inputs=model_inputs,
-                    batch_index=batch_index,
-                ),
-                vision_token_span=_resolve_vision_token_span(
-                    wrapper,
-                    model,
-                    processor,
-                    model_inputs=model_inputs,
-                    batch_index=batch_index,
-                ),
+                query_token_index=query_token_index,
+                vision_token_span=vision_token_span,
+                object_token_index=object_token_index,
+                object_token_id=object_token_id,
                 first_token_logits=generation_output.scores[0][batch_index],
                 vision_features=_resolve_vision_features(
                     wrapper,

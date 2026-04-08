@@ -98,6 +98,31 @@ def _flatten_vision_features(vision_features: torch.Tensor) -> torch.Tensor:
     raise ValueError(f"Unsupported vision feature rank: {vision_features.ndim}")
 
 
+def _resolve_total_layers(entry: dict[str, object]) -> int:
+    if "query_hidden_states" in entry:
+        return int(torch.as_tensor(entry["query_hidden_states"]).shape[0])
+    return int(torch.as_tensor(entry["full_hidden_states"]).shape[0])
+
+
+def _resolve_query_hidden_states(entry: dict[str, object]) -> torch.Tensor:
+    if "query_hidden_states" in entry:
+        return torch.as_tensor(entry["query_hidden_states"], dtype=torch.float32)
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
+    query_token_index = int(entry["query_token_index"])
+    return full_hidden_states[:, query_token_index, :]
+
+
+def _resolve_vision_token_hidden_states(entry: dict[str, object]) -> torch.Tensor:
+    if "vision_token_hidden_states" in entry:
+        return torch.as_tensor(entry["vision_token_hidden_states"], dtype=torch.float32)
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
+    vision_token_span = entry.get("vision_token_span")
+    if vision_token_span is None:
+        raise ValueError(f"Missing vision token span for sample {entry['sample_id']}")
+    vision_token_index = int(vision_token_span[-1])
+    return full_hidden_states[:, vision_token_index, :]
+
+
 def build_halp_probe_frames(
     readout_entries: Sequence[dict[str, object]],
     *,
@@ -106,8 +131,7 @@ def build_halp_probe_frames(
     if not readout_entries:
         raise ValueError("readout_entries must not be empty")
 
-    sample_hidden_states = torch.as_tensor(readout_entries[0]["full_hidden_states"])
-    selected_layers = list(layer_indices or resolve_halp_layer_indices(int(sample_hidden_states.shape[0])))
+    selected_layers = list(layer_indices or resolve_halp_layer_indices(_resolve_total_layers(readout_entries[0])))
     probe_rows: dict[str, list[dict[str, object]]] = {"vision_only": []}
     for layer_index in selected_layers:
         probe_rows[f"vision_token_layer_{layer_index}"] = []
@@ -115,12 +139,8 @@ def build_halp_probe_frames(
 
     for entry in readout_entries:
         metadata = _metadata_row_from_readout_entry(entry)
-        full_hidden_states = torch.as_tensor(entry["full_hidden_states"], dtype=torch.float32)
-        query_token_index = int(entry["query_token_index"])
-        vision_token_span = entry.get("vision_token_span")
-        if vision_token_span is None:
-            raise ValueError(f"Missing vision token span for sample {entry['sample_id']}")
-        vision_token_index = int(vision_token_span[-1])
+        query_hidden_states = _resolve_query_hidden_states(entry)
+        vision_token_hidden_states = _resolve_vision_token_hidden_states(entry)
         vision_features = entry.get("vision_features")
         if vision_features is None:
             raise ValueError(f"Missing vision features for sample {entry['sample_id']}")
@@ -129,10 +149,10 @@ def build_halp_probe_frames(
         )
         for layer_index in selected_layers:
             probe_rows[f"vision_token_layer_{layer_index}"].append(
-                _feature_row(metadata, full_hidden_states[layer_index, vision_token_index, :])
+                _feature_row(metadata, vision_token_hidden_states[layer_index, :])
             )
             probe_rows[f"query_token_layer_{layer_index}"].append(
-                _feature_row(metadata, full_hidden_states[layer_index, query_token_index, :])
+                _feature_row(metadata, query_hidden_states[layer_index, :])
             )
     return {name: pd.DataFrame(rows) for name, rows in probe_rows.items()}
 
