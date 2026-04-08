@@ -206,6 +206,58 @@ shard_count() {
     | wc -l | tr -d ' '
 }
 
+readout_cache_has_required_halp_fields() {
+  local readout_dir="$1"
+  conda run --no-capture-output -n "$CONDA_ENV" python - "$readout_dir" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+import torch
+
+from mind.extractors.prefill import CHUNKED_CACHE_SHARD_FORMAT
+
+root = Path(sys.argv[1])
+part_pattern = re.compile(r"\.part-\d{5}\.pt$")
+shard_paths = sorted(
+    shard_path
+    for shard_path in root.glob("shard-*.pt")
+    if not part_pattern.search(shard_path.name)
+)
+if not shard_paths:
+    raise SystemExit(2)
+
+def iter_entries():
+    for shard_path in shard_paths:
+        payload = torch.load(shard_path, weights_only=False)
+        if isinstance(payload, dict) and payload.get("format") == CHUNKED_CACHE_SHARD_FORMAT:
+            for part_name in payload.get("parts", []):
+                part_entries = torch.load(shard_path.parent / str(part_name), weights_only=False)
+                for entry in part_entries:
+                    yield entry
+        elif isinstance(payload, list):
+            for entry in payload:
+                yield entry
+
+for entry in iter_entries():
+    if entry.get("vision_features") is None:
+        sample_id = entry.get("sample_id", "<unknown>")
+        print(f"missing vision_features for sample {sample_id}", file=sys.stderr)
+        raise SystemExit(1)
+    if entry.get("query_hidden_states") is None:
+        sample_id = entry.get("sample_id", "<unknown>")
+        print(f"missing query_hidden_states for sample {sample_id}", file=sys.stderr)
+        raise SystemExit(1)
+    if entry.get("vision_token_hidden_states") is None:
+        sample_id = entry.get("sample_id", "<unknown>")
+        print(f"missing vision_token_hidden_states for sample {sample_id}", file=sys.stderr)
+        raise SystemExit(1)
+    raise SystemExit(0)
+
+raise SystemExit(2)
+PY
+}
+
 report_complete() {
   local report_root="$1"
   shift
@@ -283,8 +335,13 @@ ensure_readouts() {
   expected="$(expected_shards "$records_path" 64)"
   existing="$(shard_count "$shard_dir")"
   if [[ "$existing" -eq "$expected" && "$expected" -gt 0 ]]; then
-    log "SKIP ${step_name} complete (${existing}/${expected} shards)"
-    return
+    if readout_cache_has_required_halp_fields "$shard_dir"; then
+      log "SKIP ${step_name} complete (${existing}/${expected} shards)"
+      return
+    fi
+    log "REBUILD ${step_name}: existing readout cache is not HALP-ready"
+    rm -rf "$shard_dir"
+    existing=0
   fi
 
   run_serial_step "$step_name" \
