@@ -1,90 +1,64 @@
 # Round-Four Status Audit
 
-Date: 2026-04-07
+Date: 2026-04-08
 
 This note records the live round-two state after checking the process list, GPU owners, output roots, report directories, and the queue logs.
 
 ## Live Queue
 
-The original GPU 1 queue did not finish. It stopped after one successful step, was relaunched in a split recovery shape, and then the server crashed hard enough to drop all SSH sessions and clear every tmux queue.
+The split recovery queues are gone. The unified serial queue was relaunched on `GPU 1`, resumed from the unfinished readout work, and then failed on `LLaVA-OneVision-7B` `POPE popular` readout extraction with a CPU allocation error.
 
-Post-restart audit:
+Current live state:
 
-- GPU 0 is idle right now, but it remains off-limits for this project.
-- GPU 1 is the only GPU allowed for MIND work.
-- The restart cleared all old tmux sessions, including:
-  - `mind_gpu1_round2_queue`
-  - `mind_glsim_cpu_queue`
-  - `mind_halp_cpu_queue`
-- The pre-crash logs are still available:
-  - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407.log`
-  - `outputs/round2_2026_04/job_logs/mind_glsim_cpu_queue_20260407.log`
-  - `outputs/round2_2026_04/job_logs/mind_halp_cpu_queue_20260407.log`
-- The recovered post-restart GPU log is now:
-  - `outputs/round2_2026_04/job_logs/mind_gpu1_serial_queue_20260407_postrestart.log`
+- GPU 0 remains off-limits for MIND and is occupied by another project.
+- GPU 1 is the only allowed GPU for MIND and is currently idle for this repo.
+- There is no live MIND extractor, HALP, or GLSim process right now.
+- The last queue log is:
+  - `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_restart.log`
 
-The queue completed:
+What completed before the stop:
 
 - `qwen3-vl-8b`
-- benchmark: `POPE popular`
-- stage: readout extraction
-- output root: `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
-- result: complete (`47/47` shards)
+  - benchmark: `POPE popular`
+  - stage: readout extraction
+  - result: complete (`47/47` shards)
+- `internvl3.5-8b`
+  - benchmark: `POPE popular`
+  - stage: readout extraction
+  - result: complete (`47/47` shards)
 
-The original queue then failed on the next step:
+Where it stopped:
 
-- `qwen3-vl-8b`
-- benchmark: `POPE popular`
-- stage: `GLSim image_grouped`
-- command: `python scripts/run_glsim.py ... --device cuda --split-strategy image_grouped`
-- result: killed with `exit=137`
+- `llava-onevision-7b`
+  - benchmark: `POPE popular`
+  - stage: readout extraction
+  - current output root: `outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular/`
+  - current progress: `29/47` completed top-level shards
+  - failure: `RuntimeError: DefaultCPUAllocator: can't allocate memory`
+  - failing allocation in the saved traceback: about `747823104` bytes
 
-The last queue timestamps in the saved log are:
-
-- `[2026-04-07 15:48:00] DONE qwen3-vl-8b pope popular readouts`
-- `[2026-04-07 15:58:16] FAIL qwen3-vl-8b pope popular GLSim image_grouped (exit=137)`
-
-So the queue failure was not a readout failure. It was the first comparator step being run on the GPU queue.
-
-Crash diagnosis for this pass:
-
-- the GPU extraction queue and the CPU comparator queues died for different reasons
-- the GPU queue hit a post-restart proxy failure while loading InternVL from a Hub repo id
-- both CPU comparator queues were killed with `exit=137` while loading and scoring the full `qwen3-vl-8b` popular readout cache
-- the strongest concrete host-risk signal is the pair of CPU comparator jobs, not the GPU extraction itself
+The concrete failure point was not GPU memory. It was CPU RAM pressure inside readout extraction while building and retaining full hidden-state payloads for a shard.
 
 Recovery decision for this pass:
 
-- keep `qwen3-vl-8b` `POPE popular` readouts as complete and do not rerun them
+- keep `qwen3-vl-8b` and `internvl3.5-8b` `POPE popular` readouts as complete
 - keep MIND on GPU 1 only
-- relaunch only the GPU extraction queue first
-- keep the CPU comparator queues down until a single unified serial queue takes over
-- force the queue onto cached local model paths or offline cached Hub paths so the dead proxy does not break extraction
-- replace the separate GPU and CPU queue scripts with one unified serial queue that never runs two heavy tasks at once
+- keep HALP and GLSim down until readout extraction is stable again
+- resume from the unfinished `llava-onevision-7b` `POPE popular` readout step
+- use the unified serial queue only
+- fix the extractor-side host RAM spike instead of changing the benchmark method
 
-The recovered GPU queue is live again:
+The extractor has now been patched to:
 
-- tmux session:
-  - `mind_gpu1_round2_queue`
-- GPU queue current step:
-  - `internvl3.5-8b`
-  - benchmark: `POPE popular`
-  - stage: readout extraction
-  - output root: `outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular/`
-- health check:
-  - GPU 1 is occupied by `extract_readout_states.py`
-  - the post-restart log shows InternVL loading successfully from the cached local model path
-  - the run has moved past the earlier proxy failure and is actively generating on GPU 1
-  - the live shard count has reached `19`
-- intentionally not relaunched:
-  - `mind_glsim_cpu_queue`
-  - `mind_halp_cpu_queue`
-- current memory snapshot during this audit:
-  - `125 GiB` total RAM
-  - `56 GiB` to `81 GiB` available RAM across repeated checks
-  - swap is present and mostly free
-  - no lingering `run_halp.py` or `run_glsim.py` workers remain
-  - no partial `halp.*` or `glsim.*` outputs were found under `outputs/round2_2026_04/`
+- stack prefill hidden states without the extra `torch.stack([...cpu()...])` spike
+- write new readout shards in chunked batch parts plus a top-level manifest
+- keep queue shard counting compatible with both the old single-file shards and the new manifest shards
+
+Current memory snapshot during this audit:
+
+- `125 GiB` total RAM
+- no lingering `run_halp.py` or `run_glsim.py` workers
+- no live MIND GPU process on `GPU 1`
 
 ## Main Matrix State
 
@@ -148,8 +122,8 @@ The tracked paper table already exists:
 | Model | POPE popular readouts | DASH-B readouts | Status |
 | --- | --- | --- | --- |
 | Qwen3-VL-8B | complete (`47` shards) | complete (`42` shards) | readouts are usable; GLSim failed before writing results |
-| InternVL3.5-8B | missing | partial (`36` shards) | still needs popular readouts and DASH-B repair |
-| LLaVA-OneVision-7B | missing | partial (`7` shards) | still needs popular readouts and DASH-B repair |
+| InternVL3.5-8B | complete (`47` shards) | partial (`36` shards) | popular readouts are now usable; DASH-B still needs repair |
+| LLaVA-OneVision-7B | partial (`29` shards) | partial (`7` shards) | popular readouts need resume from shard `29`; DASH-B still needs repair |
 | Molmo-7B-D-0924 | missing | complete after rerun (`42` shards in `main/`) | still needs popular readouts |
 
 No HALP output directories are present yet.
@@ -178,9 +152,9 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Immediate Priority
 
-1. Let the GPU 1 extraction queue finish the missing readout and adversarial cache work.
-2. Do not relaunch HALP and GLSim as separate queues.
-3. Start the new unified serial queue only after the current GPU queue is fully idle.
+1. Resume the unified serial queue on GPU 1 from `llava-onevision-7b` `POPE popular` readouts.
+2. Do not relaunch HALP and GLSim until the remaining readouts are complete.
+3. After readouts are stable again, let the same unified queue continue through comparator work one step at a time.
 4. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
 
 ## Unified Queue Policy
@@ -205,4 +179,4 @@ The new policy is:
 - a virtual memory cap set to `80%` of total RAM
 - a hard memory gate that refuses to start a new step if available RAM is below `10 GiB`
 
-The unified queue has been prepared, but it has not been launched yet because the current GPU extraction queue is still active. That is intentional. The queue guard now refuses to start while another MIND extraction process is alive.
+The unified queue is the only queue that should be used going forward. It can now resume mixed readout directories that contain both old single-file shards and new chunked manifest shards.
