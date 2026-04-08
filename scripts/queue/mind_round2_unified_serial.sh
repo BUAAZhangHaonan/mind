@@ -13,7 +13,7 @@ set -euo pipefail
 # - The queue applies a per-process virtual memory ceiling at 80% of total RAM,
 #   logs system memory and GPU state before and after every step, and retries a
 #   step once if it dies with exit code 137.
-# - GPU 0 is the only GPU allowed for current MIND work. GPU 1 is reserved for
+# - GPU 1 is the only GPU allowed for current MIND work. GPU 0 is reserved for
 #   other project traffic.
 #
 # This queue replaces the older split queue scripts. It will refuse to start if
@@ -24,9 +24,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
-GPU_ID="${GPU_ID:-0}"
-if [[ "$GPU_ID" != "0" ]]; then
-  echo "MIND is restricted to GPU 0 only. Refusing GPU_ID=$GPU_ID." >&2
+GPU_ID="${GPU_ID:-1}"
+READOUT_BATCH_SIZE_DEFAULT="${READOUT_BATCH_SIZE_DEFAULT:-1}"
+if [[ "$GPU_ID" != "1" ]]; then
+  echo "MIND is restricted to GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
   exit 1
 fi
 
@@ -644,7 +645,7 @@ phase_main_comparators() {
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks" \
     "round2-qwen3-vl-8b-popular-final" \
     "round2-qwen3-vl-8b-popular-final-object-heldout" \
@@ -660,7 +661,7 @@ phase_main_comparators() {
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks" \
     "round2-internvl3.5-8b-popular" \
     "round2-internvl3.5-8b-popular-object-heldout" \
@@ -676,7 +677,7 @@ phase_main_comparators() {
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks" \
     "round2-llava-onevision-7b-popular" \
     "round2-llava-onevision-7b-popular-object-heldout" \
@@ -692,7 +693,7 @@ phase_main_comparators() {
     "popular" \
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks" \
     "round2-molmo-7b-d-0924-popular" \
     "round2-molmo-7b-d-0924-popular-object-heldout" \
@@ -708,7 +709,7 @@ phase_main_comparators() {
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-qwen3-vl-8b-dash-b" \
     "round2-qwen3-vl-8b-dash-b-object-heldout" \
@@ -724,7 +725,7 @@ phase_main_comparators() {
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-internvl3.5-8b-dash-b" \
     "round2-internvl3.5-8b-dash-b-object-heldout" \
@@ -740,7 +741,7 @@ phase_main_comparators() {
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-llava-onevision-7b-dash-b" \
     "round2-llava-onevision-7b-dash-b-object-heldout" \
@@ -756,7 +757,7 @@ phase_main_comparators() {
     "main" \
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
-    "4" \
+    "$READOUT_BATCH_SIZE_DEFAULT" \
     "outputs/round2_2026_04/reference_banks_dash_b" \
     "round2-molmo-7b-d-0924-dash-b" \
     "round2-molmo-7b-d-0924-dash-b-object-heldout" \
@@ -796,6 +797,7 @@ main() {
   log "Unified MIND round-two serial queue starting"
   log "root=${ROOT_DIR}"
   log "gpu_id=${GPU_ID}"
+  log "readout_batch_size_default=${READOUT_BATCH_SIZE_DEFAULT}"
   log "conda_env=${CONDA_ENV}"
   set_virtual_memory_limit
   kill_lingering_cpu_comparators
