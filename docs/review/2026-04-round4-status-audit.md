@@ -11,9 +11,17 @@ The old split recovery queues are gone. The first unified queue also stopped, fi
 Current live state:
 
 - GPU 0 is the only GPU allowed for MIND work.
-- GPU 1 stays reserved for `magformer`.
+- GPU 1 is currently idle, but the corrected MIND queue still stays on GPU 0 only.
 - The old live comparator queue was stopped on purpose.
-- There is no active MIND comparator process right now.
+- The corrected unified queue is now remounted in `tmux`:
+  - session: `mind_round2_unified_queue`
+  - wait log: `outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260409_reset.log`
+  - queue log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260409_reset.log`
+- The current live MIND process is:
+  - `python scripts/run_halp.py`
+  - model: `qwen3-vl-8b`
+  - benchmark: `POPE popular`
+  - protocol: official HALP row split
 - The stop was intentional, not a host crash:
   - the current `HALP` runner was using the wrong baseline definition
   - the current `GLSim` path was mislabeled as if it were the official method
@@ -26,6 +34,8 @@ Current live state:
   - `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
 - The qwen popular readout rebuild is complete with valid `vision_features`.
 - No corrected comparator artifacts are saved yet.
+- The remounted queue skipped the completed qwen readouts and resumed directly at corrected official HALP.
+- GPU utilization can still read as `0%` during this step because `run_halp.py` starts with CPU-side probe-frame assembly before the actual probe updates.
 - The current code reset changed the comparator policy:
   - `run_halp.py` now targets the official 11-probe HALP setup on a stratified row split
   - the old grouped nested HALP path is no longer the paper-facing default
@@ -45,9 +55,9 @@ The concrete design change for this pass is simple:
 Current resource snapshot during this audit:
 
 - `125 GiB` total RAM
-- no live MIND comparator worker
-- `GPU 0` is currently free for the corrected MIND queue
-- `GPU 1` is occupied by `magformer`
+- one live corrected `run_halp.py` worker for `qwen3-vl-8b` `POPE popular`
+- `GPU 0` is the active MIND device lane, even if instantaneous utilization is low during CPU-side probe preparation
+- `GPU 1` is idle right now and untouched by MIND
 
 ## Main Matrix State
 
@@ -139,8 +149,8 @@ That means the paper can still claim superiority over simple output confidence m
 ## Immediate Priority
 
 1. Remount the corrected unified queue on `GPU 0`.
-2. Run corrected official HALP row-split jobs one unit at a time after validating readouts.
-3. Keep `GPU 1` untouched for `magformer`.
+2. Let the corrected unified queue keep running corrected official HALP row-split jobs one unit at a time after validating readouts.
+3. Keep `GPU 1` untouched for non-MIND work.
 4. Keep the tracked paper tables MIND-only until corrected comparator artifacts exist.
 
 ## Unified Queue Policy
