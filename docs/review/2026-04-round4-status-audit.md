@@ -6,53 +6,39 @@ This note records the live round-two state after checking the process list, GPU 
 
 ## Live Queue
 
-The split recovery queues are gone. The unified serial queue was relaunched on `GPU 1`, resumed from the unfinished readout work, and then failed on `LLaVA-OneVision-7B` `POPE popular` readout extraction with a CPU allocation error.
+The old split recovery queues are gone. The first unified queue also stopped, first on CPU RAM and then on disk pressure from oversized readout caches. The code has now been changed so comparator readouts are compact and transient instead of durable multi-terabyte artifacts.
 
 Current live state:
 
 - GPU 0 remains off-limits for MIND and is occupied by another project.
-- GPU 1 is the only allowed GPU for MIND and is currently idle for this repo.
+- GPU 1 is still the only allowed GPU for MIND, but it is currently occupied by `magformer`, not by this repo.
 - There is no live MIND extractor, HALP, or GLSim process right now.
-- The last queue log is:
-  - `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_restart.log`
+- The stale legacy readout tree is being deleted with low I/O priority:
+  - path: `outputs/round2_2026_04/readouts/`
+  - size before cleanup: `6.3T`
+  - size during this audit snapshot: `2.9T`
+  - `/home/team` free space recovered from `441G` to `3.8T`
+- A wait-launch session is mounted in `tmux` and will start the new queue only when both conditions are true:
+  - the legacy readout tree is fully gone
+  - `GPU 1` is actually free
+- Active wait session:
+  - `mind_round2_wait_gpu1`
+- Active wait log:
+  - `outputs/round2_2026_04/job_logs/mind_wait_for_gpu1_20260408.log`
+- The new queue log path will be:
+  - `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log`
 
-What completed before the stop:
+The concrete design change for this pass is simple:
 
-- `qwen3-vl-8b`
-  - benchmark: `POPE popular`
-  - stage: readout extraction
-  - result: complete (`47/47` shards)
-- `internvl3.5-8b`
-  - benchmark: `POPE popular`
-  - stage: readout extraction
-  - result: complete (`47/47` shards)
-
-Where it stopped:
-
-- `llava-onevision-7b`
-  - benchmark: `POPE popular`
-  - stage: readout extraction
-  - current output root: `outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular/`
-  - current progress: `29/47` completed top-level shards
-  - failure: `RuntimeError: DefaultCPUAllocator: can't allocate memory`
-  - failing allocation in the saved traceback: about `747823104` bytes
-
-The concrete failure point was not GPU memory. It was CPU RAM pressure inside readout extraction while building and retaining full hidden-state payloads for a shard.
-
-Recovery decision for this pass:
-
-- keep `qwen3-vl-8b` and `internvl3.5-8b` `POPE popular` readouts as complete
-- keep MIND on GPU 1 only
-- keep HALP and GLSim down until readout extraction is stable again
-- resume from the unfinished `llava-onevision-7b` `POPE popular` readout step
-- use the unified serial queue only
-- fix the extractor-side host RAM spike instead of changing the benchmark method
-
-The extractor has now been patched to:
-
-- stack prefill hidden states without the extra `torch.stack([...cpu()...])` spike
-- write new readout shards in chunked batch parts plus a top-level manifest
-- keep queue shard counting compatible with both the old single-file shards and the new manifest shards
+- readouts are no longer treated as durable artifacts
+- new readout entries keep only comparator-needed tensors
+- the queue now processes one `(model, benchmark)` unit at a time:
+  - extract
+  - HALP image_grouped
+  - HALP object_heldout
+  - GLSim image_grouped
+  - GLSim object_heldout
+  - delete that readout directory
 
 Current memory snapshot during this audit:
 
@@ -117,20 +103,14 @@ The tracked paper table already exists:
 
 ## Comparator State
 
-`outputs/round2_2026_04/readouts/` exists. The GPU recovery queue is live again, while the CPU comparator queues remain intentionally paused after the crash.
+`outputs/round2_2026_04/readouts/` is no longer considered a stable result tree. The old full-hidden-state cache is being deleted and will be rebuilt in compact form one unit at a time.
 
-| Model | POPE popular readouts | DASH-B readouts | Status |
-| --- | --- | --- | --- |
-| Qwen3-VL-8B | complete (`47` shards) | complete (`42` shards) | readouts are usable; GLSim failed before writing results |
-| InternVL3.5-8B | complete (`47` shards) | partial (`36` shards) | popular readouts are now usable; DASH-B still needs repair |
-| LLaVA-OneVision-7B | partial (`29` shards) | partial (`7` shards) | popular readouts need resume from shard `29`; DASH-B still needs repair |
-| Molmo-7B-D-0924 | missing | complete after rerun (`42` shards in `main/`) | still needs popular readouts |
+Current comparator state:
 
-No HALP output directories are present yet.
-
-No GLSim output directories are present yet.
-
-So comparator scoring is still missing. The queue shape has been corrected, but the CPU comparator side now needs to be resumed more carefully than before.
+- No final HALP outputs are saved yet.
+- No final GLSim outputs are saved yet.
+- Legacy readout counts are no longer treated as progress because that old cache format is being removed.
+- Comparator progress now depends on the new compact cache queue, not on the deleted legacy tree.
 
 ## What The Current Results Already Say
 
@@ -152,9 +132,9 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Immediate Priority
 
-1. Resume the unified serial queue on GPU 1 from `llava-onevision-7b` `POPE popular` readouts.
-2. Do not relaunch HALP and GLSim until the remaining readouts are complete.
-3. After readouts are stable again, let the same unified queue continue through comparator work one step at a time.
+1. Finish deleting the legacy readout tree.
+2. Let `mind_round2_wait_gpu1` hand off automatically to the unified queue when `GPU 1` is free.
+3. Let the new queue rebuild compact readouts one unit at a time and delete each unit after HALP and GLSim finish.
 4. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
 
 ## Unified Queue Policy
@@ -163,6 +143,8 @@ The split queue design is now retired.
 
 - New queue script:
   - `scripts/queue/mind_round2_unified_serial.sh`
+- Wait launcher:
+  - `scripts/queue/start_mind_when_gpu1_free.sh`
 - Old split runners now refuse future direct launches:
   - `scripts/queue/mind_round2_gpu1_serial.sh`
   - `scripts/queue/mind_round2_glsim_cpu_serial.sh`
@@ -171,9 +153,11 @@ The split queue design is now retired.
 The new policy is:
 
 - one task at a time only
-- GPU extraction first
+- one `(model, benchmark)` unit at a time
+- extract compact readouts first
 - HALP next, one run at a time
 - GLSim after HALP, one run at a time
+- delete the readout directory immediately after that unit has both comparator outputs
 - lighter CPU pipeline stages only after comparator runs finish
 - memory and GPU state logged before and after every step
 - a virtual memory cap set to `80%` of total RAM
