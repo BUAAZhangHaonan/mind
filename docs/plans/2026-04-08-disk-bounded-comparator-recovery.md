@@ -152,7 +152,7 @@ df -h /home/team
 du -sh outputs/round2_2026_04
 ```
 
-### Task 4: Relaunch the queue safely on GPU 1
+### Task 4: Relaunch the queue safely on GPU 0
 
 **Files:**
 - Modify if needed: `docs/review/2026-04-round4-status-audit.md`
@@ -162,7 +162,7 @@ du -sh outputs/round2_2026_04
 Run:
 
 ```bash
-tmux new-session -d -s mind_round2_unified_queue 'cd /home/team/zhanghaonan/mind && QUEUE_LOG=outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log bash scripts/queue/mind_round2_unified_serial.sh'
+tmux new-session -d -s mind_round2_unified_queue 'cd /home/team/zhanghaonan/mind && GPU_ID=0 QUEUE_LOG=outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log bash scripts/queue/mind_round2_unified_serial.sh'
 ```
 
 **Step 2: Verify live progress**
@@ -182,6 +182,7 @@ Record:
 - the oversized readout tree was deleted
 - the queue now uses compact caches
 - the queue deletes each readout unit after comparator results are saved
+- the active MIND device is `GPU 0`
 
 **Step 4: Commit**
 

@@ -10,23 +10,24 @@ The old split recovery queues are gone. The first unified queue also stopped, fi
 
 Current live state:
 
-- GPU 0 remains off-limits for MIND and is occupied by another project.
-- GPU 1 is still the only allowed GPU for MIND, but it is currently occupied by `magformer`, not by this repo.
-- There is no live MIND extractor, HALP, or GLSim process right now.
-- The stale legacy readout tree is being deleted with low I/O priority:
+- GPU 0 is now the only GPU used by MIND.
+- GPU 1 is reserved for `magformer` and must stay untouched by this repo.
+- The live MIND queue is mounted in `tmux` and is running right now:
+  - session: `mind_round2_unified_queue`
+  - log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log`
+- The current live MIND process is:
+  - `python scripts/extract_readout_states.py`
+  - model: `qwen3-vl-8b`
+  - benchmark: `POPE popular`
+  - device: `GPU 0`
+- The stale legacy readout tree was fully deleted before this restart:
   - path: `outputs/round2_2026_04/readouts/`
   - size before cleanup: `6.3T`
-  - size during this audit snapshot: `2.9T`
-  - `/home/team` free space recovered from `441G` to `3.8T`
-- A wait-launch session is mounted in `tmux` and will start the new queue only when both conditions are true:
-  - the legacy readout tree is fully gone
-  - `GPU 1` is actually free
-- Active wait session:
-  - `mind_round2_wait_gpu1`
-- Active wait log:
-  - `outputs/round2_2026_04/job_logs/mind_wait_for_gpu1_20260408.log`
-- The new queue log path will be:
-  - `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log`
+  - current compact readout tree size during this audit: `15G`
+  - `/home/team` free space recovered to `6.7T`
+- The current compact queue is already writing fresh shard manifests and chunk parts under:
+  - `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
+  - completed compact shard manifests visible during this audit: `20`
 
 The concrete design change for this pass is simple:
 
@@ -44,16 +45,17 @@ Current memory snapshot during this audit:
 
 - `125 GiB` total RAM
 - no lingering `run_halp.py` or `run_glsim.py` workers
-- no live MIND GPU process on `GPU 1`
+- active MIND GPU process on `GPU 0`
+- `GPU 1` occupied by `magformer`
 
 ## Main Matrix State
 
-| Model | POPE popular report | DASH-B reference bank | DASH-B features | DASH-B report | DASH-B readouts |
+| Model | POPE popular report | DASH-B reference bank | DASH-B features | DASH-B report | Compact comparator readouts |
 | --- | --- | --- | --- | --- | --- |
-| Qwen3-VL-8B | complete | complete | complete | complete | complete (`42` shards, `shard-00041.pt`) |
-| InternVL3.5-8B | complete | complete | complete | complete | partial (`36` shards, stops at `shard-00035.pt`) |
-| LLaVA-OneVision-7B | complete | complete | complete | complete | partial (`7` shards, stops at `shard-00006.pt`) |
-| Molmo-7B-D-0924 | complete | complete | complete | complete | complete after rerun (`42` shards in `main/`; older partial backup retained) |
+| Qwen3-VL-8B | complete | complete | complete | complete | active rebuild: `POPE popular` compact readouts in progress (`20/47` manifests visible during this audit) |
+| InternVL3.5-8B | complete | complete | complete | complete | pending compact rebuild |
+| LLaVA-OneVision-7B | complete | complete | complete | complete | pending compact rebuild |
+| Molmo-7B-D-0924 | complete | complete | complete | complete | pending compact rebuild |
 
 ### POPE popular
 
@@ -103,14 +105,14 @@ The tracked paper table already exists:
 
 ## Comparator State
 
-`outputs/round2_2026_04/readouts/` is no longer considered a stable result tree. The old full-hidden-state cache is being deleted and will be rebuilt in compact form one unit at a time.
+`outputs/round2_2026_04/readouts/` is no longer considered a stable result tree. The old full-hidden-state cache is gone and is now being rebuilt in compact form one unit at a time.
 
 Current comparator state:
 
 - No final HALP outputs are saved yet.
 - No final GLSim outputs are saved yet.
-- Legacy readout counts are no longer treated as progress because that old cache format is being removed.
-- Comparator progress now depends on the new compact cache queue, not on the deleted legacy tree.
+- Legacy readout counts are no longer treated as progress because that old cache format was deleted.
+- Comparator progress now depends on the new compact cache queue now running on `GPU 0`.
 
 ## What The Current Results Already Say
 
@@ -132,9 +134,9 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Immediate Priority
 
-1. Finish deleting the legacy readout tree.
-2. Let `mind_round2_wait_gpu1` hand off automatically to the unified queue when `GPU 1` is free.
-3. Let the new queue rebuild compact readouts one unit at a time and delete each unit after HALP and GLSim finish.
+1. Let the live `GPU 0` unified queue finish `qwen3-vl-8b` `POPE popular` compact readouts.
+2. Let the queue continue one unit at a time through HALP, GLSim, and per-unit readout cleanup.
+3. Keep `GPU 1` untouched for `magformer`.
 4. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
 
 ## Unified Queue Policy
@@ -143,8 +145,8 @@ The split queue design is now retired.
 
 - New queue script:
   - `scripts/queue/mind_round2_unified_serial.sh`
-- Wait launcher:
-  - `scripts/queue/start_mind_when_gpu1_free.sh`
+- Optional wait launcher:
+  - `scripts/queue/start_mind_when_gpu0_free.sh`
 - Old split runners now refuse future direct launches:
   - `scripts/queue/mind_round2_gpu1_serial.sh`
   - `scripts/queue/mind_round2_glsim_cpu_serial.sh`
