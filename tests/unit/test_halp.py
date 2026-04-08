@@ -5,7 +5,9 @@ import torch
 
 from mind.comparators.halp import (
     HALPProbeConfig,
+    build_halp_probe_frame,
     build_halp_probe_frames,
+    evaluate_halp_nested_from_readout_entries,
     evaluate_halp_nested,
     resolve_halp_layer_indices,
 )
@@ -121,3 +123,67 @@ def test_evaluate_halp_nested_filters_to_supported_objects() -> None:
     assert metrics["roc_auc"] > 0.95
     assert set(results["object_name"]) <= {"object-0", "object-1", "object-2", "object-3"}
     assert set(selection["selected_probe"]) == {"probe"}
+
+
+def test_build_halp_probe_frame_builds_one_probe_without_materializing_all() -> None:
+    entries = [
+        {
+            "sample_id": "sample-1",
+            "image_id": 10,
+            "label": 0,
+            "parsed_answer": 1,
+            "subset": "popular",
+            "object_name": "dog",
+            "query_hidden_states": torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32),
+            "vision_token_hidden_states": torch.tensor([[5.0, 6.0], [7.0, 8.0]], dtype=torch.float32),
+            "vision_features": torch.tensor([[10.0, 11.0], [12.0, 13.0]], dtype=torch.float32),
+        }
+    ]
+
+    frame = build_halp_probe_frame(entries, "vision_token_layer_1")
+
+    assert frame.loc[0, "feature_0"] == 7.0
+    assert frame.loc[0, "feature_1"] == 8.0
+
+
+def test_evaluate_halp_nested_from_readout_entries_matches_frame_path() -> None:
+    entries: list[dict[str, object]] = []
+    for index in range(12):
+        label = 1 if index % 2 == 0 else 0
+        informative_value = 1.0 if label else 0.0
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0,
+                "parsed_answer": 0 if label else 1,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+                "query_hidden_states": torch.tensor([[informative_value]], dtype=torch.float32),
+                "vision_token_hidden_states": torch.tensor([[0.5]], dtype=torch.float32),
+                "vision_features": torch.tensor([[informative_value]], dtype=torch.float32),
+            }
+        )
+
+    frame_metrics, frame_results, frame_selection = evaluate_halp_nested(
+        build_halp_probe_frames(entries, layer_indices=[0]),
+        split_strategy="image_grouped",
+        num_folds=3,
+        random_state=13,
+        inner_candidate_folds=(3, 2),
+        probe_config=HALPProbeConfig(hidden_dims=(8, 4), batch_size=4, epochs=10, random_state=7),
+    )
+    lazy_metrics, lazy_results, lazy_selection = evaluate_halp_nested_from_readout_entries(
+        entries,
+        split_strategy="image_grouped",
+        num_folds=3,
+        random_state=13,
+        inner_candidate_folds=(3, 2),
+        probe_config=HALPProbeConfig(hidden_dims=(8, 4), batch_size=4, epochs=10, random_state=7),
+        layer_indices=[0],
+    )
+
+    assert lazy_metrics["roc_auc"] == frame_metrics["roc_auc"]
+    assert lazy_metrics["pr_auc"] == frame_metrics["pr_auc"]
+    assert set(lazy_results["selected_probe"]) == set(frame_results["selected_probe"])
+    assert set(lazy_selection["selected_probe"]) == set(frame_selection["selected_probe"])

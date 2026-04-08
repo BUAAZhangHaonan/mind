@@ -34,6 +34,7 @@ Current live state:
 - The unified queue now validates saved readouts before skipping them. If a finished cache is missing HALP-required fields, the queue deletes that cache and rebuilds it instead of failing later in `HALP`.
 - The qwen popular readout rebuild is now complete with valid `vision_features`.
 - The current live step is `qwen3-vl-8b` `POPE popular` `HALP image_grouped`.
+- `HALP` no longer materializes every probe frame at once inside the runner. The current execution path now builds one probe frame at a time from the readout cache so the comparator can stay within host RAM.
 - No other compact readout unit has been rebuilt yet under `outputs/round2_2026_04/readouts/`.
 
 The concrete design change for this pass is simple:
@@ -138,6 +139,7 @@ That means the paper can still claim superiority over simple output confidence m
 
 - GPU occupancy alone is misleading. A job can spend a long time in model load before GPU utilization spikes, and a machine can also look idle after a killed queue.
 - The old CPU comparator shape was unsafe for this host. `GLSim` and `HALP` both load full readout caches, and the two `qwen3-vl-8b` runs were both killed with `exit=137`.
+- The first lazy-queue `HALP` retry also died because the queue-level `ulimit -v` cap was too strict for the actual `HALP` address space. That cap is now disabled by default, while the serial scheduler and memory gate remain in place.
 - The post-restart proxy state broke repo-id model loading for InternVL. Cached local model paths or offline cached Hub loads are required now.
 - The pipeline now has lock-file guards and retry wrappers, but host-level load still needs operational discipline.
 

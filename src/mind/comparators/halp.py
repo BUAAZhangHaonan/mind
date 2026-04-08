@@ -123,38 +123,71 @@ def _resolve_vision_token_hidden_states(entry: dict[str, object]) -> torch.Tenso
     return full_hidden_states[:, vision_token_index, :]
 
 
+def resolve_halp_probe_names(
+    readout_entries: Sequence[dict[str, object]],
+    *,
+    layer_indices: Sequence[int] | None = None,
+) -> list[str]:
+    if not readout_entries:
+        raise ValueError("readout_entries must not be empty")
+    selected_layers = list(layer_indices or resolve_halp_layer_indices(_resolve_total_layers(readout_entries[0])))
+    probe_names = ["vision_only"]
+    for layer_index in selected_layers:
+        probe_names.append(f"vision_token_layer_{layer_index}")
+        probe_names.append(f"query_token_layer_{layer_index}")
+    return probe_names
+
+
+def _parse_halp_probe_name(probe_name: str) -> tuple[str, int | None]:
+    if probe_name == "vision_only":
+        return "vision_only", None
+    if probe_name.startswith("vision_token_layer_"):
+        return "vision_token", int(probe_name.rsplit("_", 1)[-1])
+    if probe_name.startswith("query_token_layer_"):
+        return "query_token", int(probe_name.rsplit("_", 1)[-1])
+    raise ValueError(f"Unknown HALP probe name: {probe_name}")
+
+
+def build_halp_probe_frame(
+    readout_entries: Sequence[dict[str, object]],
+    probe_name: str,
+    *,
+    allowed_sample_ids: set[str] | None = None,
+) -> pd.DataFrame:
+    if not readout_entries:
+        raise ValueError("readout_entries must not be empty")
+
+    probe_kind, layer_index = _parse_halp_probe_name(probe_name)
+    rows: list[dict[str, object]] = []
+    for entry in readout_entries:
+        sample_id = str(entry["sample_id"])
+        if allowed_sample_ids is not None and sample_id not in allowed_sample_ids:
+            continue
+        metadata = _metadata_row_from_readout_entry(entry)
+        if probe_kind == "vision_only":
+            vision_features = entry.get("vision_features")
+            if vision_features is None:
+                raise ValueError(f"Missing vision features for sample {entry['sample_id']}")
+            vector = _flatten_vision_features(torch.as_tensor(vision_features, dtype=torch.float32))
+        elif probe_kind == "vision_token":
+            vision_token_hidden_states = _resolve_vision_token_hidden_states(entry)
+            vector = vision_token_hidden_states[layer_index, :]
+        else:
+            query_hidden_states = _resolve_query_hidden_states(entry)
+            vector = query_hidden_states[layer_index, :]
+        rows.append(_feature_row(metadata, vector))
+    return pd.DataFrame(rows).sort_values("sample_id").reset_index(drop=True)
+
+
 def build_halp_probe_frames(
     readout_entries: Sequence[dict[str, object]],
     *,
     layer_indices: Sequence[int] | None = None,
 ) -> dict[str, pd.DataFrame]:
-    if not readout_entries:
-        raise ValueError("readout_entries must not be empty")
-
-    selected_layers = list(layer_indices or resolve_halp_layer_indices(_resolve_total_layers(readout_entries[0])))
-    probe_rows: dict[str, list[dict[str, object]]] = {"vision_only": []}
-    for layer_index in selected_layers:
-        probe_rows[f"vision_token_layer_{layer_index}"] = []
-        probe_rows[f"query_token_layer_{layer_index}"] = []
-
-    for entry in readout_entries:
-        metadata = _metadata_row_from_readout_entry(entry)
-        query_hidden_states = _resolve_query_hidden_states(entry)
-        vision_token_hidden_states = _resolve_vision_token_hidden_states(entry)
-        vision_features = entry.get("vision_features")
-        if vision_features is None:
-            raise ValueError(f"Missing vision features for sample {entry['sample_id']}")
-        probe_rows["vision_only"].append(
-            _feature_row(metadata, _flatten_vision_features(torch.as_tensor(vision_features, dtype=torch.float32)))
-        )
-        for layer_index in selected_layers:
-            probe_rows[f"vision_token_layer_{layer_index}"].append(
-                _feature_row(metadata, vision_token_hidden_states[layer_index, :])
-            )
-            probe_rows[f"query_token_layer_{layer_index}"].append(
-                _feature_row(metadata, query_hidden_states[layer_index, :])
-            )
-    return {name: pd.DataFrame(rows) for name, rows in probe_rows.items()}
+    return {
+        probe_name: build_halp_probe_frame(readout_entries, probe_name)
+        for probe_name in resolve_halp_probe_names(readout_entries, layer_indices=layer_indices)
+    }
 
 
 def _feature_columns(frame: pd.DataFrame) -> list[str]:
@@ -305,6 +338,51 @@ def _select_best_probe(
     return str(selection_frame.iloc[0]["probe_name"]), inner_num_folds, selection_frame
 
 
+def _select_best_probe_from_readout_entries(
+    readout_entries: Sequence[dict[str, object]],
+    *,
+    probe_names: Sequence[str],
+    base_train_frame: pd.DataFrame,
+    split_strategy: str,
+    test_size: float,
+    random_state: int,
+    inner_candidate_folds: Sequence[int],
+    probe_config: HALPProbeConfig,
+) -> tuple[str, int, pd.DataFrame]:
+    if split_strategy == "row":
+        inner_num_folds = 1
+    else:
+        inner_num_folds = resolve_highest_valid_num_folds(
+            [base_train_frame],
+            split_strategy=split_strategy,
+            candidate_folds=inner_candidate_folds,
+            random_state=random_state,
+        )
+    inner_splits = _build_sample_id_splits(
+        base_train_frame,
+        split_strategy=split_strategy,
+        test_size=test_size,
+        random_state=random_state,
+        num_folds=inner_num_folds,
+    )
+
+    train_sample_ids = set(base_train_frame["sample_id"].astype(str).tolist())
+    rows: list[dict[str, object]] = []
+    for probe_name in probe_names:
+        inner_frame = build_halp_probe_frame(
+            readout_entries,
+            probe_name,
+            allowed_sample_ids=train_sample_ids,
+        )
+        metrics, _ = _evaluate_probe_on_splits(inner_frame, splits=inner_splits, config=probe_config)
+        rows.append({"probe_name": probe_name, "inner_num_folds": inner_num_folds, **metrics})
+    selection_frame = pd.DataFrame(rows).sort_values(
+        by=["roc_auc", "pr_auc", "probe_name"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+    return str(selection_frame.iloc[0]["probe_name"]), inner_num_folds, selection_frame
+
+
 def evaluate_halp_nested(
     candidate_frames: dict[str, pd.DataFrame],
     *,
@@ -367,6 +445,91 @@ def evaluate_halp_nested(
         eval_frame = _subset_frame_by_sample_ids(selected_frame, eval_ids)
         probe = _fit_probe(train_frame, columns=_feature_columns(selected_frame), config=probe_config)
         predictions, scores = _predict_probe(probe, eval_frame, columns=_feature_columns(selected_frame))
+        result_frames.append(
+            eval_frame.assign(
+                prediction=predictions,
+                score=scores,
+                fold=fold,
+                selected_probe=selected_probe,
+                inner_num_folds=inner_num_folds,
+            )
+        )
+
+    results = pd.concat(result_frames, ignore_index=True).sort_values("sample_id").reset_index(drop=True)
+    metrics = compute_binary_metrics(
+        y_true=results["label"],
+        y_pred=results["prediction"],
+        y_score=results["score"],
+    )
+    return metrics, results, pd.DataFrame(selection_rows)
+
+
+def evaluate_halp_nested_from_readout_entries(
+    readout_entries: Sequence[dict[str, object]],
+    *,
+    split_strategy: str = "image_grouped",
+    test_size: float = 0.3,
+    random_state: int = 13,
+    num_folds: int = 5,
+    inner_candidate_folds: Sequence[int] = (3, 2),
+    probe_config: HALPProbeConfig = HALPProbeConfig(),
+    supported_object_names: Sequence[str] | None = None,
+    layer_indices: Sequence[int] | None = None,
+) -> tuple[dict[str, float], pd.DataFrame, pd.DataFrame]:
+    if not readout_entries:
+        raise ValueError("readout_entries must not be empty")
+
+    probe_names = resolve_halp_probe_names(readout_entries, layer_indices=layer_indices)
+    base_frame = build_halp_probe_frame(readout_entries, "vision_only")
+    if split_strategy == "object_heldout":
+        base_frame, _ = prepare_object_heldout_frame(
+            base_frame,
+            supported_object_names=(
+                supported_object_names
+                if supported_object_names is not None
+                else set(base_frame["object_name"].astype(str).tolist())
+            ),
+            requested_num_folds=num_folds,
+            context="HALP object_heldout",
+        )
+    outer_splits = _build_sample_id_splits(
+        base_frame,
+        split_strategy=split_strategy,
+        test_size=test_size,
+        random_state=random_state,
+        num_folds=num_folds,
+    )
+
+    result_frames: list[pd.DataFrame] = []
+    selection_rows: list[dict[str, object]] = []
+    for fold, train_ids, eval_ids in outer_splits:
+        outer_train_frame = _subset_frame_by_sample_ids(base_frame, train_ids)
+        selected_probe, inner_num_folds, selection_frame = _select_best_probe_from_readout_entries(
+            readout_entries,
+            probe_names=probe_names,
+            base_train_frame=outer_train_frame,
+            split_strategy=split_strategy,
+            test_size=test_size,
+            random_state=random_state,
+            inner_candidate_folds=inner_candidate_folds,
+            probe_config=probe_config,
+        )
+        selection_rows.extend(
+            selection_frame.assign(outer_fold=fold, selected_probe=selected_probe).to_dict(orient="records")
+        )
+
+        train_frame = build_halp_probe_frame(
+            readout_entries,
+            selected_probe,
+            allowed_sample_ids=set(train_ids),
+        )
+        eval_frame = build_halp_probe_frame(
+            readout_entries,
+            selected_probe,
+            allowed_sample_ids=set(eval_ids),
+        )
+        probe = _fit_probe(train_frame, columns=_feature_columns(train_frame), config=probe_config)
+        predictions, scores = _predict_probe(probe, eval_frame, columns=_feature_columns(train_frame))
         result_frames.append(
             eval_frame.assign(
                 prediction=predictions,

@@ -9,8 +9,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from mind.comparators import HALPProbeConfig, build_halp_probe_frames, evaluate_halp_nested
-from mind.comparators.halp import summarize_halp_results
+from mind.comparators import HALPProbeConfig
+from mind.comparators.halp import (
+    build_halp_probe_frame,
+    evaluate_halp_nested_from_readout_entries,
+    summarize_halp_results,
+)
 from mind.evaluation.baselines import (
     apply_label_overrides_to_entries,
     load_cache_entries,
@@ -61,12 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.label_overrides is not None:
         readout_entries = apply_label_overrides_to_entries(readout_entries, args.label_overrides)
 
-    candidate_frames = build_halp_probe_frames(readout_entries)
     supported_object_names: list[str] | None = None
     if args.split_strategy == "object_heldout":
         if args.reference_root is None or not args.model_name:
             raise ValueError("--reference-root and --model-name are required for object_heldout HALP.")
-        base_frame = next(iter(candidate_frames.values()))
+        base_frame = build_halp_probe_frame(readout_entries, "vision_only")
         filtered_frame, support = validate_object_heldout_reference_support(
             base_frame,
             reference_root=args.reference_root,
@@ -74,13 +77,6 @@ def main(argv: list[str] | None = None) -> int:
             bank_scope=args.bank_scope,
             num_folds=args.num_folds,
         )
-        allowed_sample_ids = set(filtered_frame["sample_id"].astype(str).tolist())
-        candidate_frames = {
-            probe_name: probe_frame[
-                probe_frame["sample_id"].astype(str).isin(allowed_sample_ids)
-            ].reset_index(drop=True)
-            for probe_name, probe_frame in candidate_frames.items()
-        }
         supported_object_names = sorted(filtered_frame["object_name"].drop_duplicates().astype(str).tolist())
         print(
             "[run_halp] object_heldout support "
@@ -88,8 +84,8 @@ def main(argv: list[str] | None = None) -> int:
             f"supported_objects={support['supported_object_count']} "
             f"retained_rows={support['retained_row_count']}"
         )
-    metrics, results, selection = evaluate_halp_nested(
-        candidate_frames,
+    metrics, results, selection = evaluate_halp_nested_from_readout_entries(
+        readout_entries,
         split_strategy=args.split_strategy,
         test_size=args.test_size,
         random_state=args.random_state,
