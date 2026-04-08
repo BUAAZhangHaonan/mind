@@ -10,9 +10,11 @@ set -euo pipefail
 #   readout cache before moving on.
 # - HALP and GLSim must never run concurrently. Both load large readout caches
 #   into system RAM and can trigger host-wide OOM events if launched together.
-# - The queue applies a per-process virtual memory ceiling at 80% of total RAM,
-#   logs system memory and GPU state before and after every step, and retries a
-#   step once if it dies with exit code 137.
+# - The queue logs system memory and GPU state before and after every step, and
+#   retries a step once if it dies with exit code 137.
+# - The serial scheduler and the memory gate are the real host-safety controls.
+#   A hard `ulimit -v` cap is optional because HALP can exceed a low virtual
+#   address ceiling even when the machine still has plenty of free RAM.
 # - GPU 0 is the only GPU allowed for current MIND work in this recovery pass.
 #   GPU 1 is reserved for other project traffic.
 #
@@ -40,6 +42,7 @@ SAFE_AVAILABLE_GB="${SAFE_AVAILABLE_GB:-10}"
 MEMORY_CHECK_SLEEP_SECONDS="${MEMORY_CHECK_SLEEP_SECONDS:-60}"
 MEMORY_CHECK_ATTEMPTS="${MEMORY_CHECK_ATTEMPTS:-3}"
 OOM_RETRY_SLEEP_SECONDS="${OOM_RETRY_SLEEP_SECONDS:-120}"
+VMEM_LIMIT_PERCENT="${VMEM_LIMIT_PERCENT:-0}"
 
 mkdir -p "$(dirname "$QUEUE_LOG")"
 
@@ -95,14 +98,22 @@ set_virtual_memory_limit() {
     log "FAIL could not resolve total system RAM from /proc/meminfo"
     exit 1
   fi
-  limit_kb=$(( total_kb * 80 / 100 ))
+  if [[ "$VMEM_LIMIT_PERCENT" -le 0 ]]; then
+    log "ulimit -v disabled; relying on serial scheduling and the memory gate"
+    return
+  fi
+  if [[ "$VMEM_LIMIT_PERCENT" -ge 100 ]]; then
+    log "FAIL VMEM_LIMIT_PERCENT must be between 1 and 99, got ${VMEM_LIMIT_PERCENT}"
+    exit 1
+  fi
+  limit_kb=$(( total_kb * VMEM_LIMIT_PERCENT / 100 ))
   limit_gb=$(( limit_kb / 1024 / 1024 ))
   if [[ "$limit_kb" -lt 1048576 ]]; then
     log "FAIL computed virtual memory limit is too small: ${limit_kb} KB"
     exit 1
   fi
   ulimit -v "$limit_kb"
-  log "ulimit -v set to ${limit_kb} KB (${limit_gb}G of ${total_gb}G total RAM)"
+  log "ulimit -v set to ${limit_kb} KB (${limit_gb}G of ${total_gb}G total RAM; ${VMEM_LIMIT_PERCENT}%)"
 }
 
 wait_for_safe_memory() {

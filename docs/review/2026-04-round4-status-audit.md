@@ -15,14 +15,14 @@ Current live state:
 - The stale `GPU 1` wait loop was removed and replaced with a fresh `GPU 0` tmux session.
 - The live MIND queue is mounted in `tmux` and is running right now:
   - session: `mind_round2_unified_queue`
-  - launcher log: `outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260408_relaunch2.log`
-  - queue log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_gpu0_recovery_rerun.log`
+  - launcher log: `outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260408_resume3.log`
+  - queue log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_gpu0_resume3.log`
 - The current live MIND process is:
-  - `python scripts/extract_readout_states.py`
+  - `python scripts/run_halp.py`
   - model: `qwen3-vl-8b`
   - benchmark: `POPE popular`
-  - split: `popular`
-  - device: `GPU 0`
+  - split: `image_grouped`
+  - device policy: `GPU 0` only for extraction; the current step is CPU-side and does not need the GPU
 - The stale legacy readout tree was fully deleted before this restart:
   - path: `outputs/round2_2026_04/readouts/`
   - size before cleanup: `6.3T`
@@ -32,7 +32,8 @@ Current live state:
   - `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
 - `HALP` then exposed that this earlier qwen cache was still invalid for comparator use because `vision_features` were `None`.
 - The unified queue now validates saved readouts before skipping them. If a finished cache is missing HALP-required fields, the queue deletes that cache and rebuilds it instead of failing later in `HALP`.
-- The current live step is that qwen popular readout rebuild on `GPU 0`.
+- The qwen popular readout rebuild is now complete with valid `vision_features`.
+- The current live step is `qwen3-vl-8b` `POPE popular` `HALP image_grouped`.
 - No other compact readout unit has been rebuilt yet under `outputs/round2_2026_04/readouts/`.
 
 The concrete design change for this pass is simple:
@@ -50,16 +51,16 @@ The concrete design change for this pass is simple:
 Current resource snapshot during this audit:
 
 - `125 GiB` total RAM
-- `112 GiB` available RAM at queue start
-- one live `extract_readout_states.py` worker for `qwen3-vl-8b` `POPE popular`
-- `GPU 0` is now actively used by MIND again
+- `113 GiB` available RAM at current queue start
+- one live `run_halp.py` worker for `qwen3-vl-8b` `POPE popular`
+- `GPU 0` is idle right now because the current MIND step is CPU-heavy
 - `GPU 1` is occupied by `magformer`
 
 ## Main Matrix State
 
 | Model | POPE popular report | DASH-B reference bank | DASH-B features | DASH-B report | Compact comparator readouts |
 | --- | --- | --- | --- | --- | --- |
-| Qwen3-VL-8B | complete | complete | complete | complete | `POPE popular` compact readouts are being rebuilt after a failed `HALP` check found missing `vision_features` in the earlier cache |
+| Qwen3-VL-8B | complete | complete | complete | complete | `POPE popular` compact readouts rebuilt successfully; `HALP image_grouped` now running |
 | InternVL3.5-8B | complete | complete | complete | complete | pending compact rebuild |
 | LLaVA-OneVision-7B | complete | complete | complete | complete | pending compact rebuild |
 | Molmo-7B-D-0924 | complete | complete | complete | complete | pending compact rebuild |
@@ -120,7 +121,7 @@ Current comparator state:
 - No final GLSim outputs are saved yet.
 - Legacy readout counts are no longer treated as progress because that old cache format was deleted.
 - Comparator progress now depends on the new compact cache queue now running on `GPU 0`.
-- The current comparator prerequisite step is the qwen popular readout rebuild that will unblock `HALP`.
+- The current comparator step is `qwen3-vl-8b` `POPE popular` `HALP image_grouped`.
 
 ## What The Current Results Already Say
 
@@ -142,8 +143,8 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Immediate Priority
 
-1. Let the live `GPU 0` unified queue finish the qwen popular readout rebuild.
-2. Let the queue re-enter `HALP`, then continue one unit at a time through the remaining `HALP`, `GLSim`, and per-unit readout cleanup steps.
+1. Let the live `GPU 0` unified queue finish `qwen3-vl-8b` `POPE popular` `HALP image_grouped`.
+2. Let the queue continue one unit at a time through the remaining `HALP`, `GLSim`, and per-unit readout cleanup steps.
 3. Keep `GPU 1` untouched for `magformer`.
 4. As soon as a `glsim.json` or `halp.json` appears for a main-table row, regenerate the tracked paper tables and summary docs.
 
@@ -170,7 +171,7 @@ The new policy is:
 - delete the readout directory immediately after that unit has both comparator outputs
 - lighter CPU pipeline stages only after comparator runs finish
 - memory and GPU state logged before and after every step
-- a virtual memory cap set to `80%` of total RAM
+- the virtual memory cap is now disabled by default because it blocked `HALP` even when the host still had plenty of free RAM
 - a hard memory gate that refuses to start a new step if available RAM is below `10 GiB`
 
 The unified queue is the only queue that should be used going forward. It can now resume mixed readout directories that contain both old single-file shards and new chunked manifest shards.
