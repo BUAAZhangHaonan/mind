@@ -11,7 +11,7 @@ if [[ "$GPU_ID" != "0" ]]; then
 fi
 
 WAIT_LOG="${WAIT_LOG:-outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260408.log}"
-QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log}"
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_gpu0_recovery.log}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
 
 mkdir -p "$(dirname "$WAIT_LOG")"
@@ -51,11 +51,6 @@ main() {
   while gpu_busy "$gpu_uuid"; do
     log "GPU ${GPU_ID} still busy; sleeping ${POLL_SECONDS}s"
     nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader | tee -a "$WAIT_LOG"
-    sleep "$POLL_SECONDS"
-  done
-
-  while [[ -e outputs/round2_2026_04/readouts ]]; do
-    log "Transient readout tree still exists; waiting for cleanup to finish"
     sleep "$POLL_SECONDS"
   done
 
