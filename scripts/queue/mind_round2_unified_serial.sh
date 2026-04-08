@@ -5,7 +5,9 @@ set -euo pipefail
 #
 # Scheduling policy:
 # - Run exactly one MIND task at a time.
-# - GPU extraction must finish before any memory-heavy comparator work starts.
+# - Readouts are temporary working files, not durable artifacts. Extract one
+#   model/benchmark unit, run HALP and GLSim on that same unit, then delete the
+#   readout cache before moving on.
 # - HALP and GLSim must never run concurrently. Both load large readout caches
 #   into system RAM and can trigger host-wide OOM events if launched together.
 # - The queue applies a per-process virtual memory ceiling at 80% of total RAM,
@@ -31,7 +33,7 @@ export CUDA_VISIBLE_DEVICES="$GPU_ID"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 
-QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260407.log}"
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log}"
 SAFE_AVAILABLE_GB="${SAFE_AVAILABLE_GB:-10}"
 MEMORY_CHECK_SLEEP_SECONDS="${MEMORY_CHECK_SLEEP_SECONDS:-60}"
 MEMORY_CHECK_ATTEMPTS="${MEMORY_CHECK_ATTEMPTS:-3}"
@@ -72,6 +74,15 @@ log_resource_state() {
     echo "--- nvidia-smi ---"
     nvidia-smi --query-gpu=index,uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader
   } | tee -a "$QUEUE_LOG"
+}
+
+path_size_human() {
+  local path="$1"
+  if [[ ! -e "$path" ]]; then
+    echo "0"
+    return
+  fi
+  du -sh "$path" 2>/dev/null | awk '{print $1}'
 }
 
 set_virtual_memory_limit() {
@@ -331,6 +342,34 @@ ensure_eval_cache() {
   fi
 }
 
+cleanup_readout_path_if_results_complete() {
+  local step_name="$1"
+  local readout_path="$2"
+  local image_report_root="$3"
+  local heldout_report_root="$4"
+
+  if ! report_complete "$image_report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
+    return
+  fi
+  if ! report_complete "$image_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
+    return
+  fi
+  if ! report_complete "$heldout_report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
+    return
+  fi
+  if ! report_complete "$heldout_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
+    return
+  fi
+  if [[ -d "$readout_path" ]]; then
+    local before_size after_size
+    before_size="$(path_size_human "$readout_path")"
+    log "CLEAN ${step_name}: deleting transient readout cache ${readout_path} size=${before_size}"
+    rm -rf "$readout_path"
+    after_size="$(path_size_human "$readout_path")"
+    log "CLEAN ${step_name}: removed ${readout_path} size_after=${after_size}"
+  fi
+}
+
 ensure_halp() {
   local step_name="$1"
   local readout_path="$2"
@@ -498,61 +537,229 @@ ensure_reference_bank() {
         --bank-scope "$bank_scope"
 }
 
-phase_gpu_extraction() {
-  log "PHASE gpu extraction"
-  ensure_readouts "internvl3.5-8b pope popular readouts" "configs/models/internvl3_5_8b_local.yaml" "internvl3.5-8b" "pope" "popular" "outputs/round2_2026_04/normalized/pope/popular.jsonl" "data/coco/val2014" "4"
-  ensure_readouts "llava-onevision-7b pope popular readouts" "configs/models/llava_onevision_7b_local.yaml" "llava-onevision-7b" "pope" "popular" "outputs/round2_2026_04/normalized/pope/popular.jsonl" "data/coco/val2014" "4"
-  ensure_readouts "molmo-7b-d-0924 pope popular readouts" "configs/models/molmo_7b_d_0924.yaml" "molmo-7b-d-0924" "pope" "popular" "outputs/round2_2026_04/normalized/pope/popular.jsonl" "data/coco/val2014" "4"
-  ensure_readouts "internvl3.5-8b dash-b readouts" "configs/models/internvl3_5_8b_local.yaml" "internvl3.5-8b" "dash-b" "main" "outputs/round2_2026_04/normalized/dash-b/main.jsonl" "data/dash_b" "4"
-  ensure_readouts "llava-onevision-7b dash-b readouts" "configs/models/llava_onevision_7b_local.yaml" "llava-onevision-7b" "dash-b" "main" "outputs/round2_2026_04/normalized/dash-b/main.jsonl" "data/dash_b" "4"
+run_comparator_unit() {
+  local unit_name="$1"
+  local model_config="$2"
+  local model_name="$3"
+  local dataset_name="$4"
+  local split_name="$5"
+  local records_path="$6"
+  local image_root="$7"
+  local batch_size="$8"
+  local reference_root="$9"
+  local image_experiment="${10}"
+  local heldout_experiment="${11}"
+  local image_num_folds="${12}"
+  local heldout_num_folds="${13}"
+  local expected_shards_count="${14}"
+  local readout_path="outputs/round2_2026_04/readouts/${model_name}/${dataset_name}/${split_name}"
+  local image_report_root="outputs/round2_2026_04/reports/${image_experiment}"
+  local heldout_report_root="outputs/round2_2026_04/reports/${heldout_experiment}"
+
+  if report_complete "$image_report_root" "halp.json" "halp_results.csv" "halp_selection.csv" \
+    && report_complete "$image_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv" \
+    && report_complete "$heldout_report_root" "halp.json" "halp_results.csv" "halp_selection.csv" \
+    && report_complete "$heldout_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
+    log "SKIP ${unit_name} comparator unit complete"
+    cleanup_readout_path_if_results_complete \
+      "$unit_name" \
+      "$readout_path" \
+      "$image_report_root" \
+      "$heldout_report_root"
+    return
+  fi
+
+  ensure_readouts \
+    "${unit_name} readouts" \
+    "$model_config" \
+    "$model_name" \
+    "$dataset_name" \
+    "$split_name" \
+    "$records_path" \
+    "$image_root" \
+    "$batch_size"
+
+  ensure_halp \
+    "${unit_name} HALP image_grouped" \
+    "$readout_path" \
+    "$expected_shards_count" \
+    "$reference_root" \
+    "$model_name" \
+    "$image_experiment" \
+    "image_grouped" \
+    "$image_num_folds"
+
+  ensure_halp \
+    "${unit_name} HALP object_heldout" \
+    "$readout_path" \
+    "$expected_shards_count" \
+    "$reference_root" \
+    "$model_name" \
+    "$heldout_experiment" \
+    "object_heldout" \
+    "$heldout_num_folds"
+
+  ensure_glsim \
+    "${unit_name} GLSim image_grouped" \
+    "$readout_path" \
+    "$expected_shards_count" \
+    "$model_config" \
+    "$reference_root" \
+    "$model_name" \
+    "$image_experiment" \
+    "image_grouped" \
+    "$image_num_folds"
+
+  ensure_glsim \
+    "${unit_name} GLSim object_heldout" \
+    "$readout_path" \
+    "$expected_shards_count" \
+    "$model_config" \
+    "$reference_root" \
+    "$model_name" \
+    "$heldout_experiment" \
+    "object_heldout" \
+    "$heldout_num_folds"
+
+  cleanup_readout_path_if_results_complete \
+    "$unit_name" \
+    "$readout_path" \
+    "$image_report_root" \
+    "$heldout_report_root"
+}
+
+phase_main_comparators() {
+  log "PHASE main comparator units"
+  run_comparator_unit \
+    "qwen3-vl-8b pope popular" \
+    "configs/models/qwen3_vl_8b_local.yaml" \
+    "qwen3-vl-8b" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks" \
+    "round2-qwen3-vl-8b-popular-final" \
+    "round2-qwen3-vl-8b-popular-final-object-heldout" \
+    "5" \
+    "2" \
+    "47"
+
+  run_comparator_unit \
+    "internvl3.5-8b pope popular" \
+    "configs/models/internvl3_5_8b_local.yaml" \
+    "internvl3.5-8b" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks" \
+    "round2-internvl3.5-8b-popular" \
+    "round2-internvl3.5-8b-popular-object-heldout" \
+    "5" \
+    "2" \
+    "47"
+
+  run_comparator_unit \
+    "llava-onevision-7b pope popular" \
+    "configs/models/llava_onevision_7b_local.yaml" \
+    "llava-onevision-7b" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks" \
+    "round2-llava-onevision-7b-popular" \
+    "round2-llava-onevision-7b-popular-object-heldout" \
+    "5" \
+    "2" \
+    "47"
+
+  run_comparator_unit \
+    "molmo-7b-d-0924 pope popular" \
+    "configs/models/molmo_7b_d_0924.yaml" \
+    "molmo-7b-d-0924" \
+    "pope" \
+    "popular" \
+    "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
+    "data/coco/val2014" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks" \
+    "round2-molmo-7b-d-0924-popular" \
+    "round2-molmo-7b-d-0924-popular-object-heldout" \
+    "5" \
+    "2" \
+    "47"
+
+  run_comparator_unit \
+    "qwen3-vl-8b dash-b" \
+    "configs/models/qwen3_vl_8b_local.yaml" \
+    "qwen3-vl-8b" \
+    "dash-b" \
+    "main" \
+    "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
+    "data/dash_b" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "round2-qwen3-vl-8b-dash-b" \
+    "round2-qwen3-vl-8b-dash-b-object-heldout" \
+    "5" \
+    "2" \
+    "42"
+
+  run_comparator_unit \
+    "internvl3.5-8b dash-b" \
+    "configs/models/internvl3_5_8b_local.yaml" \
+    "internvl3.5-8b" \
+    "dash-b" \
+    "main" \
+    "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
+    "data/dash_b" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "round2-internvl3.5-8b-dash-b" \
+    "round2-internvl3.5-8b-dash-b-object-heldout" \
+    "5" \
+    "2" \
+    "42"
+
+  run_comparator_unit \
+    "llava-onevision-7b dash-b" \
+    "configs/models/llava_onevision_7b_local.yaml" \
+    "llava-onevision-7b" \
+    "dash-b" \
+    "main" \
+    "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
+    "data/dash_b" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "round2-llava-onevision-7b-dash-b" \
+    "round2-llava-onevision-7b-dash-b-object-heldout" \
+    "5" \
+    "2" \
+    "42"
+
+  run_comparator_unit \
+    "molmo-7b-d-0924 dash-b" \
+    "configs/models/molmo_7b_d_0924.yaml" \
+    "molmo-7b-d-0924" \
+    "dash-b" \
+    "main" \
+    "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
+    "data/dash_b" \
+    "4" \
+    "outputs/round2_2026_04/reference_banks_dash_b" \
+    "round2-molmo-7b-d-0924-dash-b" \
+    "round2-molmo-7b-d-0924-dash-b-object-heldout" \
+    "5" \
+    "2" \
+    "42"
+
   ensure_eval_cache "qwen3-vl-8b pope adversarial eval cache" "configs/models/qwen3_vl_8b_local.yaml" "qwen3-vl-8b" "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" "adversarial" "data/coco/val2014" "8"
   ensure_eval_cache "internvl3.5-8b pope adversarial eval cache" "configs/models/internvl3_5_8b_local.yaml" "internvl3.5-8b" "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" "adversarial" "data/coco/val2014" "4"
-}
-
-phase_halp() {
-  log "PHASE halp"
-  ensure_halp "qwen3-vl-8b pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final" "image_grouped" "5"
-  ensure_halp "qwen3-vl-8b pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final-object-heldout" "object_heldout" "2"
-  ensure_halp "qwen3-vl-8b dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b" "image_grouped" "5"
-  ensure_halp "qwen3-vl-8b dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b-object-heldout" "object_heldout" "2"
-
-  ensure_halp "internvl3.5-8b pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular" "image_grouped" "5"
-  ensure_halp "internvl3.5-8b pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular-object-heldout" "object_heldout" "2"
-  ensure_halp "internvl3.5-8b dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b" "image_grouped" "5"
-  ensure_halp "internvl3.5-8b dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b-object-heldout" "object_heldout" "2"
-
-  ensure_halp "llava-onevision-7b pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular" "image_grouped" "5"
-  ensure_halp "llava-onevision-7b pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular-object-heldout" "object_heldout" "2"
-  ensure_halp "llava-onevision-7b dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b" "image_grouped" "5"
-  ensure_halp "llava-onevision-7b dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b-object-heldout" "object_heldout" "2"
-
-  ensure_halp "molmo-7b-d-0924 pope popular HALP image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular" "image_grouped" "5"
-  ensure_halp "molmo-7b-d-0924 pope popular HALP object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular-object-heldout" "object_heldout" "2"
-  ensure_halp "molmo-7b-d-0924 dash-b HALP image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b" "image_grouped" "5"
-  ensure_halp "molmo-7b-d-0924 dash-b HALP object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b-object-heldout" "object_heldout" "2"
-}
-
-phase_glsim() {
-  log "PHASE glsim"
-  ensure_glsim "qwen3-vl-8b pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final" "image_grouped" "5"
-  ensure_glsim "qwen3-vl-8b pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular" "47" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "qwen3-vl-8b" "round2-qwen3-vl-8b-popular-final-object-heldout" "object_heldout" "2"
-  ensure_glsim "qwen3-vl-8b dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b" "image_grouped" "5"
-  ensure_glsim "qwen3-vl-8b dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/qwen3-vl-8b/dash-b/main" "42" "configs/models/qwen3_vl_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "qwen3-vl-8b" "round2-qwen3-vl-8b-dash-b-object-heldout" "object_heldout" "2"
-
-  ensure_glsim "internvl3.5-8b pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular" "image_grouped" "5"
-  ensure_glsim "internvl3.5-8b pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular" "47" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks" "internvl3.5-8b" "round2-internvl3.5-8b-popular-object-heldout" "object_heldout" "2"
-  ensure_glsim "internvl3.5-8b dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b" "image_grouped" "5"
-  ensure_glsim "internvl3.5-8b dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/internvl3.5-8b/dash-b/main" "42" "configs/models/internvl3_5_8b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "internvl3.5-8b" "round2-internvl3.5-8b-dash-b-object-heldout" "object_heldout" "2"
-
-  ensure_glsim "llava-onevision-7b pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular" "image_grouped" "5"
-  ensure_glsim "llava-onevision-7b pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/pope/popular" "47" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks" "llava-onevision-7b" "round2-llava-onevision-7b-popular-object-heldout" "object_heldout" "2"
-  ensure_glsim "llava-onevision-7b dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b" "image_grouped" "5"
-  ensure_glsim "llava-onevision-7b dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/llava-onevision-7b/dash-b/main" "42" "configs/models/llava_onevision_7b_local.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "llava-onevision-7b" "round2-llava-onevision-7b-dash-b-object-heldout" "object_heldout" "2"
-
-  ensure_glsim "molmo-7b-d-0924 pope popular GLSim image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular" "image_grouped" "5"
-  ensure_glsim "molmo-7b-d-0924 pope popular GLSim object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/pope/popular" "47" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-popular-object-heldout" "object_heldout" "2"
-  ensure_glsim "molmo-7b-d-0924 dash-b GLSim image_grouped" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b" "image_grouped" "5"
-  ensure_glsim "molmo-7b-d-0924 dash-b GLSim object_heldout" "outputs/round2_2026_04/readouts/molmo-7b-d-0924/dash-b/main" "42" "configs/models/molmo_7b_d_0924.yaml" "outputs/round2_2026_04/reference_banks_dash_b" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-dash-b-object-heldout" "object_heldout" "2"
 }
 
 phase_adversarial_cpu() {
@@ -570,14 +777,13 @@ phase_adversarial_cpu() {
   ensure_baseline_report "molmo-7b-d-0924 pope adversarial baselines" "outputs/round2_2026_04/features/round2-molmo-7b-d-0924-adversarial/adversarial.parquet" "outputs/round2_2026_04/cache/molmo-7b-d-0924/pope/adversarial" "outputs/round2_2026_04/reference_banks" "molmo-7b-d-0924" "round2-molmo-7b-d-0924-adversarial" "image_grouped" "5" "object" "full" "drift_only" "no_manifold" "linear_probe" "output_p_yes" "output_logit_margin" "output_chosen_answer_confidence"
 }
 
-phase_blocked_late_cpu_work() {
-  log "PHASE late cpu pipeline"
-  log "FAIL late CPU pipeline is still blocked by missing round-two prerequisites:"
+phase_late_cpu_work_pending() {
+  log "PHASE late cpu pipeline pending"
+  log "The remaining late CPU stages still need extra round-two prerequisites:"
   log "- qwen3-vl-8b POPE popular eval cache is missing under outputs/round2_2026_04/cache/qwen3-vl-8b/pope/popular"
   log "- internvl3.5-8b POPE popular eval cache is missing under outputs/round2_2026_04/cache/internvl3.5-8b/pope/popular"
-  log "- qwen3-vl-8b and internvl3.5-8b POPE reference caches are missing, so shared/shuffled controls and bank-size ablations cannot be rebuilt faithfully"
-  log "- layer-count ablation still needs a dedicated runner that derives drift features from the full readout caches"
-  exit 1
+  log "- qwen3-vl-8b and internvl3.5-8b POPE reference caches are missing, so shared/shuffled controls and bank-size ablations still cannot be rebuilt faithfully"
+  log "- layer-count ablation still needs a dedicated runner that derives drift features from comparator-layer subsets"
 }
 
 main() {
@@ -591,11 +797,9 @@ main() {
   if ! require_no_active_mind_extraction_queue; then
     exit 0
   fi
-  phase_gpu_extraction
-  phase_halp
-  phase_glsim
+  phase_main_comparators
   phase_adversarial_cpu
-  phase_blocked_late_cpu_work
+  phase_late_cpu_work_pending
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
