@@ -12,6 +12,9 @@ from mind.data import HallucinationRecord
 from mind.models import parse_yes_no_answer
 
 
+CHUNKED_CACHE_SHARD_FORMAT = "chunked_cache_shard_v1"
+
+
 def run_generation_with_prefill_request(
     *,
     model: Any,

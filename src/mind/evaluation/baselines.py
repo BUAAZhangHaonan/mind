@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Sequence
 
 import numpy as np
@@ -12,6 +13,7 @@ from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
 from mind.detectors import fit_logistic_detector
 from mind.drift import build_drift_features, calibrate_drift_curve
+from mind.extractors.prefill import CHUNKED_CACHE_SHARD_FORMAT
 from mind.manifolds import resolve_reference_scope_key
 
 from .metrics import compute_binary_metrics, compute_object_hallucination_label
@@ -41,6 +43,7 @@ FEATURE_VARIANT_NAMES = (
 )
 
 DEFAULT_FULL_VARIANT = "raw_plus_calibrated_simple"
+CHUNKED_CACHE_PART_FILE_PATTERN = re.compile(r"\.part-\d{5}\.pt$")
 
 
 def _hallucination_label_from_entry(entry: dict[str, object]) -> int:
@@ -266,6 +269,31 @@ def _trim_cache_entry(
     return {key: value for key, value in entry.items() if key in keep_fields}
 
 
+def _load_cache_shard_entries(
+    shard_path: Path,
+    *,
+    keep_fields: set[str] | None,
+) -> list[dict[str, object]]:
+    payload = torch.load(shard_path, weights_only=False)
+    if isinstance(payload, dict) and payload.get("format") == CHUNKED_CACHE_SHARD_FORMAT:
+        part_names = payload.get("parts")
+        if not isinstance(part_names, list):
+            raise ValueError(f"Chunked cache shard manifest at {shard_path} is missing a parts list.")
+        entries: list[dict[str, object]] = []
+        for part_name in part_names:
+            part_path = shard_path.parent / str(part_name)
+            part_entries = torch.load(part_path, weights_only=False)
+            entries.extend(
+                _trim_cache_entry(entry, keep_fields=keep_fields)
+                for entry in part_entries
+            )
+        return entries
+    return [
+        _trim_cache_entry(entry, keep_fields=keep_fields)
+        for entry in payload
+    ]
+
+
 def load_cache_entries(
     cache_path: Path,
     *,
@@ -274,16 +302,13 @@ def load_cache_entries(
     if cache_path.is_dir():
         entries: list[dict[str, object]] = []
         for shard_path in sorted(cache_path.rglob("*.pt")):
-            shard_entries = torch.load(shard_path, weights_only=False)
+            if CHUNKED_CACHE_PART_FILE_PATTERN.search(shard_path.name):
+                continue
             entries.extend(
-                _trim_cache_entry(entry, keep_fields=keep_fields)
-                for entry in shard_entries
+                _load_cache_shard_entries(shard_path, keep_fields=keep_fields)
             )
         return entries
-    return [
-        _trim_cache_entry(entry, keep_fields=keep_fields)
-        for entry in torch.load(cache_path, weights_only=False)
-    ]
+    return _load_cache_shard_entries(cache_path, keep_fields=keep_fields)
 
 
 def apply_label_overrides_to_entries(

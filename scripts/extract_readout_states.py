@@ -14,7 +14,8 @@ import torch
 
 from mind.config import ModelConfig, load_yaml_config
 from mind.data import HallucinationRecord
-from mind.extractors import extract_prefill_readout_entries, save_prefill_cache_shard
+from mind.extractors import extract_prefill_readout_entries
+from mind.extractors.prefill import CHUNKED_CACHE_SHARD_FORMAT
 from mind.models import create_model_wrapper
 from mind.utils import output_root_lock
 
@@ -31,6 +32,7 @@ def build_cache_output_path(
 
 
 SHARD_FILE_PATTERN = re.compile(r"^shard-(\d{5})\.pt$")
+SHARD_PART_FILE_PATTERN = re.compile(r"^shard-(\d{5})\.part-(\d{5})\.pt$")
 
 
 def collect_completed_shard_indices(
@@ -42,6 +44,8 @@ def collect_completed_shard_indices(
         return []
     indices: list[int] = []
     for shard_path in sorted(output_dir.glob("shard-*.pt")):
+        if SHARD_PART_FILE_PATTERN.match(shard_path.name):
+            continue
         match = SHARD_FILE_PATTERN.match(shard_path.name)
         if match is None:
             raise ValueError(f"Unexpected shard filename in {output_dir}: {shard_path.name}")
@@ -99,6 +103,42 @@ def iter_record_shards(
         raise ValueError("shard_size must be positive")
     for start in range(0, len(records), shard_size):
         yield list(records[start : start + shard_size])
+
+
+def build_cache_part_output_path(output_path: Path, part_index: int) -> Path:
+    return output_path.with_name(
+        f"{output_path.stem}.part-{part_index:05d}{output_path.suffix}"
+    )
+
+
+def cleanup_incomplete_shard_parts(output_path: Path) -> None:
+    for part_path in output_path.parent.glob(f"{output_path.stem}.part-*.pt"):
+        part_path.unlink()
+
+
+class ChunkedShardWriter:
+    def __init__(self, output_path: Path) -> None:
+        self.output_path = output_path
+        self.part_paths: list[Path] = []
+        self.num_entries = 0
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        cleanup_incomplete_shard_parts(output_path)
+
+    def append(self, entries: Sequence[dict[str, object]]) -> None:
+        if not entries:
+            return
+        part_path = build_cache_part_output_path(self.output_path, len(self.part_paths))
+        torch.save(list(entries), part_path)
+        self.part_paths.append(part_path)
+        self.num_entries += len(entries)
+
+    def finalize(self) -> None:
+        manifest = {
+            "format": CHUNKED_CACHE_SHARD_FORMAT,
+            "num_entries": self.num_entries,
+            "parts": [part_path.name for part_path in self.part_paths],
+        }
+        torch.save(manifest, self.output_path)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -184,9 +224,9 @@ def run_extraction(
                 output_paths.append(output_path)
                 if shard_index in completed_indices:
                     continue
-                shard_entries: list[dict[str, object]] = []
+                shard_writer = ChunkedShardWriter(output_path)
                 for start in range(0, len(shard_records), batch_size):
-                    shard_entries.extend(
+                    shard_writer.append(
                         extract_prefill_readout_entries(
                             model=model,
                             processor=processor,
@@ -196,7 +236,7 @@ def run_extraction(
                             max_new_tokens=max_new_tokens,
                         )
                     )
-                save_prefill_cache_shard(shard_entries, output_path)
+                shard_writer.finalize()
     return output_paths
 
 

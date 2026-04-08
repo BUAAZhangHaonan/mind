@@ -185,7 +185,7 @@ shard_count() {
     echo 0
     return
   fi
-  find "$shard_dir" -maxdepth 1 -name 'shard-*.pt' | wc -l | tr -d ' '
+  find "$shard_dir" -maxdepth 1 -type f | rg '/shard-[0-9]{5}\.pt$' | wc -l | tr -d ' '
 }
 
 report_complete() {

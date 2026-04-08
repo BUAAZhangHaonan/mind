@@ -239,8 +239,27 @@ def test_extract_readout_run_extraction_batches_records(tmp_path: Path, monkeypa
     assert len(output_paths) == 2
     first_shard = torch.load(output_paths[0], weights_only=False)
     second_shard = torch.load(output_paths[1], weights_only=False)
-    assert [row["sample_id"] for row in first_shard] == ["sample-0", "sample-1", "sample-2", "sample-3"]
-    assert [row["sample_id"] for row in second_shard] == ["sample-4"]
+    assert first_shard == {
+        "format": "chunked_cache_shard_v1",
+        "num_entries": 4,
+        "parts": [
+            "shard-00000.part-00000.pt",
+            "shard-00000.part-00001.pt",
+        ],
+    }
+    assert second_shard == {
+        "format": "chunked_cache_shard_v1",
+        "num_entries": 1,
+        "parts": [
+            "shard-00001.part-00000.pt",
+        ],
+    }
+    first_part_0 = torch.load(output_paths[0].with_name("shard-00000.part-00000.pt"), weights_only=False)
+    first_part_1 = torch.load(output_paths[0].with_name("shard-00000.part-00001.pt"), weights_only=False)
+    second_part = torch.load(output_paths[1].with_name("shard-00001.part-00000.pt"), weights_only=False)
+    assert [row["sample_id"] for row in first_part_0] == ["sample-0", "sample-1"]
+    assert [row["sample_id"] for row in first_part_1] == ["sample-2", "sample-3"]
+    assert [row["sample_id"] for row in second_part] == ["sample-4"]
 
 
 def test_extract_readout_run_extraction_resumes_from_completed_prefix(tmp_path: Path, monkeypatch) -> None:
@@ -308,11 +327,27 @@ def test_extract_readout_run_extraction_resumes_from_completed_prefix(tmp_path: 
     assert batch_sizes == [2, 1]
     assert len(output_paths) == 3
     first_shard = torch.load(existing_shard, weights_only=False)
-    second_shard = torch.load(output_paths[1], weights_only=False)
-    third_shard = torch.load(output_paths[2], weights_only=False)
+    second_manifest = torch.load(output_paths[1], weights_only=False)
+    third_manifest = torch.load(output_paths[2], weights_only=False)
     assert [row["sample_id"] for row in first_shard] == ["sample-0", "sample-1"]
-    assert [row["sample_id"] for row in second_shard] == ["sample-2", "sample-3"]
-    assert [row["sample_id"] for row in third_shard] == ["sample-4"]
+    assert second_manifest == {
+        "format": "chunked_cache_shard_v1",
+        "num_entries": 2,
+        "parts": [
+            "shard-00001.part-00000.pt",
+        ],
+    }
+    assert third_manifest == {
+        "format": "chunked_cache_shard_v1",
+        "num_entries": 1,
+        "parts": [
+            "shard-00002.part-00000.pt",
+        ],
+    }
+    second_part = torch.load(output_paths[1].with_name("shard-00001.part-00000.pt"), weights_only=False)
+    third_part = torch.load(output_paths[2].with_name("shard-00002.part-00000.pt"), weights_only=False)
+    assert [row["sample_id"] for row in second_part] == ["sample-2", "sample-3"]
+    assert [row["sample_id"] for row in third_part] == ["sample-4"]
 
 
 def test_extract_readout_run_extraction_resumes_from_contiguous_partial_prefix(
@@ -384,10 +419,22 @@ def test_extract_readout_run_extraction_resumes_from_contiguous_partial_prefix(
         "shard-00001.pt",
         "shard-00002.pt",
     ]
-    resumed_shard = torch.load(output_paths[1], weights_only=False)
-    final_shard = torch.load(output_paths[2], weights_only=False)
-    assert [row["sample_id"] for row in resumed_shard] == ["sample-2", "sample-3"]
-    assert [row["sample_id"] for row in final_shard] == ["sample-4"]
+    resumed_manifest = torch.load(output_paths[1], weights_only=False)
+    final_manifest = torch.load(output_paths[2], weights_only=False)
+    assert resumed_manifest["format"] == "chunked_cache_shard_v1"
+    assert resumed_manifest["num_entries"] == 2
+    assert resumed_manifest["parts"] == [
+        "shard-00001.part-00000.pt",
+    ]
+    assert final_manifest["format"] == "chunked_cache_shard_v1"
+    assert final_manifest["num_entries"] == 1
+    assert final_manifest["parts"] == [
+        "shard-00002.part-00000.pt",
+    ]
+    resumed_part = torch.load(output_paths[1].with_name("shard-00001.part-00000.pt"), weights_only=False)
+    final_part = torch.load(output_paths[2].with_name("shard-00002.part-00000.pt"), weights_only=False)
+    assert [row["sample_id"] for row in resumed_part] == ["sample-2", "sample-3"]
+    assert [row["sample_id"] for row in final_part] == ["sample-4"]
 
 
 def test_extract_readout_run_extraction_rejects_non_contiguous_partial_shards(
@@ -434,6 +481,78 @@ def test_extract_readout_run_extraction_rejects_non_contiguous_partial_shards(
             max_new_tokens=1,
             limit=0,
         )
+
+
+def test_extract_readout_run_extraction_writes_chunked_shard_parts(tmp_path: Path, monkeypatch) -> None:
+    records = [
+        HallucinationRecord(
+            sample_id=f"sample-{index}",
+            image_id=index,
+            image_path=f"{index}.jpg",
+            question=f"Q{index}?",
+            label=index % 2,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        )
+        for index in range(4)
+    ]
+    batch_sizes: list[int] = []
+
+    class FakeWrapper:
+        def load_processor(self):
+            return "processor"
+
+        def load_model(self, device: str):
+            assert device == "cuda:0"
+            return "model"
+
+    monkeypatch.setattr(
+        extract_readout_states,
+        "load_yaml_config",
+        lambda path, config_cls: type("Config", (), {"name": "qwen3-vl-8b"})(),
+    )
+    monkeypatch.setattr(extract_readout_states, "create_model_wrapper", lambda config: FakeWrapper())
+    monkeypatch.setattr(extract_readout_states, "load_normalized_records", lambda path: list(records))
+    monkeypatch.setattr(
+        extract_readout_states,
+        "extract_prefill_readout_entries",
+        lambda **kwargs: (
+            batch_sizes.append(len(kwargs["records"]))
+            or [{"sample_id": record.sample_id} for record in kwargs["records"]]
+        ),
+    )
+
+    output_paths = extract_readout_states.run_extraction(
+        records_path=tmp_path / "popular.jsonl",
+        model_config_path=tmp_path / "model.yaml",
+        output_root=tmp_path / "readouts",
+        dataset_name="pope",
+        split="popular",
+        image_root=None,
+        device="cuda:0",
+        shard_size=4,
+        batch_size=2,
+        max_new_tokens=1,
+        limit=0,
+    )
+
+    assert batch_sizes == [2, 2]
+    assert len(output_paths) == 1
+    manifest = torch.load(output_paths[0], weights_only=False)
+    assert manifest == {
+        "format": "chunked_cache_shard_v1",
+        "num_entries": 4,
+        "parts": [
+            "shard-00000.part-00000.pt",
+            "shard-00000.part-00001.pt",
+        ],
+    }
+    first_part = torch.load(output_paths[0].with_name("shard-00000.part-00000.pt"), weights_only=False)
+    second_part = torch.load(output_paths[0].with_name("shard-00000.part-00001.pt"), weights_only=False)
+    assert [row["sample_id"] for row in first_part] == ["sample-0", "sample-1"]
+    assert [row["sample_id"] for row in second_part] == ["sample-2", "sample-3"]
 
 
 def test_load_normalized_records_reads_jsonl_rows(tmp_path: Path) -> None:

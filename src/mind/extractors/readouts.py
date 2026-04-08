@@ -20,10 +20,16 @@ def stack_prefill_hidden_states(
 ) -> torch.Tensor:
     if len(hidden_states) < 2:
         raise ValueError("hidden_states must include embeddings plus decoder layers.")
-    return torch.stack(
-        [state[batch_index].detach().cpu() for state in hidden_states[1:]],
-        dim=0,
+    first_layer = hidden_states[1][batch_index].detach()
+    stacked = torch.empty(
+        (len(hidden_states) - 1, *first_layer.shape),
+        dtype=first_layer.dtype,
+        device="cpu",
     )
+    stacked[0].copy_(first_layer)
+    for layer_index, state in enumerate(hidden_states[2:], start=1):
+        stacked[layer_index].copy_(state[batch_index].detach())
+    return stacked
 
 
 def _default_query_token_index(model_inputs: Any, *, batch_index: int) -> int:

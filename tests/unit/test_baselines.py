@@ -318,6 +318,52 @@ def test_load_cache_entries_can_keep_only_selected_fields(tmp_path) -> None:
     assert torch.equal(entries[0]["first_token_logits"], torch.tensor([0.1, 0.2]))
 
 
+def test_load_cache_entries_reads_chunked_shard_manifest(tmp_path) -> None:
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    torch.save(
+        [
+            {
+                "sample_id": "sample-1",
+                "label": 1,
+                "first_token_logits": torch.tensor([0.1, 0.9]),
+            }
+        ],
+        cache_root / "shard-00000.part-00000.pt",
+    )
+    torch.save(
+        [
+            {
+                "sample_id": "sample-2",
+                "label": 0,
+                "first_token_logits": torch.tensor([0.9, 0.1]),
+            }
+        ],
+        cache_root / "shard-00000.part-00001.pt",
+    )
+    torch.save(
+        {
+            "format": "chunked_cache_shard_v1",
+            "num_entries": 2,
+            "parts": [
+                "shard-00000.part-00000.pt",
+                "shard-00000.part-00001.pt",
+            ],
+        },
+        cache_root / "shard-00000.pt",
+    )
+
+    entries = load_cache_entries(
+        cache_root,
+        keep_fields={"sample_id", "label", "first_token_logits"},
+    )
+
+    assert [entry["sample_id"] for entry in entries] == ["sample-1", "sample-2"]
+    assert [entry["label"] for entry in entries] == [1, 0]
+    assert torch.equal(entries[0]["first_token_logits"], torch.tensor([0.1, 0.9]))
+    assert torch.equal(entries[1]["first_token_logits"], torch.tensor([0.9, 0.1]))
+
+
 def test_apply_label_overrides_to_frame_recomputes_hallucination_labels() -> None:
     frame = pd.DataFrame(
         [
