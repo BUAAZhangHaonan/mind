@@ -129,6 +129,32 @@ def _resolve_tokenizer(processor: Any) -> Any:
     return getattr(processor, "tokenizer", processor)
 
 
+def _build_prompt_text_for_record(
+    wrapper: Any,
+    processor: Any,
+    record: HallucinationRecord,
+) -> tuple[str | None, str]:
+    formatted_question = (
+        str(wrapper.format_yes_no_question(record.question))
+        if hasattr(wrapper, "format_yes_no_question")
+        else str(record.question)
+    )
+    if not hasattr(processor, "apply_chat_template") or not hasattr(wrapper, "build_messages"):
+        return None, formatted_question
+    try:
+        prompt_text = processor.apply_chat_template(
+            wrapper.build_messages(
+                question=formatted_question,
+                image_path=record.image_path,
+            ),
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    except Exception:
+        return None, formatted_question
+    return str(prompt_text), formatted_question
+
+
 def _find_subsequence_start(sequence: Sequence[int], subsequence: Sequence[int]) -> int | None:
     if not subsequence:
         return None
@@ -140,6 +166,7 @@ def _find_subsequence_start(sequence: Sequence[int], subsequence: Sequence[int])
 
 
 def _resolve_object_token_context(
+    wrapper: Any,
     processor: Any,
     record: HallucinationRecord,
     *,
@@ -147,14 +174,57 @@ def _resolve_object_token_context(
     batch_index: int,
 ) -> tuple[int, int]:
     tokenizer = _resolve_tokenizer(processor)
-    object_token_ids = tokenizer.encode(str(record.object_name), add_special_tokens=False)
-    if not object_token_ids:
-        raise ValueError(f"Could not tokenize object name for sample {record.sample_id}: {record.object_name}")
     input_ids = model_inputs["input_ids"][batch_index].detach().cpu().tolist()
-    start_index = _find_subsequence_start(input_ids, object_token_ids)
-    if start_index is None:
-        raise ValueError(f"Could not locate object token span for sample {record.sample_id}")
-    return int(start_index), int(object_token_ids[0])
+    prompt_text, formatted_question = _build_prompt_text_for_record(wrapper, processor, record)
+    if prompt_text is not None:
+        question_char_start = prompt_text.lower().find(formatted_question.lower())
+        search_start = 0 if question_char_start < 0 else question_char_start
+        object_char_start = prompt_text.lower().find(str(record.object_name).lower(), search_start)
+        if object_char_start >= 0:
+            try:
+                tokenized = tokenizer(
+                    prompt_text,
+                    add_special_tokens=False,
+                    return_offsets_mapping=True,
+                )
+                offset_mapping = tokenized.get("offset_mapping")
+                prompt_input_ids = tokenized.get("input_ids")
+            except Exception:
+                offset_mapping = None
+                prompt_input_ids = None
+            if offset_mapping is not None and prompt_input_ids is not None:
+                object_char_stop = object_char_start + len(str(record.object_name))
+                matched_indices = [
+                    index
+                    for index, offset in enumerate(offset_mapping)
+                    if int(offset[0]) < object_char_stop and int(offset[1]) > object_char_start
+                ]
+                if matched_indices:
+                    object_token_ids = [
+                        int(value)
+                        for value in prompt_input_ids[matched_indices[0] : matched_indices[-1] + 1]
+                    ]
+                    start_index = _find_subsequence_start(input_ids, object_token_ids)
+                    if start_index is not None:
+                        return int(start_index), int(object_token_ids[0])
+
+    candidate_texts = [
+        str(record.object_name),
+        f" {record.object_name}",
+        str(record.object_name).title(),
+        f" {str(record.object_name).title()}",
+    ]
+    for candidate_text in candidate_texts:
+        try:
+            object_token_ids = tokenizer.encode(candidate_text, add_special_tokens=False)
+        except TypeError:
+            object_token_ids = tokenizer.encode(candidate_text)
+        if not object_token_ids:
+            continue
+        start_index = _find_subsequence_start(input_ids, object_token_ids)
+        if start_index is not None:
+            return int(start_index), int(object_token_ids[0])
+    raise ValueError(f"Could not locate object token span for sample {record.sample_id}")
 
 
 def build_prefill_readout_entry(
@@ -267,6 +337,7 @@ def extract_prefill_readout_entries(
             batch_index=batch_index,
         )
         object_token_index, object_token_id = _resolve_object_token_context(
+            wrapper,
             processor,
             record,
             model_inputs=model_inputs,

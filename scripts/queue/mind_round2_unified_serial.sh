@@ -13,7 +13,8 @@ set -euo pipefail
 # - The queue applies a per-process virtual memory ceiling at 80% of total RAM,
 #   logs system memory and GPU state before and after every step, and retries a
 #   step once if it dies with exit code 137.
-# - GPU 1 is the only GPU allowed for MIND work. GPU 0 is off-limits.
+# - GPU 0 is the only GPU allowed for current MIND work. GPU 1 is reserved for
+#   other project traffic.
 #
 # This queue replaces the older split queue scripts. It will refuse to start if
 # another MIND extraction queue is still active, because parallel queues are the
@@ -23,9 +24,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
-GPU_ID="${GPU_ID:-1}"
-if [[ "$GPU_ID" != "1" ]]; then
-  echo "MIND is restricted to GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
+GPU_ID="${GPU_ID:-0}"
+if [[ "$GPU_ID" != "0" ]]; then
+  echo "MIND is restricted to GPU 0 only. Refusing GPU_ID=$GPU_ID." >&2
   exit 1
 fi
 
@@ -196,7 +197,12 @@ shard_count() {
     echo 0
     return
   fi
-  find "$shard_dir" -maxdepth 1 -type f | rg '/shard-[0-9]{5}\.pt$' | wc -l | tr -d ' '
+  find "$shard_dir" \
+    -maxdepth 1 \
+    -type f \
+    -name 'shard-*.pt' \
+    ! -name 'shard-*.part-*.pt' \
+    | wc -l | tr -d ' '
 }
 
 report_complete() {

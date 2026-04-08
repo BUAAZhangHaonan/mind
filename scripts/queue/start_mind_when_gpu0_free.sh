@@ -4,13 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-GPU_ID="${GPU_ID:-1}"
-if [[ "$GPU_ID" != "1" ]]; then
-  echo "MIND is restricted to GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
+GPU_ID="${GPU_ID:-0}"
+if [[ "$GPU_ID" != "0" ]]; then
+  echo "MIND is restricted to GPU 0 only. Refusing GPU_ID=$GPU_ID." >&2
   exit 1
 fi
 
-WAIT_LOG="${WAIT_LOG:-outputs/round2_2026_04/job_logs/mind_wait_for_gpu1_20260408.log}"
+WAIT_LOG="${WAIT_LOG:-outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260408.log}"
 QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
 
