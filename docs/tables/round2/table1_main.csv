@@ -1,0 +1,57 @@
+model,benchmark,protocol,method,roc_auc,roc_auc_ci,pr_auc,pr_auc_ci,report_path
+Qwen3-VL-8B,POPE popular,image_grouped,p_yes,0.63420585694729,"[0.6152, 0.6549]",0.04509573140523476,"[0.0375, 0.0528]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,POPE popular,image_grouped,logit_margin,0.5954583867356453,"[0.5819, 0.6104]",0.04221469280833804,"[0.0350, 0.0491]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,POPE popular,image_grouped,chosen_confidence,0.7946996841077838,"[0.7437, 0.8387]",0.14618467885133232,"[0.1066, 0.1965]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,POPE popular,image_grouped,drift_only,0.8496752203917314,"[0.8262, 0.8741]",0.12534016059161623,"[0.0985, 0.1605]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,POPE popular,image_grouped,no_manifold,0.8384989350721438,"[0.7958, 0.8783]",0.19827687273244454,"[0.1385, 0.2657]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,POPE popular,image_grouped,full MIND,0.8908160496945544,"[0.8694, 0.9105]",0.17411458706818783,"[0.1375, 0.2169]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,POPE popular,image_grouped,linear_probe,0.916074953458131,"[0.8868, 0.9414]",0.3802606705242233,"[0.2892, 0.4728]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final
+Qwen3-VL-8B,DASH-B,image_grouped,p_yes,0.47638189255145263,"[0.4335, 0.5219]",0.2192866112667202,"[0.1834, 0.2612]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+Qwen3-VL-8B,DASH-B,image_grouped,logit_margin,0.6160325049980258,"[0.5697, 0.6613]",0.28010655224074454,"[0.2598, 0.3004]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+Qwen3-VL-8B,DASH-B,image_grouped,chosen_confidence,0.6855872303474095,"[0.6559, 0.7153]",0.40571482167726447,"[0.3678, 0.4420]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+Qwen3-VL-8B,DASH-B,image_grouped,drift_only,0.9185022172190903,"[0.9044, 0.9324]",0.737070947665981,"[0.6989, 0.7729]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+Qwen3-VL-8B,DASH-B,image_grouped,no_manifold,0.9290114901285773,"[0.9162, 0.9415]",0.7784343587751716,"[0.7433, 0.8118]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+Qwen3-VL-8B,DASH-B,image_grouped,full MIND,0.9193433708053532,"[0.9049, 0.9332]",0.7373856452783484,"[0.6965, 0.7755]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+Qwen3-VL-8B,DASH-B,image_grouped,linear_probe,0.9908914242774277,"[0.9874, 0.9938]",0.9778871475985371,"[0.9714, 0.9841]",outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b
+InternVL3.5-8B,POPE popular,image_grouped,p_yes,0.5601340424562682,"[0.5471, 0.5740]",0.0877630069206515,"[0.0783, 0.0969]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,POPE popular,image_grouped,logit_margin,0.5453859557215744,"[0.5335, 0.5588]",0.08609061904991426,"[0.0767, 0.0949]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,POPE popular,image_grouped,chosen_confidence,0.8039429778607872,"[0.7745, 0.8342]",0.26370271232744236,"[0.2198, 0.3142]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,POPE popular,image_grouped,drift_only,0.8801532889941691,"[0.8622, 0.8982]",0.4270284859110366,"[0.3680, 0.4888]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,POPE popular,image_grouped,no_manifold,0.8558830061042274,"[0.8351, 0.8761]",0.4033270264592862,"[0.3393, 0.4618]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,POPE popular,image_grouped,full MIND,0.897751343841108,"[0.8810, 0.9140]",0.509211160569455,"[0.4528, 0.5669]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,POPE popular,image_grouped,linear_probe,0.9366487108236151,"[0.9192, 0.9518]",0.6550240647449052,"[0.5881, 0.7133]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular
+InternVL3.5-8B,DASH-B,image_grouped,p_yes,0.478971623157025,"[0.4367, 0.5228]",0.25582280571919,"[0.2159, 0.3004]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+InternVL3.5-8B,DASH-B,image_grouped,logit_margin,0.5583625752137319,"[0.5150, 0.5993]",0.28933080895301844,"[0.2665, 0.3116]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+InternVL3.5-8B,DASH-B,image_grouped,chosen_confidence,0.6475213531006436,"[0.6179, 0.6748]",0.38597672803221417,"[0.3507, 0.4218]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+InternVL3.5-8B,DASH-B,image_grouped,drift_only,0.8593222846897081,"[0.8426, 0.8747]",0.7054100187955769,"[0.6636, 0.7409]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+InternVL3.5-8B,DASH-B,image_grouped,no_manifold,0.8769477569619777,"[0.8621, 0.8918]",0.728772290795189,"[0.6907, 0.7630]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+InternVL3.5-8B,DASH-B,image_grouped,full MIND,0.8574054099654722,"[0.8404, 0.8728]",0.7084053781402712,"[0.6669, 0.7437]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+InternVL3.5-8B,DASH-B,image_grouped,linear_probe,0.9858407032245408,"[0.9821, 0.9893]",0.9699394035822675,"[0.9617, 0.9768]",outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b
+LLaVA-OneVision-7B,POPE popular,image_grouped,p_yes,0.6199962173699914,"[0.6044, 0.6366]",0.03569005481974541,"[0.0289, 0.0429]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,POPE popular,image_grouped,logit_margin,0.6095090686624544,"[0.5933, 0.6266]",0.034735890582493836,"[0.0280, 0.0415]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,POPE popular,image_grouped,chosen_confidence,0.827678044148696,"[0.7772, 0.8742]",0.11948435345214017,"[0.0877, 0.1585]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,POPE popular,image_grouped,drift_only,0.8030214722150386,"[0.7708, 0.8364]",0.09411668593758324,"[0.0683, 0.1332]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,POPE popular,image_grouped,no_manifold,0.8077960776442706,"[0.7618, 0.8537]",0.1281772251123276,"[0.0886, 0.1947]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,POPE popular,image_grouped,full MIND,0.8085487438194527,"[0.7809, 0.8405]",0.0874037731645798,"[0.0642, 0.1225]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,POPE popular,image_grouped,linear_probe,0.8833251633671584,"[0.8403, 0.9228]",0.3238413742348778,"[0.2347, 0.4311]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular
+LLaVA-OneVision-7B,DASH-B,image_grouped,p_yes,0.44970629682525365,"[0.4009, 0.5000]",0.3230599610949062,"[0.2726, 0.3801]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+LLaVA-OneVision-7B,DASH-B,image_grouped,logit_margin,0.6601868502588288,"[0.6198, 0.6949]",0.42965449506516074,"[0.4019, 0.4562]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+LLaVA-OneVision-7B,DASH-B,image_grouped,chosen_confidence,0.7046207243413031,"[0.6754, 0.7331]",0.4937915113095326,"[0.4596, 0.5265]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+LLaVA-OneVision-7B,DASH-B,image_grouped,drift_only,0.8664053862979639,"[0.8488, 0.8830]",0.7431348203566623,"[0.7105, 0.7736]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+LLaVA-OneVision-7B,DASH-B,image_grouped,no_manifold,0.8995709513800253,"[0.8839, 0.9130]",0.7883030674183819,"[0.7549, 0.8201]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+LLaVA-OneVision-7B,DASH-B,image_grouped,full MIND,0.8404471737593533,"[0.8208, 0.8599]",0.7233854066755763,"[0.6893, 0.7553]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+LLaVA-OneVision-7B,DASH-B,image_grouped,linear_probe,0.9922529263559454,"[0.9896, 0.9944]",0.9883026928349888,"[0.9845, 0.9916]",outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b
+Molmo-7B-D-0924,POPE popular,image_grouped,p_yes,0.5657781680277025,"[0.5412, 0.5908]",0.05119408895937225,"[0.0430, 0.0591]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,POPE popular,image_grouped,logit_margin,0.5809524033719476,"[0.5658, 0.5964]",0.05412761611166409,"[0.0462, 0.0618]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,POPE popular,image_grouped,chosen_confidence,0.6521790305532734,"[0.6200, 0.6863]",0.06873359352617509,"[0.0556, 0.0834]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,POPE popular,image_grouped,drift_only,0.834613546642059,"[0.8099, 0.8578]",0.16510498799423812,"[0.1324, 0.2014]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,POPE popular,image_grouped,no_manifold,0.8255951638304233,"[0.7956, 0.8557]",0.18569260730327,"[0.1459, 0.2341]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,POPE popular,image_grouped,full MIND,0.8839498209741549,"[0.8608, 0.9060]",0.2992082111475433,"[0.2327, 0.3691]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,POPE popular,image_grouped,linear_probe,0.9209178929328931,"[0.8988, 0.9424]",0.5605653031117496,"[0.4703, 0.6409]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular
+Molmo-7B-D-0924,DASH-B,image_grouped,p_yes,0.6169745462320912,"[0.5772, 0.6528]",0.3288693184976652,"[0.3022, 0.3538]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b
+Molmo-7B-D-0924,DASH-B,image_grouped,logit_margin,0.5368831821928557,"[0.4955, 0.5745]",0.2878441541092349,"[0.2634, 0.3099]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b
+Molmo-7B-D-0924,DASH-B,image_grouped,chosen_confidence,0.636892619535828,"[0.5992, 0.6718]",0.3424920879237292,"[0.3164, 0.3673]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b
+Molmo-7B-D-0924,DASH-B,image_grouped,drift_only,0.7967427307710837,"[0.7775, 0.8149]",0.5611200316597597,"[0.5185, 0.6002]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b
+Molmo-7B-D-0924,DASH-B,image_grouped,no_manifold,0.8655409610382925,"[0.8479, 0.8819]",0.686066857726898,"[0.6479, 0.7191]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b
+Molmo-7B-D-0924,DASH-B,image_grouped,full MIND,0.7795304690887421,"[0.7589, 0.7978]",0.5422020566902453,"[0.5010, 0.5794]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b
+Molmo-7B-D-0924,DASH-B,image_grouped,linear_probe,0.9775140454721541,"[0.9722, 0.9827]",0.9560961407933408,"[0.9450, 0.9655]",outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b

@@ -39,6 +39,9 @@ The current round-two tables support a narrower and cleaner claim than the old d
 - The linear probe beats full MIND on every completed row.
 - So the paper can still make a modest detector-performance claim over simple output baselines.
 - It cannot claim that MIND is the strongest internal-state detector.
+- The comparator lane is being reset for correctness:
+  - the old grouped `HALP` path is not a faithful official baseline
+  - the old readout-based `GLSim` path is now explicitly `GLSim-adapted`, not official GLSim
 
 ## Current Round-Two Results
 
@@ -47,6 +50,8 @@ Use only the saved round-two rows in:
 - `docs/tables/round2/table1_pope_popular.md`
 - `docs/tables/round2/table1_dash_b.md`
 - `docs/tables/round2/table2_feature_ablation.md`
+
+These tracked tables are intentionally MIND-only right now. Comparator columns were removed until corrected official artifacts exist.
 
 ### POPE Popular
 
@@ -138,7 +143,8 @@ The older March correction-phase popular tables are not reproducible under the c
 - POPE, RePOPE, and DASH-B for object hallucination evaluation
 - output-side confidence baselines
 - pre-generation probe methods such as HALP
-- similarity-based grounding methods such as GLSim
+- similarity-based grounding methods such as official GLSim
+- the paper should state plainly that the current repo’s older `GLSim-adapted` path is a queried-object pre-generation adaptation, not a faithful GLSim reproduction
 - manifold and residual geometry in hidden-state analysis
 
 ### 3. Method
@@ -186,14 +192,22 @@ The older March correction-phase popular tables are not reproducible under the c
   - yes-minus-no logit margin
   - chosen-answer confidence
   - linear probe
-  - HALP
-  - GLSim
+- corrected official HALP should be treated as a separate comparator lane, not mixed into the saved MIND-only tables until its artifacts exist
+- the old `GLSim-adapted` path should not be called official GLSim anywhere in the paper
 
 ### 4. Experiments
 
 - Main table:
   - `POPE popular`
   - `DASH-B`
+- current saved main tables are MIND-only:
+  - `p_yes`
+  - logit margin
+  - chosen confidence
+  - drift_only
+  - no_manifold
+  - full MIND
+  - linear probe
 - Supplementary:
   - `POPE adversarial`
   - `RePOPE`
@@ -211,7 +225,8 @@ The older March correction-phase popular tables are not reproducible under the c
 
 - The simple calibrated feature set holds up better than output confidence, but not better than the linear probe.
 - The manifold step is not robust on `DASH-B`.
-- The remaining open question is whether HALP or GLSim beat MIND once the comparator work is finished.
+- The remaining open comparator question is whether corrected official HALP adds a stronger pre-generation baseline once it is rerun correctly.
+- Official GLSim is currently outside the paper-safe `POPE` / `DASH-B` lane, and the old `GLSim-adapted` path should only be discussed as an adaptation if it appears at all.
 - The transfer story is still open because the held-out control tables are not built yet.
 
 ### 6. Discussion
@@ -220,7 +235,7 @@ The older March correction-phase popular tables are not reproducible under the c
 - The current tables justify a claim over simple output baselines.
 - They do not justify a claim over richer internal baselines.
 - The strongest negative result so far is that `no_manifold` beats full MIND on `DASH-B`.
-- If HALP or GLSim also beat MIND, the paper should lean even harder into interpretability and architecture comparison.
+- If corrected official HALP also beats MIND, the paper should lean even harder into interpretability and architecture comparison.
 
 ## Tables To Keep
 
@@ -234,8 +249,6 @@ The older March correction-phase popular tables are not reproducible under the c
      - no-manifold
      - full MIND with simple stats
      - linear probe
-     - HALP
-     - GLSim
 2. Feature ablation:
    - raw only
    - raw + simple stats
@@ -246,8 +259,6 @@ The older March correction-phase popular tables are not reproducible under the c
    - shared bank
    - shuffled-object bank
    - linear probe
-   - HALP
-   - GLSim
 
 ## Writing Direction
 
@@ -258,3 +269,4 @@ The older March correction-phase popular tables are not reproducible under the c
   - grouped evaluation only
   - compact geometry as the main idea
   - honest comparison to simpler baselines and stronger probe methods
+  - explicit separation between official baselines and local adapted comparators

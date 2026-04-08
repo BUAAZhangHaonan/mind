@@ -1,0 +1,10 @@
+| model | benchmark | method | image_grouped | object_heldout |
+| --- | --- | --- | --- | --- |
+| Qwen3-VL-8B | POPE popular | object | ROC 0.8908 [0.8694, 0.9105]; PR 0.1741 [0.1375, 0.2169] |  |
+| Qwen3-VL-8B | POPE popular | linear_probe | ROC 0.9161 [0.8868, 0.9414]; PR 0.3803 [0.2892, 0.4728] |  |
+| InternVL3.5-8B | POPE popular | object | ROC 0.8978 [0.8810, 0.9140]; PR 0.5092 [0.4528, 0.5669] |  |
+| InternVL3.5-8B | POPE popular | linear_probe | ROC 0.9366 [0.9192, 0.9518]; PR 0.6550 [0.5881, 0.7133] |  |
+| LLaVA-OneVision-7B | POPE popular | object | ROC 0.8085 [0.7809, 0.8405]; PR 0.0874 [0.0642, 0.1225] |  |
+| LLaVA-OneVision-7B | POPE popular | linear_probe | ROC 0.8833 [0.8403, 0.9228]; PR 0.3238 [0.2347, 0.4311] |  |
+| Molmo-7B-D-0924 | POPE popular | object | ROC 0.8839 [0.8608, 0.9060]; PR 0.2992 [0.2327, 0.3691] |  |
+| Molmo-7B-D-0924 | POPE popular | linear_probe | ROC 0.9209 [0.8988, 0.9424]; PR 0.5606 [0.4703, 0.6409] |  |
