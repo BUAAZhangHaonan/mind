@@ -1,4 +1,4 @@
-"""Faithful HALP-style pre-generation probing on grouped splits."""
+"""HALP probe utilities for official and adapted pre-generation evaluation."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ class HALPProbeConfig:
     batch_size: int = 32
     epochs: int = 50
     random_state: int = 13
+    device: str = "cpu"
 
 
 class HALPProbe(nn.Module):
@@ -64,7 +65,19 @@ class HALPProbe(nn.Module):
 def resolve_halp_layer_indices(total_layers: int) -> list[int]:
     if total_layers < 1:
         raise ValueError("total_layers must be positive")
-    return list(range(total_layers))
+    quarter_layers = [
+        0,
+        total_layers // 4,
+        total_layers // 2,
+        (3 * total_layers) // 4,
+        total_layers - 1,
+    ]
+    selected_layers: list[int] = []
+    for layer_index in quarter_layers:
+        normalized = int(max(0, min(total_layers - 1, layer_index)))
+        if normalized not in selected_layers:
+            selected_layers.append(normalized)
+    return selected_layers
 
 
 def _metadata_row_from_readout_entry(entry: dict[str, object]) -> dict[str, object]:
@@ -234,20 +247,29 @@ def _fit_probe(
     torch.manual_seed(config.random_state)
     np.random.seed(config.random_state)
 
+    device = torch.device(config.device)
     features = torch.tensor(train_frame[list(columns)].to_numpy(dtype=np.float32))
     labels = torch.tensor(train_frame["label"].to_numpy(dtype=np.float32))
     dataset = TensorDataset(features, labels)
     batch_size = max(2, min(config.batch_size, len(dataset)))
     drop_last = len(dataset) > batch_size and len(dataset) % batch_size == 1
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=drop_last)
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=drop_last,
+        pin_memory=device.type == "cuda",
+    )
 
-    probe = HALPProbe(input_dim=len(columns), config=config)
+    probe = HALPProbe(input_dim=len(columns), config=config).to(device)
     optimizer = torch.optim.Adam(probe.parameters(), lr=config.learning_rate)
     criterion = nn.BCEWithLogitsLoss()
 
     probe.train()
     for _ in range(config.epochs):
         for batch_features, batch_labels in loader:
+            batch_features = batch_features.to(device, non_blocking=device.type == "cuda")
+            batch_labels = batch_labels.to(device, non_blocking=device.type == "cuda")
             optimizer.zero_grad(set_to_none=True)
             logits = probe(batch_features)
             loss = criterion(logits, batch_labels)
@@ -263,11 +285,37 @@ def _predict_probe(
     columns: Sequence[str],
 ) -> tuple[np.ndarray, np.ndarray]:
     probe.eval()
+    device = next(probe.parameters()).device
     with torch.inference_mode():
-        features = torch.tensor(frame[list(columns)].to_numpy(dtype=np.float32))
+        features = torch.tensor(frame[list(columns)].to_numpy(dtype=np.float32)).to(device)
         scores = torch.sigmoid(probe(features)).cpu().numpy()
     predictions = (scores >= 0.5).astype(np.int64)
     return predictions, scores
+
+
+def _evaluate_probe_on_explicit_split(
+    frame: pd.DataFrame,
+    *,
+    train_ids: Sequence[str],
+    eval_ids: Sequence[str],
+    config: HALPProbeConfig,
+) -> tuple[dict[str, float], pd.DataFrame]:
+    columns = _feature_columns(frame)
+    train_frame = _subset_frame_by_sample_ids(frame, train_ids)
+    eval_frame = _subset_frame_by_sample_ids(frame, eval_ids)
+    probe = _fit_probe(train_frame, columns=columns, config=config)
+    predictions, scores = _predict_probe(probe, eval_frame, columns=columns)
+    results = eval_frame.assign(
+        prediction=predictions,
+        score=scores,
+        fold=0,
+    ).reset_index(drop=True)
+    metrics = compute_binary_metrics(
+        y_true=results["label"],
+        y_pred=results["prediction"],
+        y_score=results["score"],
+    )
+    return metrics, results
 
 
 def _evaluate_probe_on_splits(
@@ -547,6 +595,67 @@ def evaluate_halp_nested_from_readout_entries(
         y_score=results["score"],
     )
     return metrics, results, pd.DataFrame(selection_rows)
+
+
+def evaluate_halp_official_from_readout_entries(
+    readout_entries: Sequence[dict[str, object]],
+    *,
+    test_size: float = 0.2,
+    random_state: int = 13,
+    probe_config: HALPProbeConfig = HALPProbeConfig(),
+    layer_indices: Sequence[int] | None = None,
+) -> tuple[dict[str, float], pd.DataFrame, pd.DataFrame]:
+    if not readout_entries:
+        raise ValueError("readout_entries must not be empty")
+
+    base_frame = build_halp_probe_frame(readout_entries, "vision_only")
+    splits = _build_sample_id_splits(
+        base_frame,
+        split_strategy="row",
+        test_size=test_size,
+        random_state=random_state,
+        num_folds=1,
+    )
+    _fold, train_ids, eval_ids = splits[0]
+    probe_names = resolve_halp_probe_names(readout_entries, layer_indices=layer_indices)
+
+    selection_rows: list[dict[str, object]] = []
+    best_probe_name: str | None = None
+    best_probe_metrics: dict[str, float] | None = None
+    best_probe_results: pd.DataFrame | None = None
+    for probe_name in probe_names:
+        frame = build_halp_probe_frame(readout_entries, probe_name)
+        metrics, results = _evaluate_probe_on_explicit_split(
+            frame,
+            train_ids=train_ids,
+            eval_ids=eval_ids,
+            config=probe_config,
+        )
+        selection_rows.append({"probe_name": probe_name, **metrics})
+        if best_probe_metrics is None or (
+            metrics["roc_auc"],
+            metrics["pr_auc"],
+            probe_name,
+        ) > (
+            best_probe_metrics["roc_auc"],
+            best_probe_metrics["pr_auc"],
+            best_probe_name or "",
+        ):
+            best_probe_name = probe_name
+            best_probe_metrics = metrics
+            best_probe_results = results
+
+    if best_probe_name is None or best_probe_metrics is None or best_probe_results is None:
+        raise ValueError("HALP official evaluation did not produce any probe results.")
+
+    selection = pd.DataFrame(selection_rows).sort_values(
+        by=["roc_auc", "pr_auc", "probe_name"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+    selection["selected_probe"] = best_probe_name
+    selection["selection_mode"] = "single_split_best_of_11"
+    results = best_probe_results.assign(selected_probe=best_probe_name)
+    return best_probe_metrics, results, selection
 
 
 def summarize_halp_results(

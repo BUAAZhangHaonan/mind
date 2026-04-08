@@ -424,7 +424,7 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     supp_dash_b = pd.read_csv(outputs["supp_dash_b_transfer_csv"])
     supp_split_sensitivity = pd.read_csv(outputs["supp_split_sensitivity_csv"])
 
-    assert set(table1["method"]) >= {"p_yes", "logit_margin", "chosen_confidence", "drift_only", "no_manifold", "full MIND", "linear_probe", "HALP", "GLSim"}
+    assert set(table1["method"]) >= {"p_yes", "logit_margin", "chosen_confidence", "drift_only", "no_manifold", "full MIND", "linear_probe"}
     assert set(table1["benchmark"]) == {"POPE popular", "DASH-B"}
     assert set(table1["protocol"]) == {"image_grouped"}
     assert set(table1_popular["benchmark"]) == {"POPE popular"}
@@ -439,8 +439,6 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
         "no_manifold",
         "full_MIND",
         "linear_probe",
-        "HALP",
-        "GLSim",
     ]
     assert list(table1_dash_b.columns) == list(table1_popular.columns)
 
@@ -472,7 +470,7 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
         "image_grouped",
         "object_heldout",
     ]
-    assert set(table3["method"]) >= {"object", "shared", "shuffled_object", "linear_probe", "HALP", "GLSim"}
+    assert set(table3["method"]) >= {"object", "shared", "shuffled_object", "linear_probe"}
 
     assert not supp_split_sensitivity.empty
 

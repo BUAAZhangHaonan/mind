@@ -9,13 +9,49 @@ from mind.comparators.halp import (
     build_halp_probe_frames,
     evaluate_halp_nested_from_readout_entries,
     evaluate_halp_nested,
+    resolve_halp_probe_names,
     resolve_halp_layer_indices,
 )
 
 
-def test_resolve_halp_layer_indices_uses_all_layers() -> None:
+def test_resolve_halp_layer_indices_match_official_five_layer_schedule() -> None:
     assert resolve_halp_layer_indices(5) == [0, 1, 2, 3, 4]
+    assert resolve_halp_layer_indices(8) == [0, 2, 4, 6, 7]
+    assert resolve_halp_layer_indices(32) == [0, 8, 16, 24, 31]
     assert resolve_halp_layer_indices(1) == [0]
+
+
+def test_resolve_halp_probe_names_returns_exactly_eleven_official_probes() -> None:
+    entries = [
+        {
+            "sample_id": "sample-1",
+            "image_id": 10,
+            "label": 0,
+            "parsed_answer": 1,
+            "subset": "popular",
+            "object_name": "dog",
+            "query_hidden_states": torch.zeros((32, 2), dtype=torch.float32),
+            "vision_token_hidden_states": torch.zeros((32, 2), dtype=torch.float32),
+            "vision_features": torch.zeros((2, 2), dtype=torch.float32),
+        }
+    ]
+
+    probe_names = resolve_halp_probe_names(entries)
+
+    assert len(probe_names) == 11
+    assert probe_names[0] == "vision_only"
+    assert probe_names[1:] == [
+        "vision_token_layer_0",
+        "query_token_layer_0",
+        "vision_token_layer_8",
+        "query_token_layer_8",
+        "vision_token_layer_16",
+        "query_token_layer_16",
+        "vision_token_layer_24",
+        "query_token_layer_24",
+        "vision_token_layer_31",
+        "query_token_layer_31",
+    ]
 
 
 def test_build_halp_probe_frames_extracts_vf_vt_and_qt_vectors() -> None:

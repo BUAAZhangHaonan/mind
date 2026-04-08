@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from mind.comparators.glsim import (
+from mind.comparators.glsim_adapted import (
     evaluate_glsim_nested,
     find_subsequence_start,
     resolve_glsim_layer_indices,

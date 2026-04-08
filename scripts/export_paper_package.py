@@ -55,8 +55,6 @@ WIDE_MAIN_METHOD_ORDER = [
     ("no_manifold", "no_manifold"),
     ("full", "full_MIND"),
     ("linear_probe", "linear_probe"),
-    ("halp", "HALP"),
-    ("glsim", "GLSim"),
 ]
 
 FEATURE_VARIANT_ORDER = [
@@ -71,8 +69,6 @@ TRANSFER_METHOD_ORDER = [
     ("shared", "shared"),
     ("shuffled_object", "shuffled_object"),
     ("linear_probe", "linear_probe"),
-    ("halp", "HALP"),
-    ("glsim", "GLSim"),
 ]
 
 METRIC_COLUMNS = ["roc_auc", "roc_auc_ci", "pr_auc", "pr_auc_ci"]
@@ -196,11 +192,13 @@ def _metric_frame(rows: list[dict[str, object]], columns: list[str]) -> pd.DataF
 
 
 def _table_to_markdown(frame: pd.DataFrame) -> str:
-    if frame.empty:
-        return "| |\n| --- |\n"
     columns = frame.columns.tolist()
+    if not columns:
+        return "| |\n| --- |\n"
     header = "| " + " | ".join(columns) + " |"
     divider = "| " + " | ".join(["---"] * len(columns)) + " |"
+    if frame.empty:
+        return "\n".join([header, divider]) + "\n"
     body_lines = []
     for row in frame.to_dict(orient="records"):
         values = []
@@ -265,7 +263,7 @@ def parse_round_two_report_name(name: str) -> tuple[str, str, str]:
 
 def discover_round_two_reports(reports_root: Path) -> list[RoundTwoReport]:
     discovered: dict[Path, RoundTwoReport] = {}
-    for json_name in ("baselines.json", "halp.json", "glsim.json"):
+    for json_name in ("baselines.json", "halp.json"):
         for payload_path in reports_root.rglob(json_name):
             report_dir = payload_path.parent
             model_key, benchmark_key, protocol = parse_round_two_report_name(report_dir.name)
@@ -291,8 +289,6 @@ def discover_round_two_reports(reports_root: Path) -> list[RoundTwoReport]:
                 report.variant_results = variant_results
             elif json_name == "halp.json":
                 report.halp = _load_json(payload_path)
-            elif json_name == "glsim.json":
-                report.glsim = _load_json(payload_path)
     return sorted(discovered.values(), key=lambda item: (item.model_key, item.benchmark_key, item.protocol, item.path.name))
 
 
@@ -316,14 +312,7 @@ def _report_completeness_key(report: RoundTwoReport, *, kind: str) -> tuple[int,
             -len(report.path.name),
             report.path.name,
         )
-    return (
-        1 if report.glsim is not None else 0,
-        1 if (report.path / "glsim_results.csv").exists() else 0,
-        1 if (report.path / "glsim_selection.csv").exists() else 0,
-        0,
-        -len(report.path.name),
-        report.path.name,
-    )
+    return (0, 0, 0, 0, -len(report.path.name), report.path.name)
 
 
 def _find_report(
@@ -349,8 +338,6 @@ def _find_report(
         if kind == "halp" and report.halp is not None:
             candidates.append(report)
             continue
-        if kind == "glsim" and report.glsim is not None:
-            candidates.append(report)
     if not candidates:
         return None
     return max(candidates, key=lambda report: _report_completeness_key(report, kind=kind))
@@ -363,6 +350,23 @@ def _baseline_payload(report: RoundTwoReport, variant: str) -> dict[str, object]
     if not isinstance(payload, dict):
         raise ValueError(f"Missing baseline variant {variant!r} in {report.path}")
     return payload
+
+
+def _baseline_payload_optional(report: RoundTwoReport, variant: str) -> dict[str, object] | None:
+    if report.baseline is not None:
+        payload = report.baseline.get(variant)
+        if isinstance(payload, dict):
+            return payload
+    if report.ablations is not None and not report.ablations.empty and "variant" in report.ablations.columns:
+        matches = report.ablations[report.ablations["variant"] == variant]
+        if not matches.empty:
+            row = matches.iloc[0].to_dict()
+            if row.get("roc_auc") is not None and row.get("pr_auc") is not None:
+                return {
+                    "roc_auc": float(row["roc_auc"]),
+                    "pr_auc": float(row["pr_auc"]),
+                }
+    return None
 
 
 def _result_frame(report: RoundTwoReport, variant: str) -> pd.DataFrame:
@@ -394,42 +398,6 @@ def build_main_table(reports: list[RoundTwoReport]) -> pd.DataFrame:
                         method=method_label,
                         payload=_baseline_payload(report, variant),
                         report_path=report.path,
-                    )
-                )
-            halp_report = _find_report(
-                reports,
-                model_key=model_key,
-                benchmark_key=benchmark_key,
-                protocol="image_grouped",
-                kind="halp",
-            )
-            if halp_report is not None:
-                rows.append(
-                    _metric_row(
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol="image_grouped",
-                        method="HALP",
-                        payload=halp_report.halp or {},
-                        report_path=halp_report.path,
-                    )
-                )
-            glsim_report = _find_report(
-                reports,
-                model_key=model_key,
-                benchmark_key=benchmark_key,
-                protocol="image_grouped",
-                kind="glsim",
-            )
-            if glsim_report is not None:
-                rows.append(
-                    _metric_row(
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol="image_grouped",
-                        method="GLSim",
-                        payload=glsim_report.glsim or {},
-                        report_path=glsim_report.path,
                     )
                 )
     columns = [
@@ -503,7 +471,7 @@ def build_wide_feature_table(reports: list[RoundTwoReport]) -> pd.DataFrame:
                 "benchmark": ROUND_TWO_BENCHMARK_LABELS[benchmark_key],
             }
             for variant_key, variant_label in FEATURE_VARIANT_ORDER:
-                row[variant_label] = _format_metric_cell(_baseline_payload(report, variant_key))
+                row[variant_label] = _format_metric_cell(_baseline_payload_optional(report, variant_key))
             rows.append(row)
     if not rows:
         return pd.DataFrame(columns=columns)
@@ -515,40 +483,17 @@ def build_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: str = 
     for model_key in ROUND_TWO_MODEL_ORDER:
         for protocol in ("image_grouped", "object_heldout"):
             for bank_scope, method_label in TRANSFER_METHOD_ORDER:
-                if bank_scope in {"object", "shared", "shuffled_object", "linear_probe"}:
-                    report = _find_report(
-                        reports,
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol=protocol,
-                        kind="baseline",
-                        bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
-                    )
-                    if report is None:
-                        continue
-                    payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
-                elif bank_scope == "halp":
-                    report = _find_report(
-                        reports,
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol=protocol,
-                        kind="halp",
-                    )
-                    if report is None:
-                        continue
-                    payload = report.halp or {}
-                else:
-                    report = _find_report(
-                        reports,
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol=protocol,
-                        kind="glsim",
-                    )
-                    if report is None:
-                        continue
-                    payload = report.glsim or {}
+                report = _find_report(
+                    reports,
+                    model_key=model_key,
+                    benchmark_key=benchmark_key,
+                    protocol=protocol,
+                    kind="baseline",
+                    bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
+                )
+                if report is None:
+                    continue
+                payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
 
                 rows.append(
                     {
@@ -590,37 +535,16 @@ def build_wide_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: s
             }
             for protocol in ("image_grouped", "object_heldout"):
                 payload: dict[str, object] | None = None
-                if bank_scope in {"object", "shared", "shuffled_object", "linear_probe"}:
-                    report = _find_report(
-                        reports,
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol=protocol,
-                        kind="baseline",
-                        bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
-                    )
-                    if report is not None:
-                        payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
-                elif bank_scope == "halp":
-                    report = _find_report(
-                        reports,
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol=protocol,
-                        kind="halp",
-                    )
-                    if report is not None:
-                        payload = report.halp or {}
-                else:
-                    report = _find_report(
-                        reports,
-                        model_key=model_key,
-                        benchmark_key=benchmark_key,
-                        protocol=protocol,
-                        kind="glsim",
-                    )
-                    if report is not None:
-                        payload = report.glsim or {}
+                report = _find_report(
+                    reports,
+                    model_key=model_key,
+                    benchmark_key=benchmark_key,
+                    protocol=protocol,
+                    kind="baseline",
+                    bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
+                )
+                if report is not None:
+                    payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
                 row[protocol] = _format_metric_cell(payload)
             if row["image_grouped"] or row["object_heldout"]:
                 rows.append(row)
@@ -658,27 +582,6 @@ def build_benchmark_table(
                     report_path=report.path,
                 )
             )
-        for kind, method_label in (("halp", "HALP"), ("glsim", "GLSim")):
-            comparator = _find_report(
-                reports,
-                model_key=model_key,
-                benchmark_key=benchmark_key,
-                protocol=table_protocol,
-                kind=kind,
-            )
-            if comparator is None:
-                continue
-            payload = comparator.halp if kind == "halp" else comparator.glsim
-            rows.append(
-                _metric_row(
-                    model_key=model_key,
-                    benchmark_key=benchmark_key,
-                    protocol=table_protocol,
-                    method=method_label,
-                    payload=payload or {},
-                    report_path=comparator.path,
-                )
-            )
     columns = [
         "model",
         "benchmark",
@@ -714,26 +617,6 @@ def build_wide_benchmark_table(
         if report is None:
             continue
         for variant_key, column_label in WIDE_MAIN_METHOD_ORDER:
-            if variant_key == "halp":
-                halp_report = _find_report(
-                    reports,
-                    model_key=model_key,
-                    benchmark_key=benchmark_key,
-                    protocol=table_protocol,
-                    kind="halp",
-                )
-                row[column_label] = _format_metric_cell(None if halp_report is None else halp_report.halp or {})
-                continue
-            if variant_key == "glsim":
-                glsim_report = _find_report(
-                    reports,
-                    model_key=model_key,
-                    benchmark_key=benchmark_key,
-                    protocol=table_protocol,
-                    kind="glsim",
-                )
-                row[column_label] = _format_metric_cell(None if glsim_report is None else glsim_report.glsim or {})
-                continue
             row[column_label] = _format_metric_cell(_baseline_payload(report, variant_key))
         rows.append(row)
     if not rows:

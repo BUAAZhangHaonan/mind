@@ -6,10 +6,12 @@ set -euo pipefail
 # Scheduling policy:
 # - Run exactly one MIND task at a time.
 # - Readouts are temporary working files, not durable artifacts. Extract one
-#   model/benchmark unit, run HALP and GLSim on that same unit, then delete the
-#   readout cache before moving on.
-# - HALP and GLSim must never run concurrently. Both load large readout caches
-#   into system RAM and can trigger host-wide OOM events if launched together.
+#   model/benchmark unit, run the corrected official HALP row-split baseline on
+#   that same unit, then delete the readout cache before moving on.
+# - The old grouped HALP path and the readout-based GLSim adaptation are not in
+#   this queue. They are not paper-safe official baselines for the current
+#   round-two POPE/DASH-B lane.
+# - Memory-heavy comparator work must never run concurrently.
 # - The queue logs system memory and GPU state before and after every step, and
 #   retries a step once if it dies with exit code 137.
 # - The serial scheduler and the memory gate are the real host-safety controls.
@@ -136,9 +138,9 @@ wait_for_safe_memory() {
 
 kill_lingering_cpu_comparators() {
   local pids
-  pids="$(ps -eo pid=,cmd= | awk '/python scripts\/run_(halp|glsim)\.py/ {print $1}')"
+  pids="$(ps -eo pid=,cmd= | awk '/python scripts\/run_(halp|glsim|glsim_adapted)\.py/ {print $1}')"
   if [[ -z "$pids" ]]; then
-    log "No lingering HALP/GLSim CPU processes found"
+    log "No lingering HALP/GLSim-adapted CPU processes found"
     return
   fi
   log "KILL lingering CPU comparator processes: ${pids//$'\n'/ }"
@@ -160,7 +162,7 @@ cleanup_partial_comparator_outputs() {
   local kind report_root metrics results selection present_count
   for report_root in outputs/round2_2026_04/reports/*; do
     [[ -d "$report_root" ]] || continue
-    for kind in glsim halp; do
+    for kind in halp glsim glsim_adapted; do
       metrics="${report_root}/${kind}.json"
       results="${report_root}/${kind}_results.csv"
       selection="${report_root}/${kind}_selection.csv"
@@ -420,19 +422,9 @@ ensure_eval_cache() {
 cleanup_readout_path_if_results_complete() {
   local step_name="$1"
   local readout_path="$2"
-  local image_report_root="$3"
-  local heldout_report_root="$4"
+  local halp_report_root="$3"
 
-  if ! report_complete "$image_report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
-    return
-  fi
-  if ! report_complete "$image_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
-    return
-  fi
-  if ! report_complete "$heldout_report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
-    return
-  fi
-  if ! report_complete "$heldout_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
+  if ! report_complete "$halp_report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
     return
   fi
   if [[ -d "$readout_path" ]]; then
@@ -449,11 +441,7 @@ ensure_halp() {
   local step_name="$1"
   local readout_path="$2"
   local expected_shards="$3"
-  local reference_root="$4"
-  local model_name="$5"
-  local experiment_name="$6"
-  local split_strategy="$7"
-  local num_folds="$8"
+  local experiment_name="$4"
   local report_root="outputs/round2_2026_04/reports/${experiment_name}"
 
   if report_complete "$report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
@@ -472,47 +460,9 @@ ensure_halp() {
         --readout-path "$readout_path" \
         --output-root outputs/round2_2026_04/reports \
         --experiment-name "$experiment_name" \
-        --reference-root "$reference_root" \
-        --model-name "$model_name" \
-        --split-strategy "$split_strategy" \
-        --num-folds "$num_folds" \
-        --bootstrap-resamples 1000
-}
-
-ensure_glsim() {
-  local step_name="$1"
-  local readout_path="$2"
-  local expected_shards="$3"
-  local model_config="$4"
-  local reference_root="$5"
-  local model_name="$6"
-  local experiment_name="$7"
-  local split_strategy="$8"
-  local num_folds="$9"
-  local report_root="outputs/round2_2026_04/reports/${experiment_name}"
-
-  if report_complete "$report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
-    log "SKIP ${step_name} complete"
-    return
-  fi
-  require_path "$readout_path" "${step_name} requires readout cache"
-  if [[ "$(shard_count "$readout_path")" -ne "$expected_shards" ]]; then
-    log "FAIL ${step_name}: expected ${expected_shards} readout shards under ${readout_path}"
-    exit 1
-  fi
-
-  run_serial_step "$step_name" \
-    conda run --no-capture-output -n "$CONDA_ENV" \
-      python scripts/run_glsim.py \
-        --readout-path "$readout_path" \
-        --model-config "$model_config" \
-        --output-root outputs/round2_2026_04/reports \
-        --experiment-name "$experiment_name" \
-        --device cpu \
-        --reference-root "$reference_root" \
-        --model-name "$model_name" \
-        --split-strategy "$split_strategy" \
-        --num-folds "$num_folds" \
+        --device cuda \
+        --split-strategy row \
+        --test-size 0.2 \
         --bootstrap-resamples 1000
 }
 
@@ -621,26 +571,17 @@ run_comparator_unit() {
   local records_path="$6"
   local image_root="$7"
   local batch_size="$8"
-  local reference_root="$9"
-  local image_experiment="${10}"
-  local heldout_experiment="${11}"
-  local image_num_folds="${12}"
-  local heldout_num_folds="${13}"
-  local expected_shards_count="${14}"
+  local halp_experiment="${9}"
+  local expected_shards_count="${10}"
   local readout_path="outputs/round2_2026_04/readouts/${model_name}/${dataset_name}/${split_name}"
-  local image_report_root="outputs/round2_2026_04/reports/${image_experiment}"
-  local heldout_report_root="outputs/round2_2026_04/reports/${heldout_experiment}"
+  local halp_report_root="outputs/round2_2026_04/reports/${halp_experiment}"
 
-  if report_complete "$image_report_root" "halp.json" "halp_results.csv" "halp_selection.csv" \
-    && report_complete "$image_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv" \
-    && report_complete "$heldout_report_root" "halp.json" "halp_results.csv" "halp_selection.csv" \
-    && report_complete "$heldout_report_root" "glsim.json" "glsim_results.csv" "glsim_selection.csv"; then
+  if report_complete "$halp_report_root" "halp.json" "halp_results.csv" "halp_selection.csv"; then
     log "SKIP ${unit_name} comparator unit complete"
     cleanup_readout_path_if_results_complete \
       "$unit_name" \
       "$readout_path" \
-      "$image_report_root" \
-      "$heldout_report_root"
+      "$halp_report_root"
     return
   fi
 
@@ -655,52 +596,15 @@ run_comparator_unit() {
     "$batch_size"
 
   ensure_halp \
-    "${unit_name} HALP image_grouped" \
+    "${unit_name} HALP row" \
     "$readout_path" \
     "$expected_shards_count" \
-    "$reference_root" \
-    "$model_name" \
-    "$image_experiment" \
-    "image_grouped" \
-    "$image_num_folds"
-
-  ensure_halp \
-    "${unit_name} HALP object_heldout" \
-    "$readout_path" \
-    "$expected_shards_count" \
-    "$reference_root" \
-    "$model_name" \
-    "$heldout_experiment" \
-    "object_heldout" \
-    "$heldout_num_folds"
-
-  ensure_glsim \
-    "${unit_name} GLSim image_grouped" \
-    "$readout_path" \
-    "$expected_shards_count" \
-    "$model_config" \
-    "$reference_root" \
-    "$model_name" \
-    "$image_experiment" \
-    "image_grouped" \
-    "$image_num_folds"
-
-  ensure_glsim \
-    "${unit_name} GLSim object_heldout" \
-    "$readout_path" \
-    "$expected_shards_count" \
-    "$model_config" \
-    "$reference_root" \
-    "$model_name" \
-    "$heldout_experiment" \
-    "object_heldout" \
-    "$heldout_num_folds"
+    "$halp_experiment"
 
   cleanup_readout_path_if_results_complete \
     "$unit_name" \
     "$readout_path" \
-    "$image_report_root" \
-    "$heldout_report_root"
+    "$halp_report_root"
 }
 
 phase_main_comparators() {
@@ -714,11 +618,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks" \
-    "round2-qwen3-vl-8b-popular-final" \
-    "round2-qwen3-vl-8b-popular-final-object-heldout" \
-    "5" \
-    "2" \
+    "round2-qwen3-vl-8b-popular-halp-row" \
     "47"
 
   run_comparator_unit \
@@ -730,11 +630,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks" \
-    "round2-internvl3.5-8b-popular" \
-    "round2-internvl3.5-8b-popular-object-heldout" \
-    "5" \
-    "2" \
+    "round2-internvl3.5-8b-popular-halp-row" \
     "47"
 
   run_comparator_unit \
@@ -746,11 +642,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks" \
-    "round2-llava-onevision-7b-popular" \
-    "round2-llava-onevision-7b-popular-object-heldout" \
-    "5" \
-    "2" \
+    "round2-llava-onevision-7b-popular-halp-row" \
     "47"
 
   run_comparator_unit \
@@ -762,11 +654,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/pope/popular.jsonl" \
     "data/coco/val2014" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks" \
-    "round2-molmo-7b-d-0924-popular" \
-    "round2-molmo-7b-d-0924-popular-object-heldout" \
-    "5" \
-    "2" \
+    "round2-molmo-7b-d-0924-popular-halp-row" \
     "47"
 
   run_comparator_unit \
@@ -778,11 +666,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks_dash_b" \
-    "round2-qwen3-vl-8b-dash-b" \
-    "round2-qwen3-vl-8b-dash-b-object-heldout" \
-    "5" \
-    "2" \
+    "round2-qwen3-vl-8b-dash-b-halp-row" \
     "42"
 
   run_comparator_unit \
@@ -794,11 +678,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks_dash_b" \
-    "round2-internvl3.5-8b-dash-b" \
-    "round2-internvl3.5-8b-dash-b-object-heldout" \
-    "5" \
-    "2" \
+    "round2-internvl3.5-8b-dash-b-halp-row" \
     "42"
 
   run_comparator_unit \
@@ -810,11 +690,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks_dash_b" \
-    "round2-llava-onevision-7b-dash-b" \
-    "round2-llava-onevision-7b-dash-b-object-heldout" \
-    "5" \
-    "2" \
+    "round2-llava-onevision-7b-dash-b-halp-row" \
     "42"
 
   run_comparator_unit \
@@ -826,11 +702,7 @@ phase_main_comparators() {
     "outputs/round2_2026_04/normalized/dash-b/main.jsonl" \
     "data/dash_b" \
     "$READOUT_BATCH_SIZE_DEFAULT" \
-    "outputs/round2_2026_04/reference_banks_dash_b" \
-    "round2-molmo-7b-d-0924-dash-b" \
-    "round2-molmo-7b-d-0924-dash-b-object-heldout" \
-    "5" \
-    "2" \
+    "round2-molmo-7b-d-0924-dash-b-halp-row" \
     "42"
 
   ensure_eval_cache "qwen3-vl-8b pope adversarial eval cache" "configs/models/qwen3_vl_8b_local.yaml" "qwen3-vl-8b" "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" "adversarial" "data/coco/val2014" "8"

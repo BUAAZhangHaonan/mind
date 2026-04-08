@@ -24,7 +24,7 @@ compute_baselines_script = _load_script("compute_baselines")
 compute_drift = _load_script("compute_drift")
 run_experiment = _load_script("run_experiment")
 run_halp_script = _load_script("run_halp")
-run_glsim_script = _load_script("run_glsim")
+run_glsim_script = _load_script("run_glsim_adapted")
 train_detector = _load_script("train_detector")
 
 
@@ -86,10 +86,8 @@ def test_run_halp_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: P
             str(output_root),
             "--experiment-name",
             "smoke-halp",
-            "--split-strategy",
-            "image_grouped",
-            "--num-folds",
-            "3",
+            "--device",
+            "cpu",
             "--epochs",
             "8",
             "--batch-size",
@@ -110,7 +108,7 @@ def test_run_halp_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: P
     assert selection_path.exists()
     payload = json.loads(metrics_path.read_text(encoding="utf-8"))
     results = pd.read_csv(results_path)
-    assert payload["selected_probe_counts"]["vision_only"] == 3
+    assert sum(payload["selected_probe_counts"].values()) == 1
     assert results.columns.tolist() == [
         "sample_id",
         "image_id",
@@ -162,10 +160,8 @@ def test_run_halp_writes_metrics_from_compact_readout_cache(tmp_path: Path) -> N
             str(output_root),
             "--experiment-name",
             "smoke-halp-compact",
-            "--split-strategy",
-            "image_grouped",
-            "--num-folds",
-            "3",
+            "--device",
+            "cpu",
             "--epochs",
             "8",
             "--batch-size",
@@ -274,9 +270,9 @@ def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: 
     )
 
     assert exit_code == 0
-    metrics_path = output_root / "smoke-glsim" / "glsim.json"
-    results_path = output_root / "smoke-glsim" / "glsim_results.csv"
-    selection_path = output_root / "smoke-glsim" / "glsim_selection.csv"
+    metrics_path = output_root / "smoke-glsim" / "glsim_adapted.json"
+    results_path = output_root / "smoke-glsim" / "glsim_adapted_results.csv"
+    selection_path = output_root / "smoke-glsim" / "glsim_adapted_selection.csv"
     assert metrics_path.exists()
     assert results_path.exists()
     assert selection_path.exists()
@@ -404,8 +400,8 @@ def test_run_glsim_writes_metrics_from_compact_readout_cache(tmp_path: Path, mon
     )
 
     assert exit_code == 0
-    metrics_path = output_root / "smoke-glsim-compact" / "glsim.json"
-    results_path = output_root / "smoke-glsim-compact" / "glsim_results.csv"
+    metrics_path = output_root / "smoke-glsim-compact" / "glsim_adapted.json"
+    results_path = output_root / "smoke-glsim-compact" / "glsim_adapted_results.csv"
     assert metrics_path.exists()
     assert results_path.exists()
 
