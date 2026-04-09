@@ -32,6 +32,21 @@ HALP_METADATA_COLUMNS = {
     "selected_probe",
 }
 
+HALP_REQUIRED_CACHE_FIELDS = {
+    "sample_id",
+    "image_id",
+    "label",
+    "parsed_answer",
+    "subset",
+    "object_name",
+    "vision_features",
+    "query_hidden_states",
+    "vision_token_hidden_states",
+    "full_hidden_states",
+    "query_token_index",
+    "vision_token_span",
+}
+
 
 @dataclass(frozen=True)
 class HALPProbeConfig:

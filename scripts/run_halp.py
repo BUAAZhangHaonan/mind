@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mind.comparators import HALPProbeConfig
+from mind.comparators import HALPProbeConfig, HALP_REQUIRED_CACHE_FIELDS
 from mind.comparators.halp import (
     evaluate_halp_official_from_readout_entries,
     summarize_halp_results,
@@ -55,7 +55,10 @@ def build_output_paths(output_root: Path, experiment_name: str) -> dict[str, Pat
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    readout_entries = load_cache_entries(args.readout_path)
+    readout_entries = load_cache_entries(
+        args.readout_path,
+        keep_fields=HALP_REQUIRED_CACHE_FIELDS,
+    )
     if args.label_overrides is not None:
         readout_entries = apply_label_overrides_to_entries(readout_entries, args.label_overrides)
 

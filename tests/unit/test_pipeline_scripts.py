@@ -180,6 +180,66 @@ def test_run_halp_writes_metrics_from_compact_readout_cache(tmp_path: Path) -> N
     assert results_path.exists()
 
 
+def test_run_halp_only_requests_required_cache_fields(tmp_path: Path, monkeypatch) -> None:
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    for index in range(12):
+        hallucination_label = 1 if index % 2 == 0 else 0
+        signal = float(hallucination_label)
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0,
+                "parsed_answer": 1 if hallucination_label else 0,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+                "vision_features": torch.tensor([[signal, 0.0], [signal, 1.0]]),
+                "query_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                "vision_token_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                "readout_format": "compact_comparator_cache_v1",
+                "total_layers": 4,
+                "glsim_vision_hidden_states": torch.ones((2, 2, 2), dtype=torch.float32),
+            }
+        )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    seen: dict[str, object] = {}
+    original_load_cache_entries = run_halp_script.load_cache_entries
+
+    def _wrapped_load_cache_entries(path: Path, *, keep_fields=None):
+        seen["keep_fields"] = keep_fields
+        return original_load_cache_entries(path, keep_fields=keep_fields)
+
+    monkeypatch.setattr(run_halp_script, "load_cache_entries", _wrapped_load_cache_entries)
+
+    output_root = tmp_path / "reports"
+    exit_code = run_halp_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-halp-required-fields",
+            "--device",
+            "cpu",
+            "--epochs",
+            "2",
+            "--batch-size",
+            "4",
+            "--hidden-dims",
+            "8,4",
+            "--bootstrap-resamples",
+            "10",
+        ]
+    )
+
+    assert exit_code == 0
+    assert seen["keep_fields"] == run_halp_script.HALP_REQUIRED_CACHE_FIELDS
+
+
 def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: Path, monkeypatch) -> None:
     class FakeTokenizer:
         def encode(self, text: str, add_special_tokens: bool = False):

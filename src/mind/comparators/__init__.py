@@ -1,6 +1,7 @@
 """Comparator baselines for round-two experiments."""
 
 from .halp import (
+    HALP_REQUIRED_CACHE_FIELDS,
     HALPProbeConfig,
     build_halp_probe_frames,
     evaluate_halp_nested,
@@ -16,6 +17,7 @@ from .glsim_adapted import (
 
 __all__ = [
     "HALPProbeConfig",
+    "HALP_REQUIRED_CACHE_FIELDS",
     "build_halp_probe_frames",
     "build_glsim_adapted_score_frame",
     "build_glsim_adapted_object_token_contexts",
