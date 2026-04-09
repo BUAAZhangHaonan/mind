@@ -45,6 +45,8 @@ MEMORY_CHECK_SLEEP_SECONDS="${MEMORY_CHECK_SLEEP_SECONDS:-60}"
 MEMORY_CHECK_ATTEMPTS="${MEMORY_CHECK_ATTEMPTS:-3}"
 OOM_RETRY_SLEEP_SECONDS="${OOM_RETRY_SLEEP_SECONDS:-120}"
 VMEM_LIMIT_PERCENT="${VMEM_LIMIT_PERCENT:-0}"
+CUDA_CHECK_SLEEP_SECONDS="${CUDA_CHECK_SLEEP_SECONDS:-60}"
+CUDA_CHECK_ATTEMPTS="${CUDA_CHECK_ATTEMPTS:-3}"
 
 mkdir -p "$(dirname "$QUEUE_LOG")"
 
@@ -133,6 +135,35 @@ wait_for_safe_memory() {
     fi
   done
   log "FAIL insufficient memory: available RAM stayed below ${SAFE_AVAILABLE_GB}G after ${MEMORY_CHECK_ATTEMPTS} checks"
+  return 1
+}
+
+cuda_preflight() {
+  conda run --no-capture-output -n "$CONDA_ENV" python - <<'PY'
+import torch
+
+if not torch.cuda.is_available():
+    raise SystemExit("torch.cuda.is_available() is False")
+if torch.cuda.device_count() < 1:
+    raise SystemExit("torch.cuda.device_count() < 1")
+probe = torch.zeros((1,), device="cuda")
+print(f"cuda_preflight_ok device={probe.device} visible_devices={torch.cuda.device_count()}")
+PY
+}
+
+wait_for_cuda_ready() {
+  local attempt
+  for attempt in $(seq 1 "$CUDA_CHECK_ATTEMPTS"); do
+    log "CUDA-GATE attempt=${attempt}/${CUDA_CHECK_ATTEMPTS} gpu_id=${GPU_ID}"
+    if cuda_preflight 2>&1 | tee -a "$QUEUE_LOG"; then
+      return 0
+    fi
+    if [[ "$attempt" -lt "$CUDA_CHECK_ATTEMPTS" ]]; then
+      log "WAIT CUDA preflight failed; sleeping ${CUDA_CHECK_SLEEP_SECONDS}s"
+      sleep "$CUDA_CHECK_SLEEP_SECONDS"
+    fi
+  done
+  log "FAIL CUDA preflight failed after ${CUDA_CHECK_ATTEMPTS} attempts"
   return 1
 }
 
@@ -333,6 +364,11 @@ run_serial_step() {
   exit "$status"
 }
 
+run_cuda_serial_step() {
+  wait_for_cuda_ready || exit 1
+  run_serial_step "$@"
+}
+
 ensure_readouts() {
   local step_name="$1"
   local model_config="$2"
@@ -357,7 +393,7 @@ ensure_readouts() {
     existing=0
   fi
 
-  run_serial_step "$step_name" \
+  run_cuda_serial_step "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_readout_states.py \
         --records "$records_path" \
@@ -396,7 +432,7 @@ ensure_eval_cache() {
     return
   fi
 
-  run_serial_step "$step_name" \
+  run_cuda_serial_step "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/extract_eval_states.py \
         --records "$records_path" \
@@ -454,7 +490,7 @@ ensure_halp() {
     exit 1
   fi
 
-  run_serial_step "$step_name" \
+  run_cuda_serial_step "$step_name" \
     conda run --no-capture-output -n "$CONDA_ENV" \
       python scripts/run_halp.py \
         --readout-path "$readout_path" \
