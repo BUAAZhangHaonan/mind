@@ -11,19 +11,30 @@ The old split recovery queues are gone. The first unified queue also stopped, fi
 Current live state:
 
 - GPU 0 is the only GPU allowed for MIND work.
-- GPU 1 is currently occupied by a non-MIND process.
-- The corrected unified queue is not running right now.
-- The latest remounted queue advanced substantially, then stopped on a new error:
+- GPU 1 is idle right now and untouched by MIND.
+- The corrected unified queue is running again in `tmux`:
+  - session: `mind_round2_unified_queue`
+  - wait log: `outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260409_resume6.log`
+  - queue log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260409_resume6.log`
+- The latest remounted queue had previously advanced substantially, then stopped on a new error:
   - `internvl3.5-8b` `POPE popular` official HALP row split finished cleanly
   - `llava-onevision-7b` `POPE popular` official HALP row split finished cleanly
   - `molmo-7b-d-0924` `POPE popular` official HALP row split finished cleanly
   - `qwen3-vl-8b` `DASH-B` official HALP row split finished cleanly
   - `internvl3.5-8b` `DASH-B` readouts finished cleanly
   - `internvl3.5-8b` `DASH-B` official HALP row split then failed with `exit=1`
-- The latest failure is not an OOM kill. The queue log shows:
+- That failure was not an OOM kill. The queue log showed:
   - `RuntimeError: CUDA driver initialization failed, you might not have a CUDA gpu.`
   - the failure happens at the first `HALPProbe(...).to(device)` call
-- There is no live `run_halp.py` or `extract_readout_states.py` worker at this moment.
+- The unified queue now has a CUDA preflight gate before GPU steps.
+- That preflight already passed inside the live queue context:
+  - `cuda_preflight_ok device=cuda:0 visible_devices=1`
+- The current live MIND process is:
+  - `python scripts/run_halp.py`
+  - model: `internvl3.5-8b`
+  - benchmark: `DASH-B`
+  - protocol: official HALP row split
+- The current live `run_halp.py` worker is active again under the remounted queue.
 - The stop was intentional, not a host crash:
   - the current `HALP` runner was using the wrong baseline definition
   - the current `GLSim` path was mislabeled as if it were the official method
@@ -62,9 +73,9 @@ The concrete design change for this pass is simple:
 Current resource snapshot during this audit:
 
 - `125 GiB` total RAM
-- no live MIND worker right now
-- `GPU 0` is idle for MIND right now because the queue stopped
-- `GPU 1` is busy with another project
+- one live corrected `run_halp.py` worker for `internvl3.5-8b` `DASH-B`
+- `GPU 0` is the active MIND lane again, even if instantaneous utilization can still read `0%` during CPU-side probe preparation
+- `GPU 1` is idle right now and untouched by MIND
 
 ## Main Matrix State
 
@@ -136,7 +147,7 @@ Current comparator state:
 - No official GLSim outputs are saved for these benchmarks.
 - The old readout-based similarity path now belongs under the explicit name `GLSim-adapted`.
 - Legacy readout counts are no longer treated as progress because the old cache format was deleted.
-- Comparator progress now depends on recovering from the stopped `internvl3.5-8b` `DASH-B` HALP row failure on `GPU 0`.
+- Comparator progress now depends on the active resumed `internvl3.5-8b` `DASH-B` HALP row run on `GPU 0`.
 
 ## What The Current Results Already Say
 
@@ -160,10 +171,9 @@ That means the paper can still claim superiority over simple output confidence m
 
 ## Immediate Priority
 
-1. Remount the corrected unified queue on `GPU 0`.
-2. Let the corrected unified queue keep running corrected official HALP row-split jobs one unit at a time after validating readouts.
-3. Keep `GPU 1` untouched for non-MIND work.
-4. Keep the tracked paper tables MIND-only until corrected comparator artifacts exist.
+1. Let the corrected unified queue keep running corrected official HALP row-split jobs one unit at a time on `GPU 0`.
+2. Keep `GPU 1` untouched for non-MIND work.
+3. Keep the tracked paper tables MIND-only until corrected comparator artifacts exist.
 
 ## Unified Queue Policy
 
