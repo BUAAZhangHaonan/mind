@@ -11,17 +11,24 @@ The old split recovery queues are gone. The first unified queue also stopped, fi
 Current live state:
 
 - GPU 0 is the only GPU allowed for MIND work.
-- GPU 1 is currently idle, but the corrected MIND queue still stays on GPU 0 only.
-- The old live comparator queue was stopped on purpose.
-- The corrected unified queue is now remounted in `tmux`:
+- GPU 1 is idle right now, but MIND still stays on GPU 0 only.
+- The old live comparator queue stopped on a real error after one corrected result and one completed readout rebuild:
+  - `qwen3-vl-8b` `POPE popular` official HALP row split finished cleanly
+  - `internvl3.5-8b` `POPE popular` readouts finished cleanly
+  - `internvl3.5-8b` `POPE popular` official HALP row split then died twice with `exit=137`
+- That `137` was not a method-definition problem anymore. The runner was still loading the entire compact cache, including large `GLSim` tensors that HALP never uses.
+- `run_halp.py` has now been patched to load only HALP-required readout fields.
+- The corrected unified queue is now remounted again in `tmux`:
   - session: `mind_round2_unified_queue`
-  - wait log: `outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260409_reset.log`
-  - queue log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260409_reset.log`
+  - wait log: `outputs/round2_2026_04/job_logs/mind_wait_for_gpu0_20260409_resume5.log`
+  - queue log: `outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260409_resume5.log`
 - The current live MIND process is:
   - `python scripts/run_halp.py`
-  - model: `qwen3-vl-8b`
+  - model: `internvl3.5-8b`
   - benchmark: `POPE popular`
   - protocol: official HALP row split
+- The live `run_halp.py` worker is active again under the remounted queue.
+- GPU 0 can still read as `0%` for part of this step because the loader and probe-frame assembly are CPU-heavy before the actual CUDA training work starts.
 - The stop was intentional, not a host crash:
   - the current `HALP` runner was using the wrong baseline definition
   - the current `GLSim` path was mislabeled as if it were the official method
@@ -33,14 +40,18 @@ Current live state:
 - The queue had already finished one compact `qwen3-vl-8b` `POPE popular` readout rebuild under:
   - `outputs/round2_2026_04/readouts/qwen3-vl-8b/pope/popular/`
 - The qwen popular readout rebuild is complete with valid `vision_features`.
-- No corrected comparator artifacts are saved yet.
+- One corrected comparator artifact is already saved:
+  - `outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-halp-row/halp.json`
+  - `ROC-AUC 0.9527`
+  - `PR-AUC 0.7280`
 - The remounted queue skipped the completed qwen readouts and resumed directly at corrected official HALP.
 - GPU utilization can still read as `0%` during this step because `run_halp.py` starts with CPU-side probe-frame assembly before the actual probe updates.
 - The current code reset changed the comparator policy:
   - `run_halp.py` now targets the official 11-probe HALP setup on a stratified row split
   - the old grouped nested HALP path is no longer the paper-facing default
   - the old readout-based GLSim path is now `GLSim-adapted`, not official GLSim
-- No other compact readout unit has been rebuilt yet under `outputs/round2_2026_04/readouts/`.
+- The `internvl3.5-8b` `POPE popular` compact readout rebuild is also complete under:
+  - `outputs/round2_2026_04/readouts/internvl3.5-8b/pope/popular/`
 
 The concrete design change for this pass is simple:
 
@@ -55,7 +66,7 @@ The concrete design change for this pass is simple:
 Current resource snapshot during this audit:
 
 - `125 GiB` total RAM
-- one live corrected `run_halp.py` worker for `qwen3-vl-8b` `POPE popular`
+- one live corrected `run_halp.py` worker for `internvl3.5-8b` `POPE popular`
 - `GPU 0` is the active MIND device lane, even if instantaneous utilization is low during CPU-side probe preparation
 - `GPU 1` is idle right now and untouched by MIND
 
@@ -63,8 +74,8 @@ Current resource snapshot during this audit:
 
 | Model | POPE popular report | DASH-B reference bank | DASH-B features | DASH-B report | Compact comparator readouts |
 | --- | --- | --- | --- | --- | --- |
-| Qwen3-VL-8B | complete | complete | complete | complete | `POPE popular` compact readouts rebuilt successfully; no corrected comparator artifact saved yet |
-| InternVL3.5-8B | complete | complete | complete | complete | pending compact rebuild |
+| Qwen3-VL-8B | complete | complete | complete | complete | `POPE popular` compact readouts rebuilt successfully; corrected official HALP row split saved |
+| InternVL3.5-8B | complete | complete | complete | complete | `POPE popular` compact readouts rebuilt successfully; corrected official HALP row split running now after a loader fix |
 | LLaVA-OneVision-7B | complete | complete | complete | complete | pending compact rebuild |
 | Molmo-7B-D-0924 | complete | complete | complete | complete | pending compact rebuild |
 
@@ -120,11 +131,12 @@ The tracked paper table already exists:
 
 Current comparator state:
 
-- No final official HALP outputs are saved yet.
+- One final official HALP output is saved for `qwen3-vl-8b` on `POPE popular`.
+- No other final official HALP outputs are saved yet.
 - No official GLSim outputs are saved for these benchmarks.
 - The old readout-based similarity path now belongs under the explicit name `GLSim-adapted`.
 - Legacy readout counts are no longer treated as progress because the old cache format was deleted.
-- Comparator progress now depends on the corrected queue being remounted on `GPU 0`.
+- Comparator progress now depends on the corrected queue continuing from the active `internvl3.5-8b` `POPE popular` HALP row run on `GPU 0`.
 
 ## What The Current Results Already Say
 
