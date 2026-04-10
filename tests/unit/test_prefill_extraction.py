@@ -58,6 +58,10 @@ def test_select_layer_range_supports_early_middle_and_late() -> None:
     assert select_layer_range(total_layers=32, count=4, range_name="late") == [16, 21, 26, 31]
 
 
+def test_select_layer_range_supports_all_layers() -> None:
+    assert select_layer_range(total_layers=8, count=8, range_name="all") == list(range(8))
+
+
 def test_extract_prefill_vectors_uses_last_prefill_token_from_selected_layers() -> None:
     hidden_states = tuple(
         torch.full((1, 3, 2), fill_value=float(index))

@@ -85,6 +85,9 @@ def select_layer_range(*, total_layers: int, count: int, range_name: str) -> lis
     elif normalized == "late":
         start = total_layers // 2
         end = total_layers - 1
+    elif normalized == "all":
+        start = 0
+        end = total_layers - 1
     else:
         raise ValueError(f"Unsupported layer range: {range_name}")
 

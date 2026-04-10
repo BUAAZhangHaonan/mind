@@ -284,3 +284,19 @@ def compute_reference_bank_stats(
                 k_neighbors=k_neighbors,
             )
     return stats_map
+
+
+def compute_reference_bank_stats_from_bank(
+    bank: dict[str, dict[int, torch.Tensor]],
+    *,
+    k_neighbors: int = 32,
+) -> dict[str, dict[int, dict[str, float]]]:
+    stats_map: dict[str, dict[int, dict[str, float]]] = {}
+    for object_name, layer_map in bank.items():
+        stats_map[object_name] = {}
+        for layer_index, vectors in layer_map.items():
+            stats_map[object_name][int(layer_index)] = _compute_layer_statistics(
+                vectors,
+                k_neighbors=k_neighbors,
+            )
+    return stats_map

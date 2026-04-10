@@ -39,9 +39,7 @@ The current round-two tables support a narrower and cleaner claim than the old d
 - The linear probe beats full MIND on every completed row.
 - So the paper can still make a modest detector-performance claim over simple output baselines.
 - It cannot claim that MIND is the strongest internal-state detector.
-- The comparator lane is being reset for correctness:
-  - the old grouped `HALP` path is not a faithful official baseline
-  - the old readout-based `GLSim` path is now explicitly `GLSim-adapted`, not official GLSim
+- The only external comparator left in the paper lane is `HALP`, and it should be matched to the same evaluation protocol as the MIND tables.
 
 ## Current Round-Two Results
 
@@ -50,8 +48,6 @@ Use only the saved round-two rows in:
 - `docs/tables/round2/table1_pope_popular.md`
 - `docs/tables/round2/table1_dash_b.md`
 - `docs/tables/round2/table2_feature_ablation.md`
-
-These tracked tables are intentionally MIND-only right now. Comparator columns were removed until corrected official artifacts exist.
 
 ### POPE Popular
 
@@ -143,8 +139,6 @@ The older March correction-phase popular tables are not reproducible under the c
 - POPE, RePOPE, and DASH-B for object hallucination evaluation
 - output-side confidence baselines
 - pre-generation probe methods such as HALP
-- similarity-based grounding methods such as official GLSim
-- the paper should state plainly that the current repo’s older `GLSim-adapted` path is a queried-object pre-generation adaptation, not a faithful GLSim reproduction
 - manifold and residual geometry in hidden-state analysis
 
 ### 3. Method
@@ -192,22 +186,22 @@ The older March correction-phase popular tables are not reproducible under the c
   - yes-minus-no logit margin
   - chosen-answer confidence
   - linear probe
-- corrected official HALP should be treated as a separate comparator lane, not mixed into the saved MIND-only tables until its artifacts exist
-- the old `GLSim-adapted` path should not be called official GLSim anywhere in the paper
+- `HALP` is the only external comparator and should be reported on the same split protocol as the matching MIND table
 
 ### 4. Experiments
 
 - Main table:
   - `POPE popular`
   - `DASH-B`
-- current saved main tables are MIND-only:
+- methods:
   - `p_yes`
   - logit margin
   - chosen confidence
-  - drift_only
-  - no_manifold
+  - drift only
+  - no manifold
   - full MIND
   - linear probe
+  - HALP
 - Supplementary:
   - `POPE adversarial`
   - `RePOPE`
@@ -225,8 +219,7 @@ The older March correction-phase popular tables are not reproducible under the c
 
 - The simple calibrated feature set holds up better than output confidence, but not better than the linear probe.
 - The manifold step is not robust on `DASH-B`.
-- The remaining open comparator question is whether corrected official HALP adds a stronger pre-generation baseline once it is rerun correctly.
-- Official GLSim is currently outside the paper-safe `POPE` / `DASH-B` lane, and the old `GLSim-adapted` path should only be discussed as an adaptation if it appears at all.
+- The open comparator question is how much protocol-matched `HALP` changes the ranking against full MIND.
 - The transfer story is still open because the held-out control tables are not built yet.
 
 ### 6. Discussion

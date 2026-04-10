@@ -164,36 +164,6 @@ def _write_halp_report(
     return report_root
 
 
-def _write_glsim_report(
-    reports_root: Path,
-    *,
-    model_key: str,
-    benchmark_key: str,
-    protocol: str,
-    base_roc: float,
-    base_pr: float,
-    label_shift: float,
-) -> Path:
-    report_root = reports_root / f"round2-{model_key}-{benchmark_key}-glsim"
-    if protocol != "image_grouped":
-        report_root = reports_root / f"{report_root.name}-{protocol}"
-    report_root.mkdir(parents=True, exist_ok=True)
-    payload = {
-        **_metric_payload(round(base_roc + 0.02, 4), round(base_pr + 0.01, 4)),
-        "selected_config_counts": {"i0_t0_k1_w0.50": 3},
-    }
-    (report_root / "glsim.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    results = _results_frame(label_shift=label_shift, extra_column="selected_config", extra_value="i0_t0_k1_w0.50")
-    write_results_table(results, report_root / "glsim_results.csv", extra_columns=("selected_config",))
-    pd.DataFrame(
-        [
-            {"fold": 0, "selected_config": "i0_t0_k1_w0.50", "inner_score": 0.88},
-            {"fold": 1, "selected_config": "i0_t0_k1_w0.50", "inner_score": 0.89},
-        ]
-    ).to_csv(report_root / "glsim_selection.csv", index=False)
-    return report_root
-
-
 def _seed_round_two_reports(reports_root: Path) -> None:
     base_by_model = {
         "qwen3-vl-8b": (0.89, 0.17),
@@ -243,22 +213,24 @@ def _seed_round_two_reports(reports_root: Path) -> None:
                 base_pr=base_pr - 0.02,
                 label_shift=label_shift,
             )
-            _write_glsim_report(
+        for benchmark_key, roc_offset, pr_offset in [("adversarial", 0.015, 0.01), ("repope", 0.005, 0.005)]:
+            _write_baseline_report(
                 reports_root,
                 model_key=model_key,
                 benchmark_key=benchmark_key,
                 protocol="image_grouped",
-                base_roc=base_roc,
-                base_pr=base_pr,
+                bank_scope="object",
+                base_roc=base_roc + roc_offset,
+                base_pr=base_pr + pr_offset,
                 label_shift=label_shift,
             )
-            _write_glsim_report(
+            _write_halp_report(
                 reports_root,
                 model_key=model_key,
                 benchmark_key=benchmark_key,
-                protocol="object_heldout",
-                base_roc=base_roc - 0.02,
-                base_pr=base_pr - 0.02,
+                protocol="image_grouped",
+                base_roc=base_roc + roc_offset,
+                base_pr=base_pr + pr_offset,
                 label_shift=label_shift,
             )
         for bank_scope, offset in [("shared", -0.01), ("shuffled_object", -0.03)]:
@@ -425,6 +397,7 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
     supp_split_sensitivity = pd.read_csv(outputs["supp_split_sensitivity_csv"])
 
     assert set(table1["method"]) >= {"p_yes", "logit_margin", "chosen_confidence", "drift_only", "no_manifold", "full MIND", "linear_probe"}
+    assert "HALP" in set(table1["method"])
     assert set(table1["benchmark"]) == {"POPE popular", "DASH-B"}
     assert set(table1["protocol"]) == {"image_grouped"}
     assert set(table1_popular["benchmark"]) == {"POPE popular"}
@@ -439,8 +412,10 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
         "no_manifold",
         "full_MIND",
         "linear_probe",
+        "HALP",
     ]
     assert list(table1_dash_b.columns) == list(table1_popular.columns)
+    assert all("GLSim" not in column for column in table1_popular.columns)
 
     qwen_popular_full = table1.loc[
         (table1["model"] == "Qwen3-VL-8B")
@@ -470,7 +445,23 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
         "image_grouped",
         "object_heldout",
     ]
-    assert set(table3["method"]) >= {"object", "shared", "shuffled_object", "linear_probe"}
+    assert set(table3["method"]) >= {"object", "shared", "shuffled_object", "linear_probe", "HALP"}
+
+    assert list(supp_pope_adversarial.columns) == [
+        "model",
+        "benchmark",
+        "p_yes",
+        "logit_margin",
+        "chosen_confidence",
+        "drift_only",
+        "no_manifold",
+        "full_MIND",
+        "linear_probe",
+        "HALP",
+    ]
+    assert list(supp_repope.columns) == list(supp_pope_adversarial.columns)
+    assert set(supp_dash_b["method"]) >= {"object", "shared", "shuffled_object", "linear_probe", "HALP"}
+    assert list(supp_dash_b.columns) == list(table3.columns)
 
     assert not supp_split_sensitivity.empty
 

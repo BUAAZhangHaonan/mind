@@ -11,6 +11,7 @@ import pandas as pd
 
 from mind.comparators import HALPProbeConfig, HALP_REQUIRED_CACHE_FIELDS
 from mind.comparators.halp import (
+    evaluate_halp_nested_from_readout_entries,
     evaluate_halp_official_from_readout_entries,
     summarize_halp_results,
 )
@@ -27,9 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--split-strategy", choices=["row"], default="row")
+    parser.add_argument("--split-strategy", choices=["row", "image_grouped", "object_heldout"], default="row")
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=13)
+    parser.add_argument("--num-folds", type=int, default=5)
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
     parser.add_argument("--label-overrides", type=Path, default=None)
     parser.add_argument("--epochs", type=int, default=50)
@@ -62,23 +64,34 @@ def main(argv: list[str] | None = None) -> int:
     if args.label_overrides is not None:
         readout_entries = apply_label_overrides_to_entries(readout_entries, args.label_overrides)
 
-    metrics, results, selection = evaluate_halp_official_from_readout_entries(
-        readout_entries,
-        test_size=args.test_size,
+    probe_config = HALPProbeConfig(
+        hidden_dims=tuple(_parse_int_list(args.hidden_dims)),
+        dropout=args.dropout,
+        learning_rate=args.learning_rate,
+        batch_size=args.batch_size,
+        epochs=args.epochs,
         random_state=args.random_state,
-        probe_config=HALPProbeConfig(
-            hidden_dims=tuple(_parse_int_list(args.hidden_dims)),
-            dropout=args.dropout,
-            learning_rate=args.learning_rate,
-            batch_size=args.batch_size,
-            epochs=args.epochs,
-            random_state=args.random_state,
-            device=args.device,
-        ),
+        device=args.device,
     )
+    if args.split_strategy == "row":
+        metrics, results, selection = evaluate_halp_official_from_readout_entries(
+            readout_entries,
+            test_size=args.test_size,
+            random_state=args.random_state,
+            probe_config=probe_config,
+        )
+    else:
+        metrics, results, selection = evaluate_halp_nested_from_readout_entries(
+            readout_entries,
+            split_strategy=args.split_strategy,
+            test_size=args.test_size,
+            random_state=args.random_state,
+            num_folds=args.num_folds,
+            probe_config=probe_config,
+        )
     summary = summarize_halp_results(
         results,
-        split_strategy="row",
+        split_strategy=args.split_strategy,
         bootstrap_resamples=args.bootstrap_resamples,
         random_state=args.random_state,
     )

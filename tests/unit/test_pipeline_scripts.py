@@ -240,6 +240,124 @@ def test_run_halp_only_requests_required_cache_fields(tmp_path: Path, monkeypatc
     assert seen["keep_fields"] == run_halp_script.HALP_REQUIRED_CACHE_FIELDS
 
 
+def test_run_halp_supports_image_grouped_nested_selection(tmp_path: Path) -> None:
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    for object_index in range(6):
+        for hallucination_label in (0, 1):
+            signal = float(hallucination_label)
+            entries.append(
+                {
+                    "sample_id": f"sample-{object_index}-{hallucination_label}",
+                    "image_id": object_index,
+                    "label": 0,
+                    "parsed_answer": hallucination_label,
+                    "subset": "popular",
+                    "object_name": f"object-{object_index}",
+                    "vision_features": torch.tensor([[signal, 0.0], [signal, 1.0]]),
+                    "query_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                    "vision_token_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                    "readout_format": "compact_comparator_cache_v1",
+                    "total_layers": 4,
+                }
+            )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    output_root = tmp_path / "reports"
+    exit_code = run_halp_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-halp-image-grouped",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "3",
+            "--device",
+            "cpu",
+            "--epochs",
+            "6",
+            "--batch-size",
+            "4",
+            "--hidden-dims",
+            "8,4",
+            "--bootstrap-resamples",
+            "20",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads((output_root / "smoke-halp-image-grouped" / "halp.json").read_text(encoding="utf-8"))
+    results = pd.read_csv(output_root / "smoke-halp-image-grouped" / "halp_results.csv")
+    selection = pd.read_csv(output_root / "smoke-halp-image-grouped" / "halp_selection.csv")
+    assert sum(payload["selected_probe_counts"].values()) == 3
+    assert set(results["fold"]) == {0, 1, 2}
+    assert "outer_fold" in selection.columns
+
+
+def test_run_halp_supports_object_heldout_nested_selection(tmp_path: Path) -> None:
+    readout_root = tmp_path / "readouts"
+    readout_root.mkdir()
+    entries = []
+    for object_index in range(6):
+        for hallucination_label in (0, 1):
+            signal = float(hallucination_label)
+            entries.append(
+                {
+                    "sample_id": f"sample-{object_index}-{hallucination_label}",
+                    "image_id": object_index * 10 + hallucination_label,
+                    "label": 0,
+                    "parsed_answer": hallucination_label,
+                    "subset": "popular",
+                    "object_name": f"object-{object_index}",
+                    "vision_features": torch.tensor([[signal, 0.0], [signal, 1.0]]),
+                    "query_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                    "vision_token_hidden_states": torch.full((4, 2), signal, dtype=torch.float32),
+                    "readout_format": "compact_comparator_cache_v1",
+                    "total_layers": 4,
+                }
+            )
+    torch.save(entries, readout_root / "shard-00000.pt")
+
+    output_root = tmp_path / "reports"
+    exit_code = run_halp_script.main(
+        [
+            "--readout-path",
+            str(readout_root),
+            "--output-root",
+            str(output_root),
+            "--experiment-name",
+            "smoke-halp-object-heldout",
+            "--split-strategy",
+            "object_heldout",
+            "--num-folds",
+            "3",
+            "--device",
+            "cpu",
+            "--epochs",
+            "6",
+            "--batch-size",
+            "4",
+            "--hidden-dims",
+            "8,4",
+            "--bootstrap-resamples",
+            "20",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads((output_root / "smoke-halp-object-heldout" / "halp.json").read_text(encoding="utf-8"))
+    results = pd.read_csv(output_root / "smoke-halp-object-heldout" / "halp_results.csv")
+    selection = pd.read_csv(output_root / "smoke-halp-object-heldout" / "halp_selection.csv")
+    assert sum(payload["selected_probe_counts"].values()) == 3
+    assert set(results["fold"]) == {0, 1, 2}
+    assert "outer_fold" in selection.columns
+
+
 def test_run_glsim_writes_metrics_and_results_from_tiny_readout_cache(tmp_path: Path, monkeypatch) -> None:
     class FakeTokenizer:
         def encode(self, text: str, add_special_tokens: bool = False):
@@ -664,6 +782,76 @@ def test_save_reference_bank_writes_shuffled_object_mapping(tmp_path: Path) -> N
         expected_value = {"dog": 1.0, "cat": 2.0, "bus": 3.0}[source]
         assert target_tensor.shape == (1, 2)
         assert float(target_tensor[0, 0]) == expected_value
+
+
+def test_save_reference_bank_from_saved_tensors_builds_shared_bank(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    dog_root = source_root / "qwen3-vl-8b" / "dog"
+    cat_root = source_root / "qwen3-vl-8b" / "cat"
+    dog_root.mkdir(parents=True)
+    cat_root.mkdir(parents=True)
+    torch.save(torch.tensor([[1.0, 0.0], [2.0, 0.0]], dtype=torch.float32), dog_root / "layer-08.pt")
+    torch.save(torch.tensor([[3.0, 0.0]], dtype=torch.float32), cat_root / "layer-08.pt")
+
+    written_paths = build_manifolds.save_reference_bank_from_saved_tensors(
+        reference_root=source_root,
+        output_root=tmp_path / "derived",
+        model_name="qwen3-vl-8b",
+        k_neighbors=2,
+        bank_scope="shared",
+    )
+
+    shared_layer_path = tmp_path / "derived" / "qwen3-vl-8b" / "__shared__" / "layer-08.pt"
+    shared_stats_path = tmp_path / "derived" / "qwen3-vl-8b" / "__shared__" / "stats.pt"
+    counts_path = tmp_path / "derived" / "qwen3-vl-8b" / "reference_counts.csv"
+    assert shared_layer_path in written_paths
+    assert shared_stats_path in written_paths
+    shared_tensor = torch.load(shared_layer_path, weights_only=False)
+    counts = pd.read_csv(counts_path)
+    assert shared_tensor.shape == (3, 2)
+    assert counts.loc[0, "bank_scope"] == "shared"
+    assert counts.loc[0, "object_name"] == "__shared__"
+    assert counts.loc[0, "count"] == 3
+
+
+def test_save_reference_bank_from_saved_tensors_supports_subsample_and_shuffle(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    for object_name, values in {
+        "dog": [1.0, 1.5],
+        "cat": [2.0, 2.5],
+        "bus": [3.0, 3.5],
+    }.items():
+        object_root = source_root / "qwen3-vl-8b" / object_name
+        object_root.mkdir(parents=True)
+        torch.save(
+            torch.tensor([[value, 0.0] for value in values], dtype=torch.float32),
+            object_root / "layer-08.pt",
+        )
+
+    written_paths = build_manifolds.save_reference_bank_from_saved_tensors(
+        reference_root=source_root,
+        output_root=tmp_path / "derived",
+        model_name="qwen3-vl-8b",
+        k_neighbors=1,
+        bank_scope="shuffled_object",
+        shuffle_seed=7,
+        subsample_size=1,
+    )
+
+    mapping_path = tmp_path / "derived" / "qwen3-vl-8b" / "shuffled_object_map.json"
+    assert mapping_path in written_paths
+    mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    counts = pd.read_csv(tmp_path / "derived" / "qwen3-vl-8b" / "reference_counts.csv")
+    assert set(mapping) == {"dog", "cat", "bus"}
+    assert set(counts["count"].tolist()) == {1}
+    for destination, source in mapping.items():
+        tensor = torch.load(
+            tmp_path / "derived" / "qwen3-vl-8b" / destination / "layer-08.pt",
+            weights_only=False,
+        )
+        expected_value = {"dog": 1.0, "cat": 2.0, "bus": 3.0}[source]
+        assert tensor.shape == (1, 2)
+        assert float(tensor[0, 0]) == expected_value
 
 
 def test_build_feature_frame_raises_on_entries_without_reference_coverage(tmp_path: Path) -> None:

@@ -81,9 +81,11 @@ def resolve_reference_banks_root(output_root: Path, bank_scope: str) -> Path:
     raise ValueError(f"Unsupported bank scope: {bank_scope}")
 
 
-def resolve_prepare_source(dataset_root: str, subset: str) -> str:
+def resolve_prepare_source(dataset_root: str, subset: str, *, dataset_name: str = "") -> str:
     root_path = Path(dataset_root)
     if root_path.is_file():
+        return str(root_path)
+    if dataset_name == "dash-b":
         return str(root_path)
     dash_b_neg = root_path / "images" / "dash_benchmark_neg.json"
     dash_b_pos = root_path / "images" / "dash_benchmark_pos.json"
@@ -153,7 +155,7 @@ def build_stage_commands(
                 "scripts/prepare_data.py",
                 "normalize-object-yes-no",
                 "--source",
-                resolve_prepare_source(dataset.root, subset),
+                resolve_prepare_source(dataset.root, subset, dataset_name=dataset.name),
                 "--output",
                 paths["normalized"],
                 "--subset",

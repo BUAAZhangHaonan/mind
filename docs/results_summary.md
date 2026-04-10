@@ -39,12 +39,11 @@ The method freeze is already locked:
 - `DASH-B` changes the method ranking inside the geometry family. `no_manifold` beats full MIND on all four completed `DASH-B` rows, so the manifold step is the weak part of the current pipeline on the harder benchmark.
 - The four models do not behave the same way. Qwen and InternVL stay strong under full MIND on both benchmarks. Molmo has a large gap between full MIND and the linear probe on `DASH-B`. LLaVA is the only popular row where the strongest simple output baseline edges out full MIND.
 
-## Comparator Reset
+## Comparator Status
 
-- The old local `HALP` path was stopped because it was not a faithful official baseline. It swept all decoder layers and used grouped nested probe selection.
-- The corrected `run_halp.py` now targets the official 11-probe setup on a simple stratified row split. No corrected HALP report artifacts are saved yet.
-- The old local `GLSim` path was renamed to `GLSim-adapted`. It is a queried-object pre-generation adaptation, not an official GLSim reproduction, so it has been removed from the official round-two table/export lane.
-- The current tracked main tables are intentionally MIND-only until corrected comparator artifacts exist.
+- `HALP` is the only external comparator left in the round-two paper lane.
+- The script path now supports the official row split and the protocol-matched `image_grouped` and `object_heldout` evaluations.
+- The paper tables should use protocol-matched HALP reports instead of splicing row-split numbers into grouped tables.
 
 ## Feature Ablation
 
@@ -52,22 +51,14 @@ Tracked table:
 
 - `docs/tables/round2/table2_feature_ablation.md`
 
-What the current table says:
+What the live round-two table should say:
 
-- On `POPE popular`, the saved four-variant ablation rows only exist for Qwen and InternVL from the phase-one decision artifact.
-- On both of those rows, `raw + simple stats` beats Haar, which is why the default method is frozen there.
-- On `DASH-B`, the full-curve variant is often strongest, but the gaps over simple stats are not uniform enough to reopen the frozen default.
-- LLaVA and Molmo do not have saved popular four-variant ablation rows in the current round-two tree, so those cells are marked `not run`.
+- The four raw-feature variants now need to be read from the saved round-two report directories for all four models on both `POPE popular` and `DASH-B`.
+- The frozen default still stays at `raw + simple stats`, because that is the cleanest feature set and the gains from the larger variants are not stable enough to justify a more complex default.
 
-## What Is Still GPU-Dependent
+## What Still Needs GPU Work
 
-The main CPU-side table assembly is now ahead of the corrected comparator work. The still-missing items are:
+The remaining GPU-dependent work is now narrower:
 
-- any missing readout rebuilds needed for corrected official HALP
-- corrected official HALP runs
-- any future official comparator implementation beyond HALP
-- POPE adversarial report generation
-- RePOPE report generation
-- transfer and control tables
-- bank-size ablation
-- layer-count ablation
+- compact readout regeneration for protocol-matched HALP on `POPE popular` and `DASH-B`
+- full-layer cache regeneration for the Qwen and InternVL layer-count ablation
