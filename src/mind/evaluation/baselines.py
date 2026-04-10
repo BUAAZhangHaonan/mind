@@ -721,6 +721,7 @@ def evaluate_feature_frame(
     num_folds: int = 5,
     supported_object_names: Sequence[str] | None = None,
     object_heldout_context: str = "feature frame",
+    detector_device: str = "cpu",
 ) -> tuple[dict[str, float], pd.DataFrame]:
     working_frame = frame
     if split_strategy == "object_heldout":
@@ -741,6 +742,7 @@ def evaluate_feature_frame(
         detector = fit_logistic_detector(
             train_frame[list(columns)].to_numpy(),
             train_frame["label"].to_numpy(),
+            device=detector_device,
         )
         probabilities = detector.predict_proba(eval_frame[list(columns)].to_numpy())[:, 1]
         predictions = detector.predict(eval_frame[list(columns)].to_numpy())
@@ -770,6 +772,7 @@ def evaluate_feature_frame_across_random_states(
     num_folds: int = 5,
     supported_object_names: Sequence[str] | None = None,
     object_heldout_context: str = "feature frame",
+    detector_device: str = "cpu",
 ) -> pd.DataFrame:
     rows: list[dict[str, float | int]] = []
     for random_state in random_states:
@@ -782,6 +785,7 @@ def evaluate_feature_frame_across_random_states(
             num_folds=num_folds,
             supported_object_names=supported_object_names,
             object_heldout_context=object_heldout_context,
+            detector_device=detector_device,
         )
         rows.append({"random_state": int(random_state), **metrics})
     return pd.DataFrame(rows)

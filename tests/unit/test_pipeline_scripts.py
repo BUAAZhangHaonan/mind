@@ -1649,6 +1649,116 @@ def test_compute_baselines_can_merge_selected_variant_runs(tmp_path: Path) -> No
     }
 
 
+def test_compute_baselines_routes_linear_probe_to_requested_device(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    features_path = tmp_path / "features.parquet"
+    cache_root = tmp_path / "cache"
+    reference_root = tmp_path / "reference"
+    reports_root = tmp_path / "reports"
+    cache_root.mkdir()
+    (reference_root / "qwen3-vl-8b" / "dog").mkdir(parents=True)
+
+    pd.DataFrame(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "ground_truth_label": 0 if index % 2 else 1,
+                "answer_label": 1 if index % 2 else 0,
+                "label": index % 2,
+                "subset": "popular",
+                "object_name": "dog",
+                "raw_drift_0": float(index),
+            }
+            for index in range(8)
+        ]
+    ).to_parquet(features_path, index=False)
+    torch.save(
+        [
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index // 2,
+                "label": 0 if index % 2 else 1,
+                "parsed_answer": 1 if index % 2 else 0,
+                "subset": "popular",
+                "object_name": "dog",
+                "layer_vectors": torch.tensor(
+                    [
+                        [0.1 + 0.1 * index, 0.2, 0.3],
+                        [0.2 + 0.1 * index, 0.3, 0.4],
+                    ],
+                    dtype=torch.float32,
+                ),
+            }
+            for index in range(8)
+        ],
+        cache_root / "shard-00000.pt",
+    )
+
+    seen_devices: list[str] = []
+
+    def _fake_evaluate_feature_frame(
+        frame,
+        *,
+        columns,
+        split_strategy="row",
+        test_size=0.3,
+        random_state=13,
+        num_folds=5,
+        supported_object_names=None,
+        object_heldout_context="feature frame",
+        detector_device="cpu",
+    ):
+        del columns, split_strategy, test_size, random_state, num_folds, supported_object_names, object_heldout_context
+        seen_devices.append(detector_device)
+        results = frame[["sample_id", "image_id", "label", "object_name"]].copy()
+        results["prediction"] = results["label"]
+        results["score"] = results["label"].astype(float)
+        results["fold"] = 0
+        return {
+            "accuracy": 1.0,
+            "roc_auc": 1.0,
+            "pr_auc": 1.0,
+            "tpr_at_fpr_0.01": 1.0,
+        }, results
+
+    monkeypatch.setattr(compute_baselines_script, "evaluate_feature_frame", _fake_evaluate_feature_frame)
+
+    exit_code = compute_baselines_script.main(
+        [
+            "--features-path",
+            str(features_path),
+            "--cache-path",
+            str(cache_root),
+            "--reference-root",
+            str(reference_root),
+            "--model-name",
+            "qwen3-vl-8b",
+            "--output-root",
+            str(reports_root),
+            "--experiment-name",
+            "smoke-baselines-linear-probe-gpu",
+            "--variants",
+            "linear_probe",
+            "--split-strategy",
+            "image_grouped",
+            "--num-folds",
+            "2",
+            "--split-seeds",
+            "3,5",
+            "--bootstrap-resamples",
+            "8",
+            "--linear-probe-device",
+            "cuda:1",
+        ]
+    )
+
+    assert exit_code == 0
+    assert seen_devices == ["cuda:1", "cuda:1", "cuda:1"]
+
+
 def test_compute_baselines_persists_completed_variants_before_later_failure(
     tmp_path: Path,
     monkeypatch,

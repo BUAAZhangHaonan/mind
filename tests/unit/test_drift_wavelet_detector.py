@@ -138,6 +138,27 @@ def test_fit_logistic_detector_learns_simple_separable_problem() -> None:
     assert predictions.tolist() == [0, 0, 1, 1]
 
 
+def test_fit_logistic_detector_torch_backend_matches_sklearn_logistic() -> None:
+    rng = np.random.default_rng(7)
+    features = rng.normal(size=(48, 6)).astype(np.float32)
+    logits = (
+        1.4 * features[:, 0]
+        - 0.8 * features[:, 1]
+        + 0.5 * features[:, 2]
+        - 0.2
+    )
+    labels = (rng.uniform(size=48) < (1.0 / (1.0 + np.exp(-logits)))).astype(np.int64)
+
+    sklearn_detector = fit_logistic_detector(features, labels)
+    torch_detector = fit_logistic_detector(features, labels, device="cpu", backend="torch")
+
+    sklearn_probabilities = sklearn_detector.predict_proba(features)[:, 1]
+    torch_probabilities = torch_detector.predict_proba(features)[:, 1]
+
+    assert np.allclose(torch_probabilities, sklearn_probabilities, atol=5e-5)
+    assert torch_detector.predict(features).tolist() == sklearn_detector.predict(features).tolist()
+
+
 def test_compute_object_hallucination_label_only_marks_unsupported_positive_answers() -> None:
     assert compute_object_hallucination_label(ground_truth_label=0, answer_label=1) == 1
     assert compute_object_hallucination_label(ground_truth_label=1, answer_label=1) == 0

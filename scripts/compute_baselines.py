@@ -221,6 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
     parser.add_argument("--bootstrap-random-state", type=int, default=13)
     parser.add_argument("--split-seeds", default="13,17,19,23,29")
+    parser.add_argument("--linear-probe-device", default="cpu")
     parser.add_argument("--yes-token-id", action="append", type=int, default=[])
     parser.add_argument("--no-token-id", action="append", type=int, default=[])
     parser.add_argument("--variants", default="all")
@@ -357,6 +358,7 @@ def main(argv: list[str] | None = None) -> int:
                 test_size=args.test_size,
                 random_state=args.random_state,
                 num_folds=args.num_folds,
+                detector_device=args.linear_probe_device if variant_name == "linear_probe" else "cpu",
             )
             results_path = output_paths["variant_results"] / f"{variant_name}.csv"
             write_results_table(results, results_path)
@@ -390,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
                     test_size=args.test_size,
                     random_state=int(random_state),
                     num_folds=args.num_folds,
+                    detector_device=args.linear_probe_device if variant_name == "linear_probe" else "cpu",
                 )
                 split_sensitivity = merge_metric_rows(
                     split_sensitivity,
