@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pandas as pd
 import pytest
@@ -26,6 +29,32 @@ run_experiment = _load_script("run_experiment")
 run_halp_script = _load_script("run_halp")
 run_glsim_script = _load_script("run_glsim_adapted")
 train_detector = _load_script("train_detector")
+
+
+def test_direct_script_execution_prefers_repo_src_over_pythonpath_shadow(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    fake_root = tmp_path / "fake_site"
+    (fake_root / "mind" / "evaluation").mkdir(parents=True)
+    (fake_root / "mind" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_root / "mind" / "evaluation" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_root / "mind" / "evaluation" / "baselines.py").write_text(
+        "raise RuntimeError('shadow package imported')\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(fake_root)
+    completed = subprocess.run(
+        [sys.executable, str(repo_root / "scripts" / "compute_baselines.py"), "--help"],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--linear-probe-device" in completed.stdout
 
 
 def test_build_reference_cache_output_path_uses_model_dataset_split_layout(tmp_path: Path) -> None:

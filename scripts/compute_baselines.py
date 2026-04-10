@@ -6,9 +6,16 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import pandas as pd
 from transformers import AutoProcessor
+
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
+repo_src_path = str(REPO_SRC)
+if repo_src_path in sys.path:
+    sys.path.remove(repo_src_path)
+sys.path.insert(0, repo_src_path)
 
 from mind.evaluation.baselines import (
     DEFAULT_FULL_VARIANT,

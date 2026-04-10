@@ -12,6 +12,12 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
+repo_src_path = str(REPO_SRC)
+if repo_src_path in sys.path:
+    sys.path.remove(repo_src_path)
+sys.path.insert(0, repo_src_path)
+
 from mind.config import DatasetConfig, ModelConfig, load_yaml_config
 from mind.evaluation import DEFAULT_FULL_VARIANT, resolve_highest_valid_num_folds
 

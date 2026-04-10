@@ -5,9 +5,16 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 import pandas as pd
 import torch
+
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
+repo_src_path = str(REPO_SRC)
+if repo_src_path in sys.path:
+    sys.path.remove(repo_src_path)
+sys.path.insert(0, repo_src_path)
 
 from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
 from mind.evaluation import compute_object_hallucination_label
