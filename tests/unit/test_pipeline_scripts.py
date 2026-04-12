@@ -959,6 +959,54 @@ def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: P
     ]
 
 
+def test_run_experiment_prepare_stage_prefers_dash_b_subset_file_over_directory_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    repo_root = Path(__file__).resolve().parents[2]
+    dataset_config = tmp_path / "dash_b.yaml"
+    dataset_config.write_text(
+        "\n".join(
+                [
+                    "name: dash-b",
+                    "root: data/dash_b",
+                    "image_root: data/dash_b",
+                    "splits:",
+                    "  - main",
+                    "prompt_template: '{question}'",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+    )
+    dash_b_root = tmp_path / "data" / "dash_b"
+    dash_b_root.mkdir(parents=True)
+    (dash_b_root / "main.jsonl").write_text("", encoding="utf-8")
+    config_path = tmp_path / "experiment.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: smoke-llava-onevision-dash-b",
+                f"model_config: {repo_root / 'configs/models/qwen3_vl_8b.yaml'}",
+                f"dataset_config: {dataset_config}",
+                "subset: main",
+                "split: val",
+                "selected_layers: 16",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["prepare"],
+    )
+
+    assert commands["prepare"][4] == "data/dash_b/main.jsonl"
+
+
 def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_path: Path) -> None:
     config_path = tmp_path / "experiment.yaml"
     config_path.write_text(
