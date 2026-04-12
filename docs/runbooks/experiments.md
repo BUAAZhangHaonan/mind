@@ -13,7 +13,7 @@ make verify-model MODEL_ID=llava-hf/llava-onevision-qwen2-7b-ov-hf
 make test
 ```
 
-Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, and this project uses GPU 1 only.
+Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, and this project uses GPU 0 or GPU 1 only.
 
 Processor smoke checks for the added model families:
 
@@ -606,7 +606,7 @@ conda run --no-capture-output -n mind-py311 python scripts/compute_baselines.py 
 
 The stable setting on the current machine is:
 
-- `CUDA_VISIBLE_DEVICES=0,1,2`
+- `CUDA_VISIBLE_DEVICES=0` or `CUDA_VISIBLE_DEVICES=1`
 - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
 - `HF_ENDPOINT=https://hf-mirror.com`
 - `--batch-size 8`

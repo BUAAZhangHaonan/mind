@@ -38,7 +38,7 @@ Key modules:
 ## Environment
 
 The project environment name is `mind-py311`. The canonical runtime is the named conda environment, and all documented commands now use `conda run --no-capture-output -n mind-py311 ...` through the shipped `Makefile`.
-Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, and this project uses GPU 1 only.
+Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, and this project uses GPU 0 or GPU 1 only.
 
 ```bash
 make env

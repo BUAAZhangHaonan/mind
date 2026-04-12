@@ -4,14 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-TMUX_SESSION="${TMUX_SESSION:-mind_round2_unified_queue}"
 GPU_ID="${GPU_ID:-1}"
-WAIT_LOG="${WAIT_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260412_gpu1_wait.log}"
-QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260412_gpu1_tmux.log}"
+TMUX_SESSION="${TMUX_SESSION:-mind_round2_unified_queue_gpu${GPU_ID}}"
+WAIT_LOG="${WAIT_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260413_gpu${GPU_ID}_wait.log}"
+QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260413_gpu${GPU_ID}_tmux.log}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
 
-if [[ "$GPU_ID" != "1" ]]; then
-  echo "MIND is restricted to GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
+if [[ "$GPU_ID" != "0" && "$GPU_ID" != "1" ]]; then
+  echo "MIND is restricted to GPU 0 or GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
   exit 1
 fi
 
@@ -58,21 +58,21 @@ gpu_busy() {
 
 main() {
   local gpu_uuid
-  gpu_uuid="\$(gpu_uuid_for_index 1)"
+  gpu_uuid="\$(gpu_uuid_for_index $GPU_ID)"
   if [[ -z "\$gpu_uuid" ]]; then
-    log "FAIL could not resolve GPU 1 uuid"
+    log "FAIL could not resolve GPU $GPU_ID uuid"
     exit 1
   fi
 
-  log "Waiting for GPU 1 (\$gpu_uuid) to become free for MIND"
+  log "Waiting for GPU $GPU_ID (\$gpu_uuid) to become free for MIND"
   while gpu_busy "\$gpu_uuid"; do
-    log "GPU 1 still busy; sleeping \${POLL_SECONDS}s"
+    log "GPU $GPU_ID still busy; sleeping \${POLL_SECONDS}s"
     nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader | tee -a "$WAIT_LOG"
     sleep "\$POLL_SECONDS"
   done
 
-  log "GPU 1 is free; starting unified MIND queue"
-  export GPU_ID=1
+  log "GPU $GPU_ID is free; starting unified MIND queue"
+  export GPU_ID=$GPU_ID
   export QUEUE_LOG="$QUEUE_LOG"
   exec bash scripts/queue/mind_round2_unified_serial.sh
 }
@@ -84,6 +84,6 @@ EOF
 tmux_command="$(build_tmux_command)"
 tmux new-session -d -s "$TMUX_SESSION" bash -lc "$tmux_command"
 
-echo "Started tmux session $TMUX_SESSION for MIND on GPU 1."
+echo "Started tmux session $TMUX_SESSION for MIND on GPU $GPU_ID."
 echo "Attach with: tmux attach -t $TMUX_SESSION"
 echo "Logs: queue=$QUEUE_LOG wait=$WAIT_LOG"

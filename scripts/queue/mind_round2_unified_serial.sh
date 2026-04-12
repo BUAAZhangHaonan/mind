@@ -17,8 +17,9 @@ set -euo pipefail
 # - The serial scheduler and the memory gate are the real host-safety controls.
 #   A hard `ulimit -v` cap is optional because HALP can exceed a low virtual
 #   address ceiling even when the machine still has plenty of free RAM.
-# - GPU 1 is the only GPU allowed for current MIND work in this mainline pass.
-#   GPU 0 is reserved for other project traffic.
+# - Current MIND work may run only on GPU 0 or GPU 1.
+# - The selected GPU must be passed through `GPU_ID`, and the queue exports
+#   `CUDA_VISIBLE_DEVICES` from that value.
 #
 # This queue replaces the older split queue scripts. It will refuse to start if
 # another MIND extraction queue is still active, because parallel queues are the
@@ -30,8 +31,8 @@ cd "$ROOT_DIR"
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
 GPU_ID="${GPU_ID:-1}"
 READOUT_BATCH_SIZE_DEFAULT="${READOUT_BATCH_SIZE_DEFAULT:-1}"
-if [[ "$GPU_ID" != "1" ]]; then
-  echo "MIND is restricted to GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
+if [[ "$GPU_ID" != "0" && "$GPU_ID" != "1" ]]; then
+  echo "MIND is restricted to GPU 0 or GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
   exit 1
 fi
 
