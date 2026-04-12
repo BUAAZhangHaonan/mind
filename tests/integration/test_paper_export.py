@@ -7,8 +7,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from mind.evaluation.metrics import write_results_table
-
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "export_paper_package.py"
 SPEC = importlib.util.spec_from_file_location("export_paper_package", SCRIPT_PATH)
@@ -21,6 +19,17 @@ SPEC.loader.exec_module(paper_export)
 MODELS = list(paper_export.ROUND_TWO_MODEL_LABELS)
 POPULAR = "popular"
 DASH_B = "dash-b"
+
+RESULT_COLUMNS = (
+    "sample_id",
+    "image_id",
+    "object_name",
+    "subset",
+    "label",
+    "prediction",
+    "score",
+    "fold",
+)
 
 
 def _metric_payload(roc_auc: float, pr_auc: float) -> dict[str, object]:
@@ -45,6 +54,36 @@ def _results_frame(label_shift: float = 0.0, *, extra_column: str | None = None,
     if extra_column is not None:
         frame[extra_column] = extra_value
     return frame
+
+
+def _write_results_table(frame: pd.DataFrame, output_path: Path, *, extra_columns: tuple[str, ...] = ()) -> None:
+    results = frame.copy()
+    if "sample_id" not in results.columns:
+        results["sample_id"] = [f"row-{index:06d}" for index in range(len(results))]
+    results["sample_id"] = results["sample_id"].astype(str)
+
+    defaults = {
+        "image_id": -1,
+        "object_name": "",
+        "subset": "",
+        "label": 0,
+        "prediction": 0,
+        "score": 0.0,
+        "fold": 0,
+    }
+    for column, default in defaults.items():
+        if column not in results.columns:
+            results[column] = default
+
+    ordered_columns = list(RESULT_COLUMNS)
+    for column in extra_columns:
+        if column not in results.columns:
+            results[column] = ""
+        ordered_columns.append(column)
+
+    results = results.loc[:, ordered_columns].sort_values("sample_id").reset_index(drop=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    results.to_csv(output_path, index=False)
 
 
 def _baseline_variants(base_roc: float, base_pr: float) -> dict[str, dict[str, object]]:
@@ -130,7 +169,7 @@ def _write_baseline_report(
     variant_root = report_root / "variant_results"
     variant_root.mkdir(parents=True, exist_ok=True)
     for variant, frame in variant_frames.items():
-        write_results_table(frame, variant_root / f"{variant}.csv")
+        _write_results_table(frame, variant_root / f"{variant}.csv")
     return report_root
 
 
@@ -154,7 +193,7 @@ def _write_halp_report(
     }
     (report_root / "halp.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     results = _results_frame(label_shift=label_shift, extra_column="selected_probe", extra_value="vision_only")
-    write_results_table(results, report_root / "halp_results.csv", extra_columns=("selected_probe",))
+    _write_results_table(results, report_root / "halp_results.csv", extra_columns=("selected_probe",))
     pd.DataFrame(
         [
             {"fold": 0, "selected_probe": "vision_only", "inner_score": 0.9},
@@ -184,7 +223,7 @@ def _write_glsim_report(
     }
     (report_root / "glsim.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     results = _results_frame(label_shift=label_shift, extra_column="selected_config", extra_value="i0_t0_k1_w0.50")
-    write_results_table(results, report_root / "glsim_results.csv", extra_columns=("selected_config",))
+    _write_results_table(results, report_root / "glsim_results.csv", extra_columns=("selected_config",))
     pd.DataFrame(
         [
             {"fold": 0, "selected_config": "i0_t0_k1_w0.50", "inner_score": 0.88},
@@ -324,6 +363,29 @@ def _write_optional_exports(
     docs_md: Path,
 ) -> None:
     _write_table_bundle(frame, export_csv=export_csv, export_md=export_md, docs_csv=docs_csv, docs_md=docs_md)
+
+
+def _seed_minimal_reports_without_dash_b(reports_root: Path) -> None:
+    _write_baseline_report(
+        reports_root,
+        model_key="qwen3-vl-8b",
+        benchmark_key=POPULAR,
+        protocol="image_grouped",
+        bank_scope="object",
+        base_roc=0.89,
+        base_pr=0.17,
+        label_shift=0.0,
+    )
+    _write_baseline_report(
+        reports_root,
+        model_key="qwen3-vl-8b",
+        benchmark_key="repope",
+        protocol="image_grouped",
+        bank_scope="object",
+        base_roc=0.84,
+        base_pr=0.22,
+        label_shift=0.0,
+    )
 
 
 def _build_outputs(reports_root: Path, output_root: Path, tables_root: Path) -> dict[str, Path]:
@@ -486,6 +548,32 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
 
     assert "metrics.json" not in {path.name for path in reports_root.rglob("*") if path.is_file()}
     assert "results.csv" not in {path.name for path in reports_root.rglob("*") if path.is_file()}
+
+
+def test_export_parser_defaults_to_paper_closeout() -> None:
+    args = paper_export.build_parser().parse_args([])
+
+    assert args.output_root == Path("artifacts/paper_closeout")
+
+
+def test_export_paper_package_skips_empty_dash_b_transfer_bundle(tmp_path: Path) -> None:
+    reports_root = tmp_path / "reports"
+    output_root = tmp_path / "paper"
+    tables_root = tmp_path / "docs" / "tables" / "round2"
+
+    _seed_minimal_reports_without_dash_b(reports_root)
+
+    outputs = paper_export.export_paper_package(
+        reports_root=reports_root,
+        output_root=output_root,
+        tables_root=tables_root,
+    )
+
+    assert pd.read_csv(outputs["supp_repope_csv"]).shape[0] > 0
+    assert not outputs["supp_dash_b_transfer_csv"].exists()
+    assert not outputs["supp_dash_b_transfer_md"].exists()
+    assert not (tables_root / "supp_dash_b_transfer.csv").exists()
+    assert not (tables_root / "supp_dash_b_transfer.md").exists()
 
 
 def test_export_prefers_most_complete_duplicate_report(tmp_path: Path) -> None:
