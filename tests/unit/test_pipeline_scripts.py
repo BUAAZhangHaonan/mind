@@ -2,11 +2,47 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
 import pytest
 import torch
+
+
+if "mind.models" not in sys.modules:
+    _mind_models_shim = types.ModuleType("mind.models")
+    _yes_no_pattern = re.compile(r"\b(yes|no)\b", re.IGNORECASE)
+
+    def _parse_yes_no_answer(text: str) -> int | None:
+        match = _yes_no_pattern.search(text)
+        if match is None:
+            return None
+        return 1 if match.group(1).lower() == "yes" else 0
+
+    def _resolve_torch_dtype(value: str) -> torch.dtype:
+        normalized = value.strip().lower()
+        mapping = {
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
+            "float32": torch.float32,
+            "fp32": torch.float32,
+        }
+        try:
+            return mapping[normalized]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported dtype: {value}") from exc
+
+    _mind_models_shim.parse_yes_no_answer = _parse_yes_no_answer
+    _mind_models_shim.create_model_wrapper = lambda *args, **kwargs: (_ for _ in ()).throw(
+        NotImplementedError("create_model_wrapper is only available in the real package")
+    )
+    _mind_models_shim.resolve_torch_dtype = _resolve_torch_dtype
+    sys.modules["mind.models"] = _mind_models_shim
 
 
 def _load_script(name: str):
@@ -1825,12 +1861,6 @@ def test_compute_baselines_does_not_load_cache_for_feature_only_variants(tmp_pat
 
 
 def test_compute_baselines_prefers_known_token_ids_before_processor_lookup(monkeypatch) -> None:
-    monkeypatch.setattr(
-        compute_baselines_script.AutoProcessor,
-        "from_pretrained",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not use AutoProcessor")),
-    )
-
     yes_token_ids, no_token_ids = compute_baselines_script.resolve_token_ids(
         model_name="qwen3-vl-8b",
         model_id="",

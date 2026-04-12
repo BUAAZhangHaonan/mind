@@ -12,12 +12,6 @@ import torch
 
 from mind.config import ModelConfig, load_yaml_config
 from mind.data import HallucinationRecord
-from mind.extractors import (
-    extract_prefill_entries,
-    save_prefill_cache_shard,
-    select_layer_range,
-)
-from mind.models import create_model_wrapper
 
 
 DEFAULT_PROMPT_TEMPLATE = "Is there a {object_name} in the image? Answer yes or no."
@@ -119,6 +113,13 @@ def run_reference_caching(
     limit: int = 0,
 ) -> list[Path]:
     model_config = load_yaml_config(model_config_path, ModelConfig)
+    from mind.extractors import (
+        extract_prefill_entries,
+        save_prefill_cache_shard,
+        select_layer_range,
+    )
+    from mind.models import create_model_wrapper
+
     wrapper = create_model_wrapper(model_config)
     processor = wrapper.load_processor()
     model = wrapper.load_model(device=device)
