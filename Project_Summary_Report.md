@@ -262,13 +262,7 @@ The retained ablation evidence is one reason the paper notes freeze `raw + calib
 
 The maintained report excludes historical and correction-phase artifacts because they are not part of the tracked repo tree used by this document. [Sources: `docs/results_summary.md`; `docs/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`]
 
-The retained tracked-table gaps are:
-
-| Artifact | Current state | Report handling |
-| --- | --- | --- |
-| `docs/tables/round2/table3_transfer_controls.md` | partial | The tracked table currently has populated `image_grouped` rows, but `object_heldout` cells are blank |
-
-[Sources: `docs/tables/round2/table3_transfer_controls.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`]
+The tracked transfer-control table is now populated for both `image_grouped` and `object_heldout`. In the fresh `object_heldout` rows, full MIND reports ROC-AUC / PR-AUC of `0.6381 / 0.0461` for Qwen3-VL-8B, `0.8833 / 0.4610` for InternVL3.5-8B, `0.7226 / 0.0475` for LLaVA-OneVision-7B, and `0.7300 / 0.0865` for Molmo-7B-D-0924. `linear_probe` remains higher than full MIND on all four object-heldout rows. [Sources: `docs/tables/round2/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json`]
 
 ## 8. Conclusion and Future Work
 
@@ -279,14 +273,12 @@ The retained mainline evidence does not support a strongest-detector claim. `lin
 The current maintained limitations are:
 
 1. The naming mismatch remains. `README.md` still expands `MIND` as a multi-scale acronym, while the paper outline says not to do that. [Sources: `README.md`; `docs/paper_outline.md`]
-2. The only tracked-table gap left is `docs/tables/round2/table3_transfer_controls.md`, where the `object_heldout` cells are still blank. [Sources: `docs/tables/round2/table3_transfer_controls.md`]
-3. H-POPE remains unavailable in the local environment. [Sources: `configs/data/hpope.yaml`; `src/mind/data/pope.py`; `README.md`]
+2. H-POPE remains unavailable in the local environment. [Sources: `configs/data/hpope.yaml`; `src/mind/data/pope.py`; `README.md`]
 
 The retained future work is documentation and evidence closure on the maintained surface:
 
-1. Fill the blank `object_heldout` cells in `table3_transfer_controls.md` if backed mainline rows are added; otherwise keep the table intentionally partial. [Sources: `docs/tables/round2/table3_transfer_controls.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`]
-2. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger. [Sources: `docs/review/2026-04-round2-findings-summary.md`; `docs/paper_outline.md`; retained HALP row `halp.json` files]
-3. Keep non-official comparator adaptations out of the maintained official workflow unless they are separately implemented and documented as official methods. [Sources: `scripts/run_glsim.py`; `src/mind/comparators/glsim.py`]
+1. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger under both `image_grouped` and `object_heldout` transfer controls. [Sources: `docs/review/2026-04-round2-findings-summary.md`; `docs/paper_outline.md`; `docs/tables/round2/table3_transfer_controls.md`; retained HALP row `halp.json` files]
+2. Keep non-official comparator adaptations out of the maintained official workflow unless they are separately implemented and documented as official methods. [Sources: `scripts/run_glsim.py`; `src/mind/comparators/glsim.py`]
 
 ---
 
@@ -298,3 +290,4 @@ The retained future work is documentation and evidence closure on the maintained
 | 2026-04-12 | Sections 6-7 | Re-anchored dataset inventory and result tables to retained normalized files, retained round-two tables, retained `baselines.json` files, and retained HALP row `halp.json` files | `/home/team/zhanghaonan/mind/outputs/round2_2026_04/normalized/`; `docs/tables/round2/table1_pope_popular.md`; `docs/tables/round2/table1_dash_b.md`; `docs/tables/round2/supp_pope_adversarial.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
 | 2026-04-12 | Sections 7.4-7.7 | Marked the RePOPE table as populated, filled the LLaVA and Molmo POPE popular ablation rows, and narrowed the remaining tracked gap to blank `object_heldout` cells in `table3_transfer_controls.md` | `docs/tables/round2/supp_repope.md`; `docs/tables/round2/table2_feature_ablation.md`; `docs/tables/round2/table3_transfer_controls.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
 | 2026-04-12 | Section 8 | Updated the limitations and future-work notes to match the current tracked-table state and the remaining transfer-control gap | `docs/tables/round2/table3_transfer_controls.md`; `README.md`; `configs/data/hpope.yaml` |
+| 2026-04-13 | Sections 7.7-8 | Populated the previously blank `object_heldout` transfer-control rows from fresh Qwen, InternVL, LLaVA, and Molmo held-out reports, and removed the stale “remaining tracked gap” language | `docs/tables/round2/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json` |
