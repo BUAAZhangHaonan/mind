@@ -118,23 +118,27 @@ def load_local_python_module(module_name: str, module_path: Path) -> Any:
 
 
 def load_molmo_processing_modules(model_id: str) -> tuple[Any, Any, Path]:
-    snapshot_path = Path(
-        snapshot_download(
-            repo_id=model_id,
-            allow_patterns=[
-                "preprocessing_molmo.py",
-                "image_preprocessing_molmo.py",
-                "preprocessor_config.json",
-                "processor_config.json",
-                "tokenizer.json",
-                "tokenizer_config.json",
-                "special_tokens_map.json",
-                "added_tokens.json",
-                "merges.txt",
-                "vocab.json",
-            ],
+    local_model_path = Path(model_id).expanduser()
+    if local_model_path.exists():
+        snapshot_path = local_model_path
+    else:
+        snapshot_path = Path(
+            snapshot_download(
+                repo_id=model_id,
+                allow_patterns=[
+                    "preprocessing_molmo.py",
+                    "image_preprocessing_molmo.py",
+                    "preprocessor_config.json",
+                    "processor_config.json",
+                    "tokenizer.json",
+                    "tokenizer_config.json",
+                    "special_tokens_map.json",
+                    "added_tokens.json",
+                    "merges.txt",
+                    "vocab.json",
+                ],
+            )
         )
-    )
     package_name = f"_mind_molmo_{hashlib.sha1(model_id.encode('utf-8')).hexdigest()[:8]}"
     package = sys.modules.get(package_name)
     if package is None:

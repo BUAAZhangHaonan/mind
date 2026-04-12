@@ -898,3 +898,59 @@ def test_molmo_load_processor_uses_local_processing_modules(tmp_path: Path, monk
 
     assert type(processor).__name__ == "MolmoProcessor"
     assert processor.tokenizer.padding_side == "left"
+
+
+def test_molmo_load_processor_accepts_local_snapshot_path(tmp_path: Path, monkeypatch) -> None:
+    snapshot_root = tmp_path / "molmo-local"
+    snapshot_root.mkdir()
+    (snapshot_root / "image_preprocessing_molmo.py").write_text(
+        "\n".join(
+            [
+                "class MolmoImageProcessor:",
+                "    @classmethod",
+                "    def from_pretrained(cls, path):",
+                "        return cls()",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (snapshot_root / "preprocessing_molmo.py").write_text(
+        "\n".join(
+            [
+                "from .image_preprocessing_molmo import MolmoImageProcessor",
+                "class MolmoProcessor:",
+                "    def __init__(self, image_processor=None, tokenizer=None):",
+                "        self.image_processor = image_processor",
+                "        self.tokenizer = tokenizer",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class FakeTokenizer:
+        def __init__(self) -> None:
+            self.padding_side = "right"
+
+    def _unexpected_snapshot_download(**kwargs):
+        raise AssertionError(f"snapshot_download should not run for local path: {kwargs}")
+
+    monkeypatch.setattr("mind.models.wrappers.snapshot_download", _unexpected_snapshot_download)
+    monkeypatch.setattr(
+        "mind.models.wrappers.AutoTokenizer.from_pretrained",
+        lambda *args, **kwargs: FakeTokenizer(),
+    )
+
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id=str(snapshot_root),
+            family="molmo",
+        )
+    )
+
+    processor = wrapper.load_processor()
+
+    assert type(processor).__name__ == "MolmoProcessor"
+    assert processor.tokenizer.padding_side == "left"
