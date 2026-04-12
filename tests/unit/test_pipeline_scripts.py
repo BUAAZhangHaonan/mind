@@ -1641,7 +1641,7 @@ def test_compute_baselines_persists_completed_variants_before_later_failure(
 
     def _crash_before_second_variant_metrics(*args, **kwargs):
         call_count["count"] += 1
-        if call_count["count"] == 4:
+        if call_count["count"] == 2:
             raise RuntimeError("boom")
         return original_evaluate(*args, **kwargs)
 

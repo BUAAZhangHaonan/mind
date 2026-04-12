@@ -46,6 +46,10 @@ DEFAULT_FULL_VARIANT = "raw_plus_calibrated_simple"
 CHUNKED_CACHE_PART_FILE_PATTERN = re.compile(r"\.part-\d{5}\.pt$")
 
 
+def _is_fold_class_preservation_error(error: ValueError) -> bool:
+    return "does not preserve both classes in train and eval" in str(error)
+
+
 def _hallucination_label_from_entry(entry: dict[str, object]) -> int:
     return compute_object_hallucination_label(
         ground_truth_label=int(entry["label"]),
@@ -770,21 +774,64 @@ def evaluate_feature_frame_across_random_states(
     num_folds: int = 5,
     supported_object_names: Sequence[str] | None = None,
     object_heldout_context: str = "feature frame",
+    skip_invalid_group_splits: bool = False,
 ) -> pd.DataFrame:
     rows: list[dict[str, float | int]] = []
     for random_state in random_states:
-        metrics, _ = evaluate_feature_frame(
-            frame,
-            columns=columns,
-            split_strategy=split_strategy,
-            test_size=test_size,
-            random_state=int(random_state),
-            num_folds=num_folds,
-            supported_object_names=supported_object_names,
-            object_heldout_context=object_heldout_context,
-        )
+        try:
+            metrics, _ = evaluate_feature_frame(
+                frame,
+                columns=columns,
+                split_strategy=split_strategy,
+                test_size=test_size,
+                random_state=int(random_state),
+                num_folds=num_folds,
+                supported_object_names=supported_object_names,
+                object_heldout_context=object_heldout_context,
+            )
+        except ValueError as error:
+            if (
+                skip_invalid_group_splits
+                and split_strategy in GROUP_COLUMN_BY_STRATEGY
+                and _is_fold_class_preservation_error(error)
+            ):
+                continue
+            raise
         rows.append({"random_state": int(random_state), **metrics})
+    if not rows:
+        raise ValueError(f"No valid random states found for {split_strategy}.")
     return pd.DataFrame(rows)
+
+
+def resolve_first_valid_random_state(
+    frame: pd.DataFrame,
+    *,
+    split_strategy: str = "row",
+    test_size: float = 0.3,
+    candidate_random_states: Sequence[int],
+    num_folds: int = 5,
+) -> int:
+    ordered_random_states = list(dict.fromkeys(int(random_state) for random_state in candidate_random_states))
+    if not ordered_random_states:
+        raise ValueError("Provide at least one candidate random state.")
+    for random_state in ordered_random_states:
+        try:
+            build_train_eval_splits(
+                frame,
+                split_strategy=split_strategy,
+                test_size=test_size,
+                random_state=random_state,
+                num_folds=num_folds,
+            )
+        except ValueError as error:
+            if (
+                split_strategy in GROUP_COLUMN_BY_STRATEGY
+                and _is_fold_class_preservation_error(error)
+            ):
+                continue
+            raise
+        return random_state
+    raise ValueError(f"No valid random state found for {split_strategy}.")
 
 
 def resolve_highest_valid_num_folds(

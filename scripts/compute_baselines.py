@@ -77,6 +77,7 @@ _BASELINE_HELPER_NAMES = (
     "load_reference_bank",
     "load_reference_stats",
     "resolve_feature_variant_frame",
+    "resolve_first_valid_random_state",
     "resolve_yes_no_token_ids",
     "validate_object_heldout_reference_support",
 )
@@ -428,12 +429,24 @@ def main(argv: list[str] | None = None) -> int:
                     f"supported_objects={support['supported_object_count']} "
                     f"retained_rows={support['retained_row_count']}"
                 )
+            effective_random_state = resolve_first_valid_random_state(
+                evaluation_frame,
+                split_strategy=args.split_strategy,
+                test_size=args.test_size,
+                candidate_random_states=[int(args.random_state), *split_seeds],
+                num_folds=args.num_folds,
+            )
+            if effective_random_state != int(args.random_state):
+                print(
+                    "[compute_baselines] using fallback random_state "
+                    f"{effective_random_state} for {variant_name} under {args.split_strategy}"
+                )
             metrics, results = evaluate_feature_frame(
                 evaluation_frame,
                 columns=columns,
                 split_strategy=args.split_strategy,
                 test_size=args.test_size,
-                random_state=args.random_state,
+                random_state=effective_random_state,
                 num_folds=args.num_folds,
             )
             results_path = output_paths["variant_results"] / f"{variant_name}.csv"
@@ -448,6 +461,7 @@ def main(argv: list[str] | None = None) -> int:
             baselines[variant_name] = {
                 **metrics,
                 "confidence_intervals": confidence_intervals,
+                "random_state": effective_random_state,
                 "result_path": str(results_path),
             }
             ablations = merge_metric_rows(
@@ -460,24 +474,36 @@ def main(argv: list[str] | None = None) -> int:
             ablations.to_csv(output_paths["ablations"], index=False)
             print(f"[compute_baselines] updated {output_paths['baselines']}")
             print(f"[compute_baselines] updated {output_paths['ablations']}")
-            for random_state in split_seeds:
-                seed_metrics, _ = evaluate_feature_frame(
-                    evaluation_frame,
-                    columns=columns,
-                    split_strategy=args.split_strategy,
-                    test_size=args.test_size,
-                    random_state=int(random_state),
-                    num_folds=args.num_folds,
+            split_seed_metrics = evaluate_feature_frame_across_random_states(
+                evaluation_frame,
+                columns=columns,
+                split_strategy=args.split_strategy,
+                test_size=args.test_size,
+                random_states=split_seeds,
+                num_folds=args.num_folds,
+                skip_invalid_group_splits=args.split_strategy in GROUP_COLUMN_BY_STRATEGY,
+            )
+            valid_seed_states = {
+                int(random_state) for random_state in split_seed_metrics["random_state"].tolist()
+            }
+            skipped_seed_states = [
+                int(random_state) for random_state in split_seeds if int(random_state) not in valid_seed_states
+            ]
+            if skipped_seed_states:
+                print(
+                    "[compute_baselines] skipped invalid grouped split seeds "
+                    f"for {variant_name}: {skipped_seed_states}"
                 )
+            for seed_row in split_seed_metrics.to_dict("records"):
                 split_sensitivity = merge_metric_rows(
                     split_sensitivity,
-                    pd.DataFrame([{"variant": variant_name, "random_state": int(random_state), **seed_metrics}]),
+                    pd.DataFrame([{"variant": variant_name, **seed_row}]),
                     key_columns=["variant", "random_state"],
                 )
                 split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
                 print(
                     f"[compute_baselines] updated {output_paths['split_sensitivity']} "
-                    f"for {variant_name} seed {int(random_state)}"
+                    f"for {variant_name} seed {int(seed_row['random_state'])}"
                 )
     print(output_paths["baselines"])
     print(output_paths["ablations"])
