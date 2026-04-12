@@ -32,6 +32,7 @@ WAIT_LOG=$(printf '%q' "$WAIT_LOG")
 QUEUE_LOG=$(printf '%q' "$QUEUE_LOG")
 POLL_SECONDS=$(printf '%q' "$POLL_SECONDS")
 cd "$ROOT_DIR"
+export PYTHONNOUSERSITE=1
 
 timestamp() {
   date '+%Y-%m-%d %H:%M:%S'

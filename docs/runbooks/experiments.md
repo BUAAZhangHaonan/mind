@@ -13,7 +13,7 @@ make verify-model MODEL_ID=llava-hf/llava-onevision-qwen2-7b-ov-hf
 make test
 ```
 
-Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, and this project uses GPU 0 or GPU 1 only.
+Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, this project uses GPU 0 or GPU 1 only, and the queue exports `PYTHONNOUSERSITE=1` so user-site torch packages do not shadow the conda env.
 
 Processor smoke checks for the added model families:
 
