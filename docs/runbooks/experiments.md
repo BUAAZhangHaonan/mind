@@ -13,6 +13,8 @@ make verify-model MODEL_ID=llava-hf/llava-onevision-qwen2-7b-ov-hf
 make test
 ```
 
+Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, and this project uses GPU 1 only.
+
 Processor smoke checks for the added model families:
 
 ```bash
