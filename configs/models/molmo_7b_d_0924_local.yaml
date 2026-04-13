@@ -1,0 +1,6 @@
+name: molmo-7b-d-0924
+model_id: /home/team/zhanghaonan/.cache/huggingface/hub/models--allenai--Molmo-7B-D-0924/snapshots/cab33fb7f1a40091911f81165f8481920621948f
+family: molmo
+dtype: float16
+attn_implementation: eager
+trust_remote_code: true

@@ -81,18 +81,20 @@ def resolve_reference_banks_root(output_root: Path, bank_scope: str) -> Path:
     raise ValueError(f"Unsupported bank scope: {bank_scope}")
 
 
-def resolve_prepare_source(dataset_root: str, subset: str) -> str:
+def resolve_prepare_source(dataset_root: str, subset: str, dataset_name: str) -> str:
     root_path = Path(dataset_root)
     if root_path.is_file():
-        return str(root_path)
-    dash_b_neg = root_path / "images" / "dash_benchmark_neg.json"
-    dash_b_pos = root_path / "images" / "dash_benchmark_pos.json"
-    if dash_b_neg.exists() and dash_b_pos.exists():
         return str(root_path)
     for suffix in (".jsonl", ".json"):
         candidate = root_path / f"{subset}{suffix}"
         if candidate.exists():
             return str(candidate)
+    dash_b_neg = root_path / "images" / "dash_benchmark_neg.json"
+    dash_b_pos = root_path / "images" / "dash_benchmark_pos.json"
+    if dash_b_neg.exists() and dash_b_pos.exists():
+        return str(root_path)
+    if dataset_name == "dash-b":
+        return str(root_path)
     return str(root_path / f"{subset}.jsonl")
 
 
@@ -153,7 +155,7 @@ def build_stage_commands(
                 "scripts/prepare_data.py",
                 "normalize-object-yes-no",
                 "--source",
-                resolve_prepare_source(dataset.root, subset),
+                resolve_prepare_source(dataset.root, subset, dataset.name),
                 "--output",
                 paths["normalized"],
                 "--subset",

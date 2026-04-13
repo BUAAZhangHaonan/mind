@@ -836,13 +836,22 @@ def export_paper_package(
         docs_csv=tables_root / "supp_repope.csv",
         docs_md=tables_root / "supp_repope.md",
     )
-    _write_optional_table(
-        dash_b_transfer_table,
-        export_csv=paths["supp_dash_b_transfer_csv"],
-        export_md=paths["supp_dash_b_transfer_md"],
-        docs_csv=tables_root / "supp_dash_b_transfer.csv",
-        docs_md=tables_root / "supp_dash_b_transfer.md",
-    )
+    if dash_b_transfer_table.empty:
+        for path in (
+            paths["supp_dash_b_transfer_csv"],
+            paths["supp_dash_b_transfer_md"],
+            tables_root / "supp_dash_b_transfer.csv",
+            tables_root / "supp_dash_b_transfer.md",
+        ):
+            path.unlink(missing_ok=True)
+    else:
+        _write_optional_table(
+            dash_b_transfer_table,
+            export_csv=paths["supp_dash_b_transfer_csv"],
+            export_md=paths["supp_dash_b_transfer_md"],
+            docs_csv=tables_root / "supp_dash_b_transfer.csv",
+            docs_md=tables_root / "supp_dash_b_transfer.md",
+        )
     _write_optional_table(
         split_sensitivity_table,
         export_csv=paths["supp_split_sensitivity_csv"],
@@ -867,7 +876,7 @@ def export_paper_package(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reports-root", type=Path, default=Path("outputs/round2_2026_04/reports"))
-    parser.add_argument("--output-root", type=Path, default=Path("artifacts/paper_round2"))
+    parser.add_argument("--output-root", type=Path, default=Path("artifacts/paper_closeout"))
     parser.add_argument("--tables-root", type=Path, default=Path("docs/tables/round2"))
     return parser
 

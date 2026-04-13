@@ -17,8 +17,9 @@ set -euo pipefail
 # - The serial scheduler and the memory gate are the real host-safety controls.
 #   A hard `ulimit -v` cap is optional because HALP can exceed a low virtual
 #   address ceiling even when the machine still has plenty of free RAM.
-# - GPU 0 is the only GPU allowed for current MIND work in this recovery pass.
-#   GPU 1 is reserved for other project traffic.
+# - Current MIND work may run only on GPU 0 or GPU 1.
+# - The selected GPU must be passed through `GPU_ID`, and the queue exports
+#   `CUDA_VISIBLE_DEVICES` from that value.
 #
 # This queue replaces the older split queue scripts. It will refuse to start if
 # another MIND extraction queue is still active, because parallel queues are the
@@ -28,16 +29,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 CONDA_ENV="${CONDA_ENV:-mind-py311}"
-GPU_ID="${GPU_ID:-0}"
+GPU_ID="${GPU_ID:-1}"
 READOUT_BATCH_SIZE_DEFAULT="${READOUT_BATCH_SIZE_DEFAULT:-1}"
-if [[ "$GPU_ID" != "0" ]]; then
-  echo "MIND is restricted to GPU 0 only. Refusing GPU_ID=$GPU_ID." >&2
+if [[ "$GPU_ID" != "0" && "$GPU_ID" != "1" ]]; then
+  echo "MIND is restricted to GPU 0 or GPU 1 only. Refusing GPU_ID=$GPU_ID." >&2
   exit 1
 fi
 
 export CUDA_VISIBLE_DEVICES="$GPU_ID"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+export PYTHONNOUSERSITE="${PYTHONNOUSERSITE:-1}"
 
 QUEUE_LOG="${QUEUE_LOG:-outputs/round2_2026_04/job_logs/mind_round2_unified_serial_20260408_disk_bounded.log}"
 SAFE_AVAILABLE_GB="${SAFE_AVAILABLE_GB:-10}"

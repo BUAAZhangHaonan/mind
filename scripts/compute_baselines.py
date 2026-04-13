@@ -4,38 +4,28 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
-from transformers import AutoProcessor
 
-from mind.evaluation.baselines import (
-    DEFAULT_FULL_VARIANT,
-    FEATURE_VARIANT_NAMES,
-    GROUP_COLUMN_BY_STRATEGY,
-    apply_label_overrides_to_entries,
-    apply_label_overrides_to_frame,
-    build_feature_variant_frames,
-    build_linear_probe_frame,
-    build_no_manifold_feature_frame,
-    build_output_baseline_frame,
-    build_raw_model_yes_no_baseline,
-    compute_bootstrap_confidence_intervals,
-    drift_only_columns,
-    evaluate_feature_frame,
-    evaluate_feature_frame_across_random_states,
-    feature_columns,
-    load_cache_entries,
-    load_reference_bank,
-    load_reference_stats,
-    resolve_feature_variant_frame,
-    resolve_yes_no_token_ids,
-    validate_object_heldout_reference_support,
-)
-from mind.evaluation.metrics import write_results_table
 from mind.utils import output_root_lock
 
+
+DEFAULT_FULL_VARIANT = "raw_plus_calibrated_simple"
+FEATURE_VARIANT_NAMES = (
+    "raw_curve_only",
+    "raw_plus_calibrated_simple",
+    "raw_plus_calibrated_full_curve",
+    "raw_plus_calibrated_haar",
+)
+GROUP_COLUMN_BY_STRATEGY = {
+    "image_grouped": "image_id",
+    "object_heldout": "object_name",
+}
 
 KNOWN_MODEL_IDS = {
     "qwen3-vl-8b": "Qwen/Qwen3-VL-8B-Instruct",
@@ -69,6 +59,93 @@ CACHE_BACKED_VARIANTS = {
     "output_logit_margin",
     "output_chosen_answer_confidence",
 }
+
+_BASELINE_HELPER_NAMES = (
+    "apply_label_overrides_to_entries",
+    "apply_label_overrides_to_frame",
+    "build_feature_variant_frames",
+    "build_linear_probe_frame",
+    "build_no_manifold_feature_frame",
+    "build_output_baseline_frame",
+    "build_raw_model_yes_no_baseline",
+    "compute_bootstrap_confidence_intervals",
+    "drift_only_columns",
+    "evaluate_feature_frame",
+    "evaluate_feature_frame_across_random_states",
+    "feature_columns",
+    "load_cache_entries",
+    "load_reference_bank",
+    "load_reference_stats",
+    "resolve_feature_variant_frame",
+    "resolve_first_valid_random_state",
+    "resolve_yes_no_token_ids",
+    "validate_object_heldout_reference_support",
+)
+
+_METRICS_HELPER_NAMES = ("write_results_table",)
+
+
+def _ensure_lightweight_models_module() -> None:
+    if "mind.models" in sys.modules:
+        return
+
+    import re
+
+    import torch
+
+    yes_no_pattern = re.compile(r"\b(yes|no)\b", re.IGNORECASE)
+
+    def parse_yes_no_answer(text: str) -> int | None:
+        match = yes_no_pattern.search(text)
+        if match is None:
+            return None
+        return 1 if match.group(1).lower() == "yes" else 0
+
+    def resolve_torch_dtype(value: str) -> torch.dtype:
+        normalized = value.strip().lower()
+        mapping = {
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
+            "float32": torch.float32,
+            "fp32": torch.float32,
+        }
+        try:
+            return mapping[normalized]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported dtype: {value}") from exc
+
+    shim = types.ModuleType("mind.models")
+    shim.parse_yes_no_answer = parse_yes_no_answer
+    shim.resolve_torch_dtype = resolve_torch_dtype
+    sys.modules["mind.models"] = shim
+
+
+def _load_baseline_helpers():
+    _ensure_lightweight_models_module()
+    return importlib.import_module("mind.evaluation.baselines")
+
+
+def _load_metrics_helpers():
+    _ensure_lightweight_models_module()
+    return importlib.import_module("mind.evaluation.metrics")
+
+
+def _make_proxy(loader, name: str):
+    def _proxy(*args, **kwargs):
+        return getattr(loader(), name)(*args, **kwargs)
+
+    _proxy.__name__ = name
+    _proxy.__qualname__ = name
+    return _proxy
+
+
+for _helper_name in _BASELINE_HELPER_NAMES:
+    globals()[_helper_name] = _make_proxy(_load_baseline_helpers, _helper_name)
+
+for _helper_name in _METRICS_HELPER_NAMES:
+    globals()[_helper_name] = _make_proxy(_load_metrics_helpers, _helper_name)
 
 
 def resolve_required_cache_fields(selected_variants: list[str]) -> set[str]:
@@ -188,6 +265,8 @@ def resolve_token_ids(
     resolved_model_id = model_id or KNOWN_MODEL_IDS.get(model_name, "")
     if not resolved_model_id:
         raise ValueError("Provide --model-id or both --yes-token-id and --no-token-id.")
+    from transformers import AutoProcessor
+
     processor = AutoProcessor.from_pretrained(resolved_model_id, trust_remote_code=True)
     tokenizer = getattr(processor, "tokenizer", processor)
     token_map = resolve_yes_no_token_ids(tokenizer)
@@ -350,12 +429,24 @@ def main(argv: list[str] | None = None) -> int:
                     f"supported_objects={support['supported_object_count']} "
                     f"retained_rows={support['retained_row_count']}"
                 )
+            effective_random_state = resolve_first_valid_random_state(
+                evaluation_frame,
+                split_strategy=args.split_strategy,
+                test_size=args.test_size,
+                candidate_random_states=[int(args.random_state), *split_seeds],
+                num_folds=args.num_folds,
+            )
+            if effective_random_state != int(args.random_state):
+                print(
+                    "[compute_baselines] using fallback random_state "
+                    f"{effective_random_state} for {variant_name} under {args.split_strategy}"
+                )
             metrics, results = evaluate_feature_frame(
                 evaluation_frame,
                 columns=columns,
                 split_strategy=args.split_strategy,
                 test_size=args.test_size,
-                random_state=args.random_state,
+                random_state=effective_random_state,
                 num_folds=args.num_folds,
             )
             results_path = output_paths["variant_results"] / f"{variant_name}.csv"
@@ -370,6 +461,7 @@ def main(argv: list[str] | None = None) -> int:
             baselines[variant_name] = {
                 **metrics,
                 "confidence_intervals": confidence_intervals,
+                "random_state": effective_random_state,
                 "result_path": str(results_path),
             }
             ablations = merge_metric_rows(
@@ -382,24 +474,36 @@ def main(argv: list[str] | None = None) -> int:
             ablations.to_csv(output_paths["ablations"], index=False)
             print(f"[compute_baselines] updated {output_paths['baselines']}")
             print(f"[compute_baselines] updated {output_paths['ablations']}")
-            for random_state in split_seeds:
-                seed_metrics, _ = evaluate_feature_frame(
-                    evaluation_frame,
-                    columns=columns,
-                    split_strategy=args.split_strategy,
-                    test_size=args.test_size,
-                    random_state=int(random_state),
-                    num_folds=args.num_folds,
+            split_seed_metrics = evaluate_feature_frame_across_random_states(
+                evaluation_frame,
+                columns=columns,
+                split_strategy=args.split_strategy,
+                test_size=args.test_size,
+                random_states=split_seeds,
+                num_folds=args.num_folds,
+                skip_invalid_group_splits=args.split_strategy in GROUP_COLUMN_BY_STRATEGY,
+            )
+            valid_seed_states = {
+                int(random_state) for random_state in split_seed_metrics["random_state"].tolist()
+            }
+            skipped_seed_states = [
+                int(random_state) for random_state in split_seeds if int(random_state) not in valid_seed_states
+            ]
+            if skipped_seed_states:
+                print(
+                    "[compute_baselines] skipped invalid grouped split seeds "
+                    f"for {variant_name}: {skipped_seed_states}"
                 )
+            for seed_row in split_seed_metrics.to_dict("records"):
                 split_sensitivity = merge_metric_rows(
                     split_sensitivity,
-                    pd.DataFrame([{"variant": variant_name, "random_state": int(random_state), **seed_metrics}]),
+                    pd.DataFrame([{"variant": variant_name, **seed_row}]),
                     key_columns=["variant", "random_state"],
                 )
                 split_sensitivity.to_csv(output_paths["split_sensitivity"], index=False)
                 print(
                     f"[compute_baselines] updated {output_paths['split_sensitivity']} "
-                    f"for {variant_name} seed {int(random_state)}"
+                    f"for {variant_name} seed {int(seed_row['random_state'])}"
                 )
     print(output_paths["baselines"])
     print(output_paths["ablations"])

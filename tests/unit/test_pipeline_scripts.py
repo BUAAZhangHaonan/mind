@@ -2,11 +2,47 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
 import pytest
 import torch
+
+
+if "mind.models" not in sys.modules:
+    _mind_models_shim = types.ModuleType("mind.models")
+    _yes_no_pattern = re.compile(r"\b(yes|no)\b", re.IGNORECASE)
+
+    def _parse_yes_no_answer(text: str) -> int | None:
+        match = _yes_no_pattern.search(text)
+        if match is None:
+            return None
+        return 1 if match.group(1).lower() == "yes" else 0
+
+    def _resolve_torch_dtype(value: str) -> torch.dtype:
+        normalized = value.strip().lower()
+        mapping = {
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
+            "float32": torch.float32,
+            "fp32": torch.float32,
+        }
+        try:
+            return mapping[normalized]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported dtype: {value}") from exc
+
+    _mind_models_shim.parse_yes_no_answer = _parse_yes_no_answer
+    _mind_models_shim.create_model_wrapper = lambda *args, **kwargs: (_ for _ in ()).throw(
+        NotImplementedError("create_model_wrapper is only available in the real package")
+    )
+    _mind_models_shim.resolve_torch_dtype = _resolve_torch_dtype
+    sys.modules["mind.models"] = _mind_models_shim
 
 
 def _load_script(name: str):
@@ -959,6 +995,54 @@ def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: P
     ]
 
 
+def test_run_experiment_prepare_stage_prefers_dash_b_subset_file_over_directory_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    repo_root = Path(__file__).resolve().parents[2]
+    dataset_config = tmp_path / "dash_b.yaml"
+    dataset_config.write_text(
+        "\n".join(
+                [
+                    "name: dash-b",
+                    "root: data/dash_b",
+                    "image_root: data/dash_b",
+                    "splits:",
+                    "  - main",
+                    "prompt_template: '{question}'",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+    )
+    dash_b_root = tmp_path / "data" / "dash_b"
+    dash_b_root.mkdir(parents=True)
+    (dash_b_root / "main.jsonl").write_text("", encoding="utf-8")
+    config_path = tmp_path / "experiment.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: smoke-llava-onevision-dash-b",
+                f"model_config: {repo_root / 'configs/models/qwen3_vl_8b.yaml'}",
+                f"dataset_config: {dataset_config}",
+                "subset: main",
+                "split: val",
+                "selected_layers: 16",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["prepare"],
+    )
+
+    assert commands["prepare"][4] == "data/dash_b/main.jsonl"
+
+
 def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_path: Path) -> None:
     config_path = tmp_path / "experiment.yaml"
     config_path.write_text(
@@ -1557,7 +1641,7 @@ def test_compute_baselines_persists_completed_variants_before_later_failure(
 
     def _crash_before_second_variant_metrics(*args, **kwargs):
         call_count["count"] += 1
-        if call_count["count"] == 4:
+        if call_count["count"] == 2:
             raise RuntimeError("boom")
         return original_evaluate(*args, **kwargs)
 
@@ -1777,12 +1861,6 @@ def test_compute_baselines_does_not_load_cache_for_feature_only_variants(tmp_pat
 
 
 def test_compute_baselines_prefers_known_token_ids_before_processor_lookup(monkeypatch) -> None:
-    monkeypatch.setattr(
-        compute_baselines_script.AutoProcessor,
-        "from_pretrained",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not use AutoProcessor")),
-    )
-
     yes_token_ids, no_token_ids = compute_baselines_script.resolve_token_ids(
         model_name="qwen3-vl-8b",
         model_id="",

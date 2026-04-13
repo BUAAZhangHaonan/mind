@@ -23,6 +23,7 @@ from mind.evaluation.baselines import (
     load_cache_entries,
     prepare_object_heldout_frame,
     resolve_feature_variant_frame,
+    resolve_first_valid_random_state,
     resolve_highest_valid_num_folds,
     resolve_yes_no_token_ids,
     validate_object_heldout_reference_support,
@@ -450,6 +451,56 @@ def test_resolve_highest_valid_num_folds_returns_first_valid_candidate() -> None
     )
 
     assert num_folds == 2
+
+
+def test_resolve_first_valid_random_state_skips_invalid_group_seed() -> None:
+    frame = pd.DataFrame(
+        [
+            {"sample_id": "sample-0", "image_id": 0, "object_name": "a", "label": 0, "raw_drift_0": 0.0},
+            {"sample_id": "sample-1", "image_id": 1, "object_name": "a", "label": 0, "raw_drift_0": 1.0},
+            {"sample_id": "sample-2", "image_id": 2, "object_name": "b", "label": 0, "raw_drift_0": 2.0},
+            {"sample_id": "sample-3", "image_id": 3, "object_name": "b", "label": 1, "raw_drift_0": 3.0},
+            {"sample_id": "sample-4", "image_id": 4, "object_name": "c", "label": 0, "raw_drift_0": 4.0},
+            {"sample_id": "sample-5", "image_id": 5, "object_name": "c", "label": 0, "raw_drift_0": 5.0},
+            {"sample_id": "sample-6", "image_id": 6, "object_name": "d", "label": 1, "raw_drift_0": 6.0},
+            {"sample_id": "sample-7", "image_id": 7, "object_name": "d", "label": 1, "raw_drift_0": 7.0},
+        ]
+    )
+
+    random_state = resolve_first_valid_random_state(
+        frame,
+        split_strategy="object_heldout",
+        candidate_random_states=[13, 17, 29],
+        num_folds=2,
+    )
+
+    assert random_state == 17
+
+
+def test_evaluate_feature_frame_across_random_states_skips_invalid_group_splits() -> None:
+    frame = pd.DataFrame(
+        [
+            {"sample_id": "sample-0", "image_id": 0, "object_name": "a", "label": 0, "raw_drift_0": 0.0},
+            {"sample_id": "sample-1", "image_id": 1, "object_name": "a", "label": 0, "raw_drift_0": 1.0},
+            {"sample_id": "sample-2", "image_id": 2, "object_name": "b", "label": 0, "raw_drift_0": 2.0},
+            {"sample_id": "sample-3", "image_id": 3, "object_name": "b", "label": 1, "raw_drift_0": 3.0},
+            {"sample_id": "sample-4", "image_id": 4, "object_name": "c", "label": 0, "raw_drift_0": 4.0},
+            {"sample_id": "sample-5", "image_id": 5, "object_name": "c", "label": 0, "raw_drift_0": 5.0},
+            {"sample_id": "sample-6", "image_id": 6, "object_name": "d", "label": 1, "raw_drift_0": 6.0},
+            {"sample_id": "sample-7", "image_id": 7, "object_name": "d", "label": 1, "raw_drift_0": 7.0},
+        ]
+    )
+
+    metrics = evaluate_feature_frame_across_random_states(
+        frame,
+        columns=["raw_drift_0"],
+        split_strategy="object_heldout",
+        random_states=[13, 17, 29],
+        num_folds=2,
+        skip_invalid_group_splits=True,
+    )
+
+    assert metrics["random_state"].tolist() == [17, 29]
 
 
 def test_evaluate_feature_frame_uses_image_grouped_out_of_fold_results() -> None:
