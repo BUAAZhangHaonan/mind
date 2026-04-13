@@ -285,6 +285,34 @@ The current maintained limitations are:
 1. The naming mismatch remains. `README.md` still expands `MIND` as a multi-scale acronym, while the paper outline says not to do that. [Sources: `README.md`; `docs/_archive/review/paper_outline.md`]
 2. H-POPE is configured but remains unavailable. This is a known limitation and is not blocking any current deliverable. [Sources: `configs/data/hpope.yaml`; `src/mind/data/pope.py`]
 
+### Deferred and excluded experiments
+
+The following experiments have been deferred, excluded, or are otherwise not part of the current deliverable:
+
+1. GLSim official comparator (EXCLUDED):
+   Status: Permanently excluded from this project.
+   Reason: The experimental design of MIND is built on object-level yes/no benchmark tasks (POPE, RePOPE, DASH-B) that require querying whether a specific object exists in a specific image. Official GLSim is designed for a different evaluation paradigm and its data requirements conflict with the yes/no object-existence format used throughout this project. The adapted implementation (`src/mind/comparators/glsim_adapted.py`) was an attempt to bridge this gap, but it is NOT official GLSim and its results would not be comparable to published GLSim benchmarks. Therefore, GLSim experiments cannot be performed within the current experimental design. All GLSim-related code (`src/mind/comparators/glsim.py`, `src/mind/comparators/glsim_adapted.py`, `scripts/run_glsim.py`) is retained in the repository as reference but is not wired into the active workflow. No GLSim results will be reported.
+
+2. Bank-size ablation (`supp_bank_size.md`):
+   Status: Deferred. No experiment has been run. No bank-size ablation data exists in the retained output tree. The placeholder table in `docs/tables/supp_bank_size.md` accurately reflects this status. This experiment requires a full pipeline run with varied reference-bank sizes and is deferred until dedicated GPU time is available.
+
+3. Layer-count ablation (`supp_layer_count.md`):
+   Status: Deferred. No experiment has been run. No layer-count ablation data exists in the retained output tree. The placeholder table in `docs/tables/supp_layer_count.md` accurately reflects this status. This experiment requires a full pipeline run with varied `selected_layers` values and is deferred until dedicated GPU time is available.
+
+4. H-POPE evaluation:
+   Status: Unavailable. The configured H-POPE data files are not present in the local environment. This is a known limitation documented above.
+
+5. POPE random subset evaluation:
+   Status: Out of retained scope. The normalized file is not part of the current retained evidence tree (`outputs/round2_2026_04/`).
+
+6. RePOPE adversarial subset evaluation:
+   Status: Out of retained scope. The normalized file is not part of the current retained evidence tree (`outputs/round2_2026_04/`).
+
+7. DataLoader / extraction-path optimization:
+   Status: Deferred. No profiling evidence exists showing an input-side bottleneck. Changes to the extraction hot path carry regression risk and require dedicated GPU time for profiling.
+
+NO DATA HAS BEEN FABRICATED for any of the above. All placeholder tables contain the explicit status note: "Status: Not yet run. This table is a placeholder and contains no results."
+
 The retained future work is documentation and evidence closure on the maintained surface:
 
 1. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger under both `image_grouped` and `object_heldout` transfer controls. [Sources: `docs/_archive/review/paper_outline.md`; `docs/tables/table3_transfer_controls.md`; retained HALP row `halp.json` files]
