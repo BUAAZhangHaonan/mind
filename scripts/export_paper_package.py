@@ -55,7 +55,6 @@ WIDE_MAIN_METHOD_ORDER = [
     ("no_manifold", "no_manifold"),
     ("full", "full_MIND"),
     ("linear_probe", "linear_probe"),
-    ("halp", "HALP"),
 ]
 
 FEATURE_VARIANT_ORDER = [
