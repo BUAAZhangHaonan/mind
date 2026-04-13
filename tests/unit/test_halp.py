@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 import torch
 
+import mind.comparators.halp as halp_module
 from mind.comparators.halp import (
     HALPProbeConfig,
     build_halp_probe_frame,
@@ -223,3 +225,56 @@ def test_evaluate_halp_nested_from_readout_entries_matches_frame_path() -> None:
     assert lazy_metrics["pr_auc"] == frame_metrics["pr_auc"]
     assert set(lazy_results["selected_probe"]) == set(frame_results["selected_probe"])
     assert set(lazy_selection["selected_probe"]) == set(frame_selection["selected_probe"])
+
+
+def test_evaluate_halp_nested_from_readout_entries_uses_highest_valid_outer_folds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entries: list[dict[str, object]] = []
+    for index in range(12):
+        label = 1 if index % 2 == 0 else 0
+        informative_value = 1.0 if label else 0.0
+        entries.append(
+            {
+                "sample_id": f"sample-{index}",
+                "image_id": index,
+                "label": 0,
+                "parsed_answer": 0 if label else 1,
+                "subset": "popular",
+                "object_name": f"object-{index // 2}",
+                "query_hidden_states": torch.tensor([[informative_value]], dtype=torch.float32),
+                "vision_token_hidden_states": torch.tensor([[0.5]], dtype=torch.float32),
+                "vision_features": torch.tensor([[informative_value]], dtype=torch.float32),
+            }
+        )
+
+    captured_num_folds: list[int] = []
+    original_build_splits = halp_module._build_sample_id_splits
+
+    def _capture_build_splits(frame, *, split_strategy, test_size, random_state, num_folds):
+        captured_num_folds.append(int(num_folds))
+        return original_build_splits(
+            frame,
+            split_strategy=split_strategy,
+            test_size=test_size,
+            random_state=random_state,
+            num_folds=num_folds,
+        )
+
+    monkeypatch.setattr(halp_module, "_build_sample_id_splits", _capture_build_splits)
+    monkeypatch.setattr(halp_module, "_resolve_outer_num_folds", lambda *args, **kwargs: 2)
+
+    metrics, results, selection = evaluate_halp_nested_from_readout_entries(
+        entries,
+        split_strategy="object_heldout",
+        num_folds=5,
+        random_state=13,
+        inner_candidate_folds=(2,),
+        probe_config=HALPProbeConfig(hidden_dims=(8, 4), batch_size=4, epochs=10, random_state=7),
+        layer_indices=[0],
+    )
+
+    assert "roc_auc" in metrics
+    assert captured_num_folds[0] == 2
+    assert set(results["fold"]) == {0, 1}
+    assert set(selection["outer_fold"]) == {0, 1}

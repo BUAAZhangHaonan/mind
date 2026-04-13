@@ -247,6 +247,28 @@ def _build_sample_id_splits(
     ]
 
 
+def _candidate_folds_from_requested(requested_num_folds: int) -> tuple[int, ...]:
+    upper = max(2, int(requested_num_folds))
+    return tuple(range(upper, 1, -1))
+
+
+def _resolve_outer_num_folds(
+    frame: pd.DataFrame,
+    *,
+    split_strategy: str,
+    requested_num_folds: int,
+    random_state: int,
+) -> int:
+    if split_strategy == "row":
+        return 1
+    return resolve_highest_valid_num_folds(
+        [frame],
+        split_strategy=split_strategy,
+        candidate_folds=_candidate_folds_from_requested(requested_num_folds),
+        random_state=random_state,
+    )
+
+
 def _subset_frame_by_sample_ids(frame: pd.DataFrame, sample_ids: Sequence[str]) -> pd.DataFrame:
     indexed = frame.set_index("sample_id")
     subset = indexed.loc[list(sample_ids)].reset_index()
@@ -478,12 +500,18 @@ def evaluate_halp_nested(
             ].sort_values("sample_id").reset_index(drop=True)
             for probe_name, probe_frame in candidate_frames.items()
         }
+    outer_num_folds = _resolve_outer_num_folds(
+        base_frame,
+        split_strategy=split_strategy,
+        requested_num_folds=num_folds,
+        random_state=random_state,
+    )
     outer_splits = _build_sample_id_splits(
         base_frame,
         split_strategy=split_strategy,
         test_size=test_size,
         random_state=random_state,
-        num_folds=num_folds,
+        num_folds=outer_num_folds,
     )
 
     result_frames: list[pd.DataFrame] = []
@@ -555,12 +583,18 @@ def evaluate_halp_nested_from_readout_entries(
             requested_num_folds=num_folds,
             context="HALP object_heldout",
         )
+    outer_num_folds = _resolve_outer_num_folds(
+        base_frame,
+        split_strategy=split_strategy,
+        requested_num_folds=num_folds,
+        random_state=random_state,
+    )
     outer_splits = _build_sample_id_splits(
         base_frame,
         split_strategy=split_strategy,
         test_size=test_size,
         random_state=random_state,
-        num_folds=num_folds,
+        num_folds=outer_num_folds,
     )
 
     result_frames: list[pd.DataFrame] = []

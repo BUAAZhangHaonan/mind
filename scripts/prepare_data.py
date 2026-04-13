@@ -7,7 +7,14 @@ import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
+import sys
 from typing import Sequence
+
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
+repo_src_path = str(REPO_SRC)
+if repo_src_path in sys.path:
+    sys.path.remove(repo_src_path)
+sys.path.insert(0, repo_src_path)
 
 from mind.data import build_reference_candidates, load_object_yes_no_records, load_pope_records
 

@@ -55,6 +55,7 @@ WIDE_MAIN_METHOD_ORDER = [
     ("no_manifold", "no_manifold"),
     ("full", "full_MIND"),
     ("linear_probe", "linear_probe"),
+    ("halp", "HALP"),
 ]
 
 FEATURE_VARIANT_ORDER = [
@@ -69,6 +70,7 @@ TRANSFER_METHOD_ORDER = [
     ("shared", "shared"),
     ("shuffled_object", "shuffled_object"),
     ("linear_probe", "linear_probe"),
+    ("halp", "HALP"),
 ]
 
 METRIC_COLUMNS = ["roc_auc", "roc_auc_ci", "pr_auc", "pr_auc_ci"]
@@ -87,7 +89,6 @@ class RoundTwoReport:
     ablations: pd.DataFrame | None = None
     split_sensitivity: pd.DataFrame | None = None
     halp: dict[str, object] | None = None
-    glsim: dict[str, object] | None = None
     variant_results: dict[str, pd.DataFrame] | None = None
 
 
@@ -400,6 +401,24 @@ def build_main_table(reports: list[RoundTwoReport]) -> pd.DataFrame:
                         report_path=report.path,
                     )
                 )
+            halp_report = _find_report(
+                reports,
+                model_key=model_key,
+                benchmark_key=benchmark_key,
+                protocol="image_grouped",
+                kind="halp",
+            )
+            if halp_report is not None and halp_report.halp is not None:
+                rows.append(
+                    _metric_row(
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol="image_grouped",
+                        method="HALP",
+                        payload=halp_report.halp,
+                        report_path=halp_report.path,
+                    )
+                )
     columns = [
         "model",
         "benchmark",
@@ -483,17 +502,33 @@ def build_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: str = 
     for model_key in ROUND_TWO_MODEL_ORDER:
         for protocol in ("image_grouped", "object_heldout"):
             for bank_scope, method_label in TRANSFER_METHOD_ORDER:
-                report = _find_report(
-                    reports,
-                    model_key=model_key,
-                    benchmark_key=benchmark_key,
-                    protocol=protocol,
-                    kind="baseline",
-                    bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
-                )
-                if report is None:
+                payload: dict[str, object] | None = None
+                report_path: Path | None = None
+                if bank_scope == "halp":
+                    halp_report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="halp",
+                    )
+                    if halp_report is not None and halp_report.halp is not None:
+                        payload = halp_report.halp
+                        report_path = halp_report.path
+                else:
+                    report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="baseline",
+                        bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
+                    )
+                    if report is not None:
+                        payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
+                        report_path = report.path
+                if payload is None or report_path is None:
                     continue
-                payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
 
                 rows.append(
                     {
@@ -506,7 +541,7 @@ def build_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: str = 
                         "roc_auc_ci": _format_ci(payload, "roc_auc"),
                         "pr_auc": float(payload["pr_auc"]),
                         "pr_auc_ci": _format_ci(payload, "pr_auc"),
-                        "report_path": str(report.path),
+                        "report_path": str(report_path),
                     }
                 )
     columns = [
@@ -535,16 +570,27 @@ def build_wide_transfer_table(reports: list[RoundTwoReport], *, benchmark_key: s
             }
             for protocol in ("image_grouped", "object_heldout"):
                 payload: dict[str, object] | None = None
-                report = _find_report(
-                    reports,
-                    model_key=model_key,
-                    benchmark_key=benchmark_key,
-                    protocol=protocol,
-                    kind="baseline",
-                    bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
-                )
-                if report is not None:
-                    payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
+                if bank_scope == "halp":
+                    report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="halp",
+                    )
+                    if report is not None and report.halp is not None:
+                        payload = report.halp
+                else:
+                    report = _find_report(
+                        reports,
+                        model_key=model_key,
+                        benchmark_key=benchmark_key,
+                        protocol=protocol,
+                        kind="baseline",
+                        bank_scope=bank_scope if bank_scope in {"object", "shared", "shuffled_object"} else "object",
+                    )
+                    if report is not None:
+                        payload = _baseline_payload(report, "linear_probe" if bank_scope == "linear_probe" else "full")
                 row[protocol] = _format_metric_cell(payload)
             if row["image_grouped"] or row["object_heldout"]:
                 rows.append(row)
@@ -582,6 +628,24 @@ def build_benchmark_table(
                     report_path=report.path,
                 )
             )
+        halp_report = _find_report(
+            reports,
+            model_key=model_key,
+            benchmark_key=benchmark_key,
+            protocol=table_protocol,
+            kind="halp",
+        )
+        if halp_report is not None and halp_report.halp is not None:
+            rows.append(
+                _metric_row(
+                    model_key=model_key,
+                    benchmark_key=benchmark_key,
+                    protocol=table_protocol,
+                    method="HALP",
+                    payload=halp_report.halp,
+                    report_path=halp_report.path,
+                )
+            )
     columns = [
         "model",
         "benchmark",
@@ -617,7 +681,18 @@ def build_wide_benchmark_table(
         if report is None:
             continue
         for variant_key, column_label in WIDE_MAIN_METHOD_ORDER:
-            row[column_label] = _format_metric_cell(_baseline_payload(report, variant_key))
+            if variant_key == "halp":
+                halp_report = _find_report(
+                    reports,
+                    model_key=model_key,
+                    benchmark_key=benchmark_key,
+                    protocol=table_protocol,
+                    kind="halp",
+                )
+                payload = halp_report.halp if halp_report is not None else None
+            else:
+                payload = _baseline_payload(report, variant_key)
+            row[column_label] = _format_metric_cell(payload)
         rows.append(row)
     if not rows:
         return pd.DataFrame(columns=columns)
@@ -780,11 +855,7 @@ def export_paper_package(
     transfer_table = build_wide_transfer_table(reports)
     pop_adversarial_table = build_wide_benchmark_table(reports, benchmark_key="adversarial")
     repope_table = build_wide_benchmark_table(reports, benchmark_key="repope")
-    dash_b_transfer_table = build_wide_benchmark_table(
-        [report for report in reports if report.benchmark_key == "dash-b"],
-        benchmark_key="dash-b",
-        table_protocol="object_heldout",
-    )
+    dash_b_transfer_table = build_wide_transfer_table(reports, benchmark_key="dash-b")
     split_sensitivity_table = build_supp_split_sensitivity_table(reports)
 
     _write_table_bundle(
