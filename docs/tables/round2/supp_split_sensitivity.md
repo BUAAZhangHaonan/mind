@@ -1,355 +1,355 @@
-| model | benchmark | protocol | bank_scope | variant | report_path | random_state | accuracy | precision | recall | f1 | roc_auc | pr_auc | tpr_at_fpr_0.01 | false_positive_rate |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| InternVL3.5-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8057 | 0.7627 | 0.4930 | 0.5989 | 0.8574 | 0.7084 | 0.1179 | 0.0639 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8031 | 0.7534 | 0.4918 | 0.5951 | 0.8578 | 0.7049 | 0.1077 | 0.0671 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8069 | 0.7631 | 0.4981 | 0.6028 | 0.8600 | 0.7137 | 0.1115 | 0.0644 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8091 | 0.7669 | 0.5044 | 0.6086 | 0.8568 | 0.7050 | 0.1204 | 0.0639 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8043 | 0.7548 | 0.4956 | 0.5983 | 0.8593 | 0.7115 | 0.1255 | 0.0671 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8076 | 0.7682 | 0.4956 | 0.6025 | 0.8593 | 0.7054 | 0.0989 | 0.0623 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8039 | 0.7573 | 0.4905 | 0.5954 | 0.8599 | 0.7050 | 0.0900 | 0.0655 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8102 | 0.7692 | 0.5070 | 0.6112 | 0.8609 | 0.7089 | 0.0938 | 0.0634 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8098 | 0.7762 | 0.4968 | 0.6059 | 0.8591 | 0.7039 | 0.0925 | 0.0597 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8069 | 0.7652 | 0.4956 | 0.6015 | 0.8608 | 0.7073 | 0.0951 | 0.0634 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8147 | 0.7074 | 0.6312 | 0.6671 | 0.8769 | 0.7288 | 0.1496 | 0.1088 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8158 | 0.7063 | 0.6401 | 0.6715 | 0.8794 | 0.7246 | 0.1546 | 0.1109 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8151 | 0.7049 | 0.6388 | 0.6702 | 0.8796 | 0.7284 | 0.1572 | 0.1115 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8154 | 0.7094 | 0.6312 | 0.6680 | 0.8792 | 0.7259 | 0.1584 | 0.1078 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8139 | 0.7077 | 0.6261 | 0.6644 | 0.8773 | 0.7208 | 0.1242 | 0.1078 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.9377 | 0.8558 | 0.9480 | 0.8996 | 0.9858 | 0.9699 | 0.7858 | 0.0666 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.9351 | 0.8475 | 0.9506 | 0.8961 | 0.9846 | 0.9686 | 0.7605 | 0.0713 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.9340 | 0.8469 | 0.9468 | 0.8941 | 0.9854 | 0.9695 | 0.7693 | 0.0713 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.9333 | 0.8419 | 0.9518 | 0.8935 | 0.9867 | 0.9723 | 0.7731 | 0.0745 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.9407 | 0.8580 | 0.9569 | 0.9047 | 0.9872 | 0.9739 | 0.7997 | 0.0660 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4790 | 0.2558 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4828 | 0.2564 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4788 | 0.2547 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4737 | 0.2529 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4807 | 0.2554 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5584 | 0.2893 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5559 | 0.2887 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5566 | 0.2883 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5605 | 0.2907 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5579 | 0.2896 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.6939 | 0.3367 | 0.0418 | 0.0744 | 0.6475 | 0.3860 | 0.0152 | 0.0343 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.6976 | 0.3878 | 0.0482 | 0.0857 | 0.6370 | 0.3800 | 0.0089 | 0.0317 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.6965 | 0.3711 | 0.0456 | 0.0813 | 0.6281 | 0.3802 | 0.0139 | 0.0322 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.6984 | 0.3936 | 0.0469 | 0.0838 | 0.6499 | 0.3853 | 0.0063 | 0.0301 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.6976 | 0.3830 | 0.0456 | 0.0815 | 0.6448 | 0.3828 | 0.0063 | 0.0306 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8054 | 0.7633 | 0.4905 | 0.5972 | 0.8595 | 0.7059 | 0.1027 | 0.0634 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8035 | 0.7599 | 0.4854 | 0.5924 | 0.8603 | 0.7054 | 0.0913 | 0.0639 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8087 | 0.7664 | 0.5032 | 0.6075 | 0.8612 | 0.7093 | 0.0913 | 0.0639 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8057 | 0.7659 | 0.4892 | 0.5971 | 0.8595 | 0.7044 | 0.0963 | 0.0623 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8054 | 0.7602 | 0.4943 | 0.5991 | 0.8609 | 0.7075 | 0.0989 | 0.0650 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8057 | 0.7627 | 0.4930 | 0.5989 | 0.8574 | 0.7084 | 0.1179 | 0.0639 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8031 | 0.7534 | 0.4918 | 0.5951 | 0.8578 | 0.7049 | 0.1077 | 0.0671 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8069 | 0.7631 | 0.4981 | 0.6028 | 0.8600 | 0.7137 | 0.1115 | 0.0644 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8091 | 0.7669 | 0.5044 | 0.6086 | 0.8568 | 0.7050 | 0.1204 | 0.0639 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8043 | 0.7548 | 0.4956 | 0.5983 | 0.8593 | 0.7115 | 0.1255 | 0.0671 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8084 | 0.7589 | 0.5108 | 0.6106 | 0.8595 | 0.7204 | 0.1204 | 0.0676 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8050 | 0.7588 | 0.4943 | 0.5986 | 0.8624 | 0.7223 | 0.1090 | 0.0655 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8065 | 0.7567 | 0.5044 | 0.6053 | 0.8614 | 0.7293 | 0.1267 | 0.0676 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8091 | 0.7618 | 0.5108 | 0.6115 | 0.8584 | 0.7212 | 0.1280 | 0.0666 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8080 | 0.7615 | 0.5057 | 0.6078 | 0.8632 | 0.7303 | 0.1432 | 0.0660 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 13 | 0.8069 | 0.7631 | 0.4981 | 0.6028 | 0.8611 | 0.7097 | 0.1305 | 0.0644 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 17 | 0.8043 | 0.7568 | 0.4930 | 0.5971 | 0.8593 | 0.7087 | 0.1191 | 0.0660 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 19 | 0.8087 | 0.7685 | 0.5006 | 0.6063 | 0.8629 | 0.7118 | 0.1407 | 0.0629 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 23 | 0.8050 | 0.7538 | 0.5006 | 0.6017 | 0.8581 | 0.6997 | 0.1027 | 0.0681 |
-| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b | 29 | 0.8061 | 0.7552 | 0.5044 | 0.6049 | 0.8607 | 0.7070 | 0.1546 | 0.0681 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9263 | 0.7273 | 0.2188 | 0.3363 | 0.8978 | 0.5092 | 0.2305 | 0.0077 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9237 | 0.6667 | 0.2109 | 0.3205 | 0.8958 | 0.5056 | 0.2109 | 0.0098 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 19 | 0.9243 | 0.6835 | 0.2109 | 0.3224 | 0.8977 | 0.5100 | 0.2266 | 0.0091 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 23 | 0.9253 | 0.6951 | 0.2227 | 0.3373 | 0.8977 | 0.5067 | 0.2305 | 0.0091 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 29 | 0.9233 | 0.6667 | 0.2031 | 0.3114 | 0.8936 | 0.4955 | 0.2148 | 0.0095 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9170 | 0.6400 | 0.0625 | 0.1139 | 0.8802 | 0.4270 | 0.1680 | 0.0033 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9173 | 0.6538 | 0.0664 | 0.1206 | 0.8780 | 0.4205 | 0.1875 | 0.0033 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 19 | 0.9170 | 0.6400 | 0.0625 | 0.1139 | 0.8801 | 0.4282 | 0.1680 | 0.0033 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 23 | 0.9167 | 0.6000 | 0.0703 | 0.1259 | 0.8794 | 0.4261 | 0.1992 | 0.0044 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 29 | 0.9170 | 0.6296 | 0.0664 | 0.1201 | 0.8766 | 0.4228 | 0.1641 | 0.0036 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9190 | 0.5970 | 0.1562 | 0.2477 | 0.8559 | 0.4033 | 0.1641 | 0.0098 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9190 | 0.5942 | 0.1602 | 0.2523 | 0.8555 | 0.4135 | 0.1562 | 0.0102 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 19 | 0.9190 | 0.6066 | 0.1445 | 0.2334 | 0.8560 | 0.4049 | 0.1445 | 0.0087 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 23 | 0.9187 | 0.6000 | 0.1406 | 0.2278 | 0.8559 | 0.3996 | 0.1445 | 0.0087 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 29 | 0.9207 | 0.6364 | 0.1641 | 0.2609 | 0.8554 | 0.4122 | 0.1797 | 0.0087 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9287 | 0.5633 | 0.7305 | 0.6361 | 0.9366 | 0.6550 | 0.3203 | 0.0528 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9293 | 0.5647 | 0.7500 | 0.6443 | 0.9331 | 0.6546 | 0.3203 | 0.0539 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5601 | 0.0878 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5685 | 0.0886 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 19 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5683 | 0.0886 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 23 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5736 | 0.0893 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 29 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5758 | 0.0895 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5454 | 0.0861 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5430 | 0.0852 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 19 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5366 | 0.0834 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 23 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5118 | 0.0785 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 29 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5091 | 0.0786 | 0.0000 | 0.0000 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 13 | 0.9120 | 0.3947 | 0.0586 | 0.1020 | 0.8039 | 0.2637 | 0.0664 | 0.0084 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 17 | 0.9110 | 0.3721 | 0.0625 | 0.1070 | 0.8213 | 0.2681 | 0.0625 | 0.0098 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 19 | 0.9117 | 0.3846 | 0.0586 | 0.1017 | 0.8047 | 0.2622 | 0.0742 | 0.0087 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 23 | 0.9093 | 0.2895 | 0.0430 | 0.0748 | 0.8264 | 0.2597 | 0.0508 | 0.0098 |
-| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular | 29 | 0.9097 | 0.3077 | 0.0469 | 0.0814 | 0.8249 | 0.2597 | 0.0469 | 0.0098 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.7569 | 0.7087 | 0.5974 | 0.6483 | 0.8404 | 0.7234 | 0.1133 | 0.1474 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.7543 | 0.7053 | 0.5924 | 0.6440 | 0.8400 | 0.7212 | 0.1133 | 0.1486 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.7580 | 0.7128 | 0.5944 | 0.6482 | 0.8382 | 0.7159 | 0.0795 | 0.1438 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.7550 | 0.7095 | 0.5875 | 0.6427 | 0.8398 | 0.7216 | 0.1123 | 0.1444 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.7569 | 0.7073 | 0.6004 | 0.6495 | 0.8386 | 0.7198 | 0.1034 | 0.1492 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.7785 | 0.7330 | 0.6441 | 0.6857 | 0.8664 | 0.7431 | 0.0875 | 0.1408 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.7804 | 0.7361 | 0.6461 | 0.6882 | 0.8662 | 0.7437 | 0.0855 | 0.1390 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.7744 | 0.7276 | 0.6372 | 0.6794 | 0.8659 | 0.7403 | 0.0785 | 0.1432 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.7785 | 0.7336 | 0.6431 | 0.6854 | 0.8660 | 0.7440 | 0.0825 | 0.1402 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.7800 | 0.7353 | 0.6461 | 0.6878 | 0.8667 | 0.7446 | 0.0805 | 0.1396 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.8322 | 0.7668 | 0.7942 | 0.7803 | 0.8996 | 0.7883 | 0.1014 | 0.1450 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.8274 | 0.7618 | 0.7853 | 0.7734 | 0.9001 | 0.7924 | 0.0964 | 0.1474 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.8289 | 0.7627 | 0.7893 | 0.7758 | 0.8995 | 0.7915 | 0.1093 | 0.1474 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.8311 | 0.7682 | 0.7873 | 0.7776 | 0.9022 | 0.8014 | 0.1024 | 0.1426 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.8315 | 0.7684 | 0.7883 | 0.7782 | 0.8998 | 0.7989 | 0.1133 | 0.1426 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.9541 | 0.9185 | 0.9632 | 0.9403 | 0.9923 | 0.9883 | 0.8559 | 0.0513 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.9538 | 0.9184 | 0.9622 | 0.9398 | 0.9924 | 0.9880 | 0.8509 | 0.0513 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.9545 | 0.9178 | 0.9652 | 0.9409 | 0.9920 | 0.9878 | 0.8340 | 0.0519 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.9523 | 0.9149 | 0.9622 | 0.9380 | 0.9914 | 0.9868 | 0.8370 | 0.0537 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.9504 | 0.9145 | 0.9573 | 0.9354 | 0.9905 | 0.9858 | 0.8449 | 0.0537 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4497 | 0.3231 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4231 | 0.3147 | 0.0010 | 0.0000 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4021 | 0.3026 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4186 | 0.3047 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4416 | 0.3169 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.5089 | 0.1552 | 0.0696 | 0.0961 | 0.6602 | 0.4297 | 0.0000 | 0.2273 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.5048 | 0.1438 | 0.0646 | 0.0892 | 0.6613 | 0.4304 | 0.0000 | 0.2309 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.5112 | 0.1573 | 0.0696 | 0.0965 | 0.6592 | 0.4289 | 0.0000 | 0.2237 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.5063 | 0.1482 | 0.0666 | 0.0919 | 0.6601 | 0.4298 | 0.0000 | 0.2297 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.5086 | 0.1579 | 0.0716 | 0.0985 | 0.6576 | 0.4285 | 0.0000 | 0.2291 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.6260 | 0.5030 | 0.2535 | 0.3371 | 0.7046 | 0.4938 | 0.0010 | 0.1504 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.6271 | 0.5059 | 0.2545 | 0.3386 | 0.7057 | 0.4924 | 0.0010 | 0.1492 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.6260 | 0.5029 | 0.2575 | 0.3406 | 0.6973 | 0.4910 | 0.0050 | 0.1527 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.6271 | 0.5059 | 0.2565 | 0.3404 | 0.7009 | 0.4940 | 0.0050 | 0.1504 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.6260 | 0.5029 | 0.2565 | 0.3397 | 0.6930 | 0.4888 | 0.0030 | 0.1521 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.7506 | 0.7163 | 0.5547 | 0.6252 | 0.8347 | 0.7074 | 0.0825 | 0.1319 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.7506 | 0.7152 | 0.5567 | 0.6260 | 0.8347 | 0.7058 | 0.0726 | 0.1331 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.7476 | 0.7112 | 0.5507 | 0.6207 | 0.8342 | 0.7024 | 0.0746 | 0.1342 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.7498 | 0.7167 | 0.5507 | 0.6228 | 0.8342 | 0.7060 | 0.0815 | 0.1307 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.7528 | 0.7190 | 0.5596 | 0.6294 | 0.8344 | 0.7066 | 0.0805 | 0.1313 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.7569 | 0.7087 | 0.5974 | 0.6483 | 0.8404 | 0.7234 | 0.1133 | 0.1474 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.7543 | 0.7053 | 0.5924 | 0.6440 | 0.8400 | 0.7212 | 0.1133 | 0.1486 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.7580 | 0.7128 | 0.5944 | 0.6482 | 0.8382 | 0.7159 | 0.0795 | 0.1438 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.7550 | 0.7095 | 0.5875 | 0.6427 | 0.8398 | 0.7216 | 0.1123 | 0.1444 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.7569 | 0.7073 | 0.6004 | 0.6495 | 0.8386 | 0.7198 | 0.1034 | 0.1492 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.7774 | 0.7426 | 0.6223 | 0.6771 | 0.8505 | 0.7236 | 0.0547 | 0.1295 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.7737 | 0.7339 | 0.6223 | 0.6735 | 0.8505 | 0.7224 | 0.0567 | 0.1354 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.7763 | 0.7405 | 0.6213 | 0.6757 | 0.8487 | 0.7172 | 0.0517 | 0.1307 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.7778 | 0.7429 | 0.6233 | 0.6778 | 0.8486 | 0.7209 | 0.0497 | 0.1295 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.7774 | 0.7461 | 0.6163 | 0.6750 | 0.8496 | 0.7231 | 0.0537 | 0.1259 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 13 | 0.7696 | 0.7377 | 0.5984 | 0.6608 | 0.8498 | 0.7339 | 0.0954 | 0.1277 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 17 | 0.7688 | 0.7331 | 0.6034 | 0.6619 | 0.8471 | 0.7313 | 0.1014 | 0.1319 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 19 | 0.7673 | 0.7290 | 0.6044 | 0.6609 | 0.8474 | 0.7289 | 0.0964 | 0.1348 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 23 | 0.7677 | 0.7344 | 0.5964 | 0.6583 | 0.8491 | 0.7315 | 0.0954 | 0.1295 |
-| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b | 29 | 0.7692 | 0.7329 | 0.6054 | 0.6630 | 0.8491 | 0.7325 | 0.0895 | 0.1325 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8085 | 0.0874 | 0.0337 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8119 | 0.1044 | 0.0787 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8087 | 0.0993 | 0.0674 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8212 | 0.0990 | 0.0337 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8173 | 0.0984 | 0.0562 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8030 | 0.0941 | 0.0562 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8050 | 0.1203 | 0.0787 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8024 | 0.1100 | 0.0899 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8092 | 0.1063 | 0.0562 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8092 | 0.1220 | 0.0449 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9700 | 0.0000 | 0.0000 | 0.0000 | 0.8078 | 0.1282 | 0.0674 | 0.0003 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9707 | 0.6667 | 0.0225 | 0.0435 | 0.8056 | 0.1461 | 0.0899 | 0.0003 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 19 | 0.9703 | 0.5000 | 0.0112 | 0.0220 | 0.7791 | 0.1335 | 0.0899 | 0.0003 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 23 | 0.9707 | 1.0000 | 0.0112 | 0.0222 | 0.7861 | 0.1397 | 0.0787 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 29 | 0.9707 | 1.0000 | 0.0112 | 0.0222 | 0.8174 | 0.1594 | 0.1236 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9677 | 0.4394 | 0.3258 | 0.3742 | 0.8833 | 0.3238 | 0.2809 | 0.0127 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9673 | 0.4182 | 0.2584 | 0.3194 | 0.9016 | 0.3661 | 0.2584 | 0.0110 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6200 | 0.0357 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6215 | 0.0356 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6237 | 0.0358 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6217 | 0.0356 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6203 | 0.0356 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6095 | 0.0347 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6115 | 0.0349 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6129 | 0.0349 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.5991 | 0.0336 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6098 | 0.0348 | 0.0000 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8277 | 0.1195 | 0.0562 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8345 | 0.1145 | 0.0225 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8400 | 0.1214 | 0.0562 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8346 | 0.1173 | 0.0562 | 0.0000 |
-| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8373 | 0.1188 | 0.0225 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7189 | 0.5700 | 0.2769 | 0.3727 | 0.7795 | 0.5422 | 0.0260 | 0.0902 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.7200 | 0.5747 | 0.2756 | 0.3726 | 0.7813 | 0.5467 | 0.0247 | 0.0881 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7181 | 0.5681 | 0.2732 | 0.3689 | 0.7813 | 0.5473 | 0.0321 | 0.0897 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7823 | 0.5455 | 0.0235 | 0.0886 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7793 | 0.5407 | 0.0247 | 0.0886 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7431 | 0.6415 | 0.3362 | 0.4412 | 0.7967 | 0.5611 | 0.0260 | 0.0812 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.7420 | 0.6370 | 0.3362 | 0.4401 | 0.7973 | 0.5639 | 0.0247 | 0.0828 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7412 | 0.6353 | 0.3337 | 0.4376 | 0.7976 | 0.5670 | 0.0260 | 0.0828 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7397 | 0.6306 | 0.3313 | 0.4344 | 0.7980 | 0.5649 | 0.0272 | 0.0838 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7431 | 0.6408 | 0.3375 | 0.4421 | 0.7966 | 0.5603 | 0.0210 | 0.0817 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7804 | 0.6467 | 0.5995 | 0.6222 | 0.8655 | 0.6861 | 0.0977 | 0.1415 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.7826 | 0.6507 | 0.6032 | 0.6260 | 0.8665 | 0.6881 | 0.1001 | 0.1399 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7767 | 0.6378 | 0.6007 | 0.6187 | 0.8652 | 0.6854 | 0.0952 | 0.1474 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7767 | 0.6385 | 0.5983 | 0.6177 | 0.8642 | 0.6860 | 0.1088 | 0.1463 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7789 | 0.6421 | 0.6032 | 0.6221 | 0.8638 | 0.6833 | 0.1001 | 0.1452 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.9258 | 0.8474 | 0.9197 | 0.8820 | 0.9775 | 0.9561 | 0.6885 | 0.0715 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.9236 | 0.8424 | 0.9184 | 0.8788 | 0.9764 | 0.9544 | 0.6885 | 0.0742 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.9183 | 0.8315 | 0.9147 | 0.8711 | 0.9749 | 0.9517 | 0.6959 | 0.0801 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.9187 | 0.8377 | 0.9061 | 0.8705 | 0.9737 | 0.9500 | 0.7132 | 0.0758 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.9269 | 0.8487 | 0.9221 | 0.8839 | 0.9758 | 0.9552 | 0.7058 | 0.0710 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6170 | 0.3289 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6158 | 0.3285 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6163 | 0.3288 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6158 | 0.3280 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6171 | 0.3288 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5369 | 0.2878 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5256 | 0.2829 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5308 | 0.2857 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5318 | 0.2857 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5363 | 0.2873 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.6954 | 0.0000 | 0.0000 | 0.0000 | 0.6369 | 0.3425 | 0.0000 | 0.0043 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.6898 | 0.0000 | 0.0000 | 0.0000 | 0.6353 | 0.3417 | 0.0000 | 0.0123 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.6980 | 0.0000 | 0.0000 | 0.0000 | 0.6364 | 0.3425 | 0.0000 | 0.0005 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.6939 | 0.0000 | 0.0000 | 0.0000 | 0.6361 | 0.3418 | 0.0000 | 0.0064 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.6957 | 0.0000 | 0.0000 | 0.0000 | 0.6368 | 0.3425 | 0.0000 | 0.0037 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7032 | 0.5210 | 0.1990 | 0.2880 | 0.7753 | 0.5089 | 0.0099 | 0.0790 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.6991 | 0.5031 | 0.1990 | 0.2852 | 0.7756 | 0.5092 | 0.0087 | 0.0849 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7006 | 0.5093 | 0.2040 | 0.2913 | 0.7773 | 0.5128 | 0.0099 | 0.0849 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7013 | 0.5128 | 0.1978 | 0.2855 | 0.7775 | 0.5111 | 0.0124 | 0.0812 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7006 | 0.5093 | 0.2027 | 0.2900 | 0.7768 | 0.5084 | 0.0124 | 0.0844 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7189 | 0.5700 | 0.2769 | 0.3727 | 0.7795 | 0.5422 | 0.0260 | 0.0902 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.7200 | 0.5747 | 0.2756 | 0.3726 | 0.7813 | 0.5467 | 0.0247 | 0.0881 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7181 | 0.5681 | 0.2732 | 0.3689 | 0.7813 | 0.5473 | 0.0321 | 0.0897 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7823 | 0.5455 | 0.0235 | 0.0886 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7793 | 0.5407 | 0.0247 | 0.0886 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7498 | 0.6597 | 0.3523 | 0.4593 | 0.7987 | 0.5911 | 0.0507 | 0.0785 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.7479 | 0.6536 | 0.3498 | 0.4557 | 0.7997 | 0.5990 | 0.0643 | 0.0801 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7535 | 0.6697 | 0.3609 | 0.4691 | 0.7979 | 0.5919 | 0.0519 | 0.0769 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7517 | 0.6629 | 0.3597 | 0.4663 | 0.8012 | 0.5959 | 0.0507 | 0.0790 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7491 | 0.6581 | 0.3498 | 0.4568 | 0.7982 | 0.5853 | 0.0420 | 0.0785 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 13 | 0.7226 | 0.5931 | 0.2559 | 0.3575 | 0.7788 | 0.5421 | 0.0210 | 0.0758 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 17 | 0.7241 | 0.5961 | 0.2645 | 0.3664 | 0.7790 | 0.5440 | 0.0222 | 0.0774 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 19 | 0.7263 | 0.6056 | 0.2658 | 0.3694 | 0.7823 | 0.5479 | 0.0297 | 0.0747 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 23 | 0.7245 | 0.5994 | 0.2608 | 0.3635 | 0.7820 | 0.5460 | 0.0297 | 0.0753 |
-| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b | 29 | 0.7248 | 0.6006 | 0.2621 | 0.3649 | 0.7793 | 0.5411 | 0.0247 | 0.0753 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8839 | 0.2992 | 0.1342 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8854 | 0.2796 | 0.1208 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8851 | 0.2829 | 0.1141 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8785 | 0.2673 | 0.1342 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8836 | 0.2898 | 0.1342 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8346 | 0.1651 | 0.0470 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8343 | 0.1619 | 0.0134 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8362 | 0.1640 | 0.0134 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8340 | 0.1651 | 0.0268 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8360 | 0.1646 | 0.0336 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8256 | 0.1857 | 0.0604 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8255 | 0.1784 | 0.0201 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 19 | 0.9500 | 0.0000 | 0.0000 | 0.0000 | 0.8249 | 0.1738 | 0.0268 | 0.0004 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8294 | 0.1921 | 0.0537 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 29 | 0.9500 | 0.0000 | 0.0000 | 0.0000 | 0.8236 | 0.1728 | 0.0336 | 0.0004 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9573 | 0.5755 | 0.5369 | 0.5556 | 0.9209 | 0.5606 | 0.4161 | 0.0207 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9543 | 0.5390 | 0.5570 | 0.5479 | 0.9270 | 0.5655 | 0.4362 | 0.0249 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5658 | 0.0512 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5201 | 0.0469 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5142 | 0.0459 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5666 | 0.0512 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5871 | 0.0540 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5810 | 0.0541 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5527 | 0.0499 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5725 | 0.0526 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5707 | 0.0524 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5852 | 0.0547 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6522 | 0.0687 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6442 | 0.0677 | 0.0000 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6479 | 0.0675 | 0.0067 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6519 | 0.0696 | 0.0134 | 0.0000 |
-| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6551 | 0.0702 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8445 | 0.7266 | 0.6186 | 0.6683 | 0.9193 | 0.7374 | 0.1237 | 0.0789 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8434 | 0.7252 | 0.6141 | 0.6651 | 0.9186 | 0.7406 | 0.1178 | 0.0789 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8419 | 0.7179 | 0.6186 | 0.6646 | 0.9191 | 0.7376 | 0.1208 | 0.0824 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8378 | 0.7125 | 0.6024 | 0.6528 | 0.9179 | 0.7388 | 0.1208 | 0.0824 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8468 | 0.7351 | 0.6171 | 0.6709 | 0.9203 | 0.7446 | 0.1311 | 0.0754 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8475 | 0.7288 | 0.6333 | 0.6777 | 0.9185 | 0.7371 | 0.1325 | 0.0799 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8434 | 0.7237 | 0.6171 | 0.6661 | 0.9189 | 0.7378 | 0.1163 | 0.0799 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8456 | 0.7242 | 0.6303 | 0.6740 | 0.9188 | 0.7370 | 0.1370 | 0.0814 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8430 | 0.7232 | 0.6156 | 0.6651 | 0.9189 | 0.7360 | 0.1222 | 0.0799 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8430 | 0.7209 | 0.6200 | 0.6667 | 0.9189 | 0.7374 | 0.1281 | 0.0814 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8598 | 0.7258 | 0.7172 | 0.7215 | 0.9290 | 0.7784 | 0.2150 | 0.0919 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8606 | 0.7286 | 0.7158 | 0.7221 | 0.9273 | 0.7760 | 0.1841 | 0.0904 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8583 | 0.7215 | 0.7172 | 0.7194 | 0.9244 | 0.7714 | 0.1856 | 0.0939 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8602 | 0.7289 | 0.7128 | 0.7208 | 0.9278 | 0.7782 | 0.2194 | 0.0899 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8561 | 0.7203 | 0.7054 | 0.7128 | 0.9280 | 0.7716 | 0.1635 | 0.0929 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.9463 | 0.8399 | 0.9735 | 0.9018 | 0.9909 | 0.9779 | 0.8439 | 0.0629 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.9452 | 0.8359 | 0.9750 | 0.9001 | 0.9919 | 0.9791 | 0.8351 | 0.0649 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.9448 | 0.8331 | 0.9779 | 0.8997 | 0.9924 | 0.9800 | 0.8115 | 0.0664 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.9478 | 0.8433 | 0.9750 | 0.9044 | 0.9919 | 0.9797 | 0.8395 | 0.0614 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.9471 | 0.8369 | 0.9823 | 0.9038 | 0.9931 | 0.9810 | 0.8409 | 0.0649 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4764 | 0.2193 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4734 | 0.2190 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4763 | 0.2198 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4606 | 0.2142 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4693 | 0.2173 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.7431 | 0.0000 | 0.0000 | 0.0000 | 0.6160 | 0.2801 | 0.0000 | 0.0050 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.7438 | 0.0000 | 0.0000 | 0.0000 | 0.6170 | 0.2801 | 0.0000 | 0.0040 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.7438 | 0.0000 | 0.0000 | 0.0000 | 0.6158 | 0.2801 | 0.0000 | 0.0040 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.7442 | 0.0000 | 0.0000 | 0.0000 | 0.6163 | 0.2802 | 0.0000 | 0.0035 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.7438 | 0.0000 | 0.0000 | 0.0000 | 0.6160 | 0.2800 | 0.0000 | 0.0040 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.7457 | 0.4908 | 0.1178 | 0.1900 | 0.6856 | 0.4057 | 0.0250 | 0.0414 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.7468 | 0.5000 | 0.1208 | 0.1945 | 0.6975 | 0.4113 | 0.0309 | 0.0409 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.7461 | 0.4938 | 0.1178 | 0.1902 | 0.6993 | 0.4127 | 0.0236 | 0.0409 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.7465 | 0.4970 | 0.1208 | 0.1943 | 0.7167 | 0.4210 | 0.0280 | 0.0414 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.7465 | 0.4970 | 0.1208 | 0.1943 | 0.6934 | 0.4098 | 0.0280 | 0.0414 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8419 | 0.7233 | 0.6082 | 0.6608 | 0.9208 | 0.7429 | 0.1281 | 0.0789 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8430 | 0.7271 | 0.6082 | 0.6624 | 0.9207 | 0.7439 | 0.1237 | 0.0774 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8412 | 0.7231 | 0.6038 | 0.6581 | 0.9208 | 0.7427 | 0.1193 | 0.0784 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8449 | 0.7319 | 0.6112 | 0.6661 | 0.9206 | 0.7429 | 0.1237 | 0.0759 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8408 | 0.7234 | 0.6009 | 0.6565 | 0.9215 | 0.7442 | 0.1237 | 0.0779 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8445 | 0.7266 | 0.6186 | 0.6683 | 0.9193 | 0.7374 | 0.1237 | 0.0789 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8434 | 0.7252 | 0.6141 | 0.6651 | 0.9186 | 0.7406 | 0.1178 | 0.0789 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8419 | 0.7179 | 0.6186 | 0.6646 | 0.9191 | 0.7376 | 0.1208 | 0.0824 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8378 | 0.7125 | 0.6024 | 0.6528 | 0.9179 | 0.7388 | 0.1208 | 0.0824 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8468 | 0.7351 | 0.6171 | 0.6709 | 0.9203 | 0.7446 | 0.1311 | 0.0754 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8579 | 0.7578 | 0.6451 | 0.6969 | 0.9291 | 0.7697 | 0.1576 | 0.0699 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8568 | 0.7513 | 0.6495 | 0.6967 | 0.9283 | 0.7664 | 0.1664 | 0.0729 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8579 | 0.7517 | 0.6554 | 0.7002 | 0.9286 | 0.7630 | 0.1414 | 0.0734 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8579 | 0.7569 | 0.6465 | 0.6974 | 0.9281 | 0.7664 | 0.1546 | 0.0704 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8583 | 0.7556 | 0.6510 | 0.6994 | 0.9300 | 0.7697 | 0.1502 | 0.0714 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 13 | 0.8404 | 0.7198 | 0.6053 | 0.6576 | 0.9179 | 0.7360 | 0.1311 | 0.0799 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 17 | 0.8415 | 0.7236 | 0.6053 | 0.6592 | 0.9178 | 0.7358 | 0.1546 | 0.0784 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 19 | 0.8427 | 0.7235 | 0.6127 | 0.6635 | 0.9165 | 0.7324 | 0.1252 | 0.0794 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 23 | 0.8382 | 0.7176 | 0.5950 | 0.6506 | 0.9179 | 0.7359 | 0.1443 | 0.0794 |
-| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b | 29 | 0.8412 | 0.7239 | 0.6024 | 0.6576 | 0.9192 | 0.7411 | 0.1237 | 0.0779 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6342 | 0.0451 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6321 | 0.0451 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6309 | 0.0449 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6251 | 0.0444 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6346 | 0.0452 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8908 | 0.1741 | 0.0631 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8884 | 0.1831 | 0.0811 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8872 | 0.1734 | 0.0631 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8895 | 0.1781 | 0.0721 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | full | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8908 | 0.1832 | 0.0721 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8497 | 0.1253 | 0.0360 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8484 | 0.1344 | 0.0721 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8460 | 0.1226 | 0.0541 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8507 | 0.1330 | 0.0901 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8485 | 0.1355 | 0.0631 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8385 | 0.1983 | 0.0811 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9617 | 0.0000 | 0.0000 | 0.0000 | 0.8166 | 0.1675 | 0.0811 | 0.0014 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8050 | 0.1822 | 0.1171 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 23 | 0.9627 | 0.0000 | 0.0000 | 0.0000 | 0.8227 | 0.1689 | 0.0901 | 0.0003 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 29 | 0.9623 | 0.0000 | 0.0000 | 0.0000 | 0.8305 | 0.1801 | 0.0991 | 0.0007 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9600 | 0.4526 | 0.3874 | 0.4175 | 0.9161 | 0.3803 | 0.2523 | 0.0180 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | linear_probe | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9597 | 0.4468 | 0.3784 | 0.4098 | 0.8938 | 0.4005 | 0.2973 | 0.0180 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6342 | 0.0451 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6321 | 0.0451 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6309 | 0.0449 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6251 | 0.0444 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6346 | 0.0452 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5955 | 0.0422 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6000 | 0.0431 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5894 | 0.0415 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5948 | 0.0426 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5888 | 0.0416 | 0.0000 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7947 | 0.1462 | 0.0901 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8569 | 0.1660 | 0.0901 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7562 | 0.1434 | 0.0811 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7684 | 0.1561 | 0.0991 | 0.0000 |
-| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7800 | 0.1445 | 0.0901 | 0.0000 |
+| model | benchmark | protocol | bank_scope | variant | random_state | accuracy | precision | recall | f1 | roc_auc | pr_auc | tpr_at_fpr_0.01 | false_positive_rate |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| InternVL3.5-8B | DASH-B | image_grouped | object | full | 13 | 0.8057 | 0.7627 | 0.4930 | 0.5989 | 0.8574 | 0.7084 | 0.1179 | 0.0639 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | full | 17 | 0.8031 | 0.7534 | 0.4918 | 0.5951 | 0.8578 | 0.7049 | 0.1077 | 0.0671 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | full | 19 | 0.8069 | 0.7631 | 0.4981 | 0.6028 | 0.8600 | 0.7137 | 0.1115 | 0.0644 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | full | 23 | 0.8091 | 0.7669 | 0.5044 | 0.6086 | 0.8568 | 0.7050 | 0.1204 | 0.0639 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | full | 29 | 0.8043 | 0.7548 | 0.4956 | 0.5983 | 0.8593 | 0.7115 | 0.1255 | 0.0671 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | 13 | 0.8076 | 0.7682 | 0.4956 | 0.6025 | 0.8593 | 0.7054 | 0.0989 | 0.0623 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | 17 | 0.8039 | 0.7573 | 0.4905 | 0.5954 | 0.8599 | 0.7050 | 0.0900 | 0.0655 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | 19 | 0.8102 | 0.7692 | 0.5070 | 0.6112 | 0.8609 | 0.7089 | 0.0938 | 0.0634 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | 23 | 0.8098 | 0.7762 | 0.4968 | 0.6059 | 0.8591 | 0.7039 | 0.0925 | 0.0597 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | drift_only | 29 | 0.8069 | 0.7652 | 0.4956 | 0.6015 | 0.8608 | 0.7073 | 0.0951 | 0.0634 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | 13 | 0.8147 | 0.7074 | 0.6312 | 0.6671 | 0.8769 | 0.7288 | 0.1496 | 0.1088 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | 17 | 0.8158 | 0.7063 | 0.6401 | 0.6715 | 0.8794 | 0.7246 | 0.1546 | 0.1109 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | 19 | 0.8151 | 0.7049 | 0.6388 | 0.6702 | 0.8796 | 0.7284 | 0.1572 | 0.1115 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | 23 | 0.8154 | 0.7094 | 0.6312 | 0.6680 | 0.8792 | 0.7259 | 0.1584 | 0.1078 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | no_manifold | 29 | 0.8139 | 0.7077 | 0.6261 | 0.6644 | 0.8773 | 0.7208 | 0.1242 | 0.1078 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | 13 | 0.9377 | 0.8558 | 0.9480 | 0.8996 | 0.9858 | 0.9699 | 0.7858 | 0.0666 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | 17 | 0.9351 | 0.8475 | 0.9506 | 0.8961 | 0.9846 | 0.9686 | 0.7605 | 0.0713 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | 19 | 0.9340 | 0.8469 | 0.9468 | 0.8941 | 0.9854 | 0.9695 | 0.7693 | 0.0713 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | 23 | 0.9333 | 0.8419 | 0.9518 | 0.8935 | 0.9867 | 0.9723 | 0.7731 | 0.0745 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | linear_probe | 29 | 0.9407 | 0.8580 | 0.9569 | 0.9047 | 0.9872 | 0.9739 | 0.7997 | 0.0660 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | 13 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4790 | 0.2558 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | 17 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4828 | 0.2564 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | 19 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4788 | 0.2547 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | 23 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4737 | 0.2529 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_p_yes | 29 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.4807 | 0.2554 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | 13 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5584 | 0.2893 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | 17 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5559 | 0.2887 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | 19 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5566 | 0.2883 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | 23 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5605 | 0.2907 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_logit_margin | 29 | 0.7058 | 0.0000 | 0.0000 | 0.0000 | 0.5579 | 0.2896 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 13 | 0.6939 | 0.3367 | 0.0418 | 0.0744 | 0.6475 | 0.3860 | 0.0152 | 0.0343 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 17 | 0.6976 | 0.3878 | 0.0482 | 0.0857 | 0.6370 | 0.3800 | 0.0089 | 0.0317 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 19 | 0.6965 | 0.3711 | 0.0456 | 0.0813 | 0.6281 | 0.3802 | 0.0139 | 0.0322 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 23 | 0.6984 | 0.3936 | 0.0469 | 0.0838 | 0.6499 | 0.3853 | 0.0063 | 0.0301 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 29 | 0.6976 | 0.3830 | 0.0456 | 0.0815 | 0.6448 | 0.3828 | 0.0063 | 0.0306 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | 13 | 0.8054 | 0.7633 | 0.4905 | 0.5972 | 0.8595 | 0.7059 | 0.1027 | 0.0634 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | 17 | 0.8035 | 0.7599 | 0.4854 | 0.5924 | 0.8603 | 0.7054 | 0.0913 | 0.0639 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | 19 | 0.8087 | 0.7664 | 0.5032 | 0.6075 | 0.8612 | 0.7093 | 0.0913 | 0.0639 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | 23 | 0.8057 | 0.7659 | 0.4892 | 0.5971 | 0.8595 | 0.7044 | 0.0963 | 0.0623 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_curve_only | 29 | 0.8054 | 0.7602 | 0.4943 | 0.5991 | 0.8609 | 0.7075 | 0.0989 | 0.0650 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 13 | 0.8057 | 0.7627 | 0.4930 | 0.5989 | 0.8574 | 0.7084 | 0.1179 | 0.0639 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 17 | 0.8031 | 0.7534 | 0.4918 | 0.5951 | 0.8578 | 0.7049 | 0.1077 | 0.0671 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 19 | 0.8069 | 0.7631 | 0.4981 | 0.6028 | 0.8600 | 0.7137 | 0.1115 | 0.0644 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 23 | 0.8091 | 0.7669 | 0.5044 | 0.6086 | 0.8568 | 0.7050 | 0.1204 | 0.0639 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 29 | 0.8043 | 0.7548 | 0.4956 | 0.5983 | 0.8593 | 0.7115 | 0.1255 | 0.0671 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 13 | 0.8084 | 0.7589 | 0.5108 | 0.6106 | 0.8595 | 0.7204 | 0.1204 | 0.0676 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 17 | 0.8050 | 0.7588 | 0.4943 | 0.5986 | 0.8624 | 0.7223 | 0.1090 | 0.0655 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 19 | 0.8065 | 0.7567 | 0.5044 | 0.6053 | 0.8614 | 0.7293 | 0.1267 | 0.0676 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 23 | 0.8091 | 0.7618 | 0.5108 | 0.6115 | 0.8584 | 0.7212 | 0.1280 | 0.0666 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 29 | 0.8080 | 0.7615 | 0.5057 | 0.6078 | 0.8632 | 0.7303 | 0.1432 | 0.0660 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 13 | 0.8069 | 0.7631 | 0.4981 | 0.6028 | 0.8611 | 0.7097 | 0.1305 | 0.0644 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 17 | 0.8043 | 0.7568 | 0.4930 | 0.5971 | 0.8593 | 0.7087 | 0.1191 | 0.0660 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 19 | 0.8087 | 0.7685 | 0.5006 | 0.6063 | 0.8629 | 0.7118 | 0.1407 | 0.0629 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 23 | 0.8050 | 0.7538 | 0.5006 | 0.6017 | 0.8581 | 0.6997 | 0.1027 | 0.0681 |
+| InternVL3.5-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 29 | 0.8061 | 0.7552 | 0.5044 | 0.6049 | 0.8607 | 0.7070 | 0.1546 | 0.0681 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | full | 13 | 0.9263 | 0.7273 | 0.2188 | 0.3363 | 0.8978 | 0.5092 | 0.2305 | 0.0077 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | full | 17 | 0.9237 | 0.6667 | 0.2109 | 0.3205 | 0.8958 | 0.5056 | 0.2109 | 0.0098 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | full | 19 | 0.9243 | 0.6835 | 0.2109 | 0.3224 | 0.8977 | 0.5100 | 0.2266 | 0.0091 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | full | 23 | 0.9253 | 0.6951 | 0.2227 | 0.3373 | 0.8977 | 0.5067 | 0.2305 | 0.0091 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | full | 29 | 0.9233 | 0.6667 | 0.2031 | 0.3114 | 0.8936 | 0.4955 | 0.2148 | 0.0095 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | 13 | 0.9170 | 0.6400 | 0.0625 | 0.1139 | 0.8802 | 0.4270 | 0.1680 | 0.0033 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | 17 | 0.9173 | 0.6538 | 0.0664 | 0.1206 | 0.8780 | 0.4205 | 0.1875 | 0.0033 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | 19 | 0.9170 | 0.6400 | 0.0625 | 0.1139 | 0.8801 | 0.4282 | 0.1680 | 0.0033 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | 23 | 0.9167 | 0.6000 | 0.0703 | 0.1259 | 0.8794 | 0.4261 | 0.1992 | 0.0044 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | drift_only | 29 | 0.9170 | 0.6296 | 0.0664 | 0.1201 | 0.8766 | 0.4228 | 0.1641 | 0.0036 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | 13 | 0.9190 | 0.5970 | 0.1562 | 0.2477 | 0.8559 | 0.4033 | 0.1641 | 0.0098 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | 17 | 0.9190 | 0.5942 | 0.1602 | 0.2523 | 0.8555 | 0.4135 | 0.1562 | 0.0102 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | 19 | 0.9190 | 0.6066 | 0.1445 | 0.2334 | 0.8560 | 0.4049 | 0.1445 | 0.0087 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | 23 | 0.9187 | 0.6000 | 0.1406 | 0.2278 | 0.8559 | 0.3996 | 0.1445 | 0.0087 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | no_manifold | 29 | 0.9207 | 0.6364 | 0.1641 | 0.2609 | 0.8554 | 0.4122 | 0.1797 | 0.0087 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | linear_probe | 13 | 0.9287 | 0.5633 | 0.7305 | 0.6361 | 0.9366 | 0.6550 | 0.3203 | 0.0528 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | linear_probe | 17 | 0.9293 | 0.5647 | 0.7500 | 0.6443 | 0.9331 | 0.6546 | 0.3203 | 0.0539 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | 13 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5601 | 0.0878 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | 17 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5685 | 0.0886 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | 19 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5683 | 0.0886 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | 23 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5736 | 0.0893 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_p_yes | 29 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5758 | 0.0895 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | 13 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5454 | 0.0861 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | 17 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5430 | 0.0852 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | 19 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5366 | 0.0834 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | 23 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5118 | 0.0785 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_logit_margin | 29 | 0.9147 | 0.0000 | 0.0000 | 0.0000 | 0.5091 | 0.0786 | 0.0000 | 0.0000 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 13 | 0.9120 | 0.3947 | 0.0586 | 0.1020 | 0.8039 | 0.2637 | 0.0664 | 0.0084 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 17 | 0.9110 | 0.3721 | 0.0625 | 0.1070 | 0.8213 | 0.2681 | 0.0625 | 0.0098 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 19 | 0.9117 | 0.3846 | 0.0586 | 0.1017 | 0.8047 | 0.2622 | 0.0742 | 0.0087 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 23 | 0.9093 | 0.2895 | 0.0430 | 0.0748 | 0.8264 | 0.2597 | 0.0508 | 0.0098 |
+| InternVL3.5-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 29 | 0.9097 | 0.3077 | 0.0469 | 0.0814 | 0.8249 | 0.2597 | 0.0469 | 0.0098 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | 13 | 0.7569 | 0.7087 | 0.5974 | 0.6483 | 0.8404 | 0.7234 | 0.1133 | 0.1474 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | 17 | 0.7543 | 0.7053 | 0.5924 | 0.6440 | 0.8400 | 0.7212 | 0.1133 | 0.1486 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | 19 | 0.7580 | 0.7128 | 0.5944 | 0.6482 | 0.8382 | 0.7159 | 0.0795 | 0.1438 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | 23 | 0.7550 | 0.7095 | 0.5875 | 0.6427 | 0.8398 | 0.7216 | 0.1123 | 0.1444 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | full | 29 | 0.7569 | 0.7073 | 0.6004 | 0.6495 | 0.8386 | 0.7198 | 0.1034 | 0.1492 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | 13 | 0.7785 | 0.7330 | 0.6441 | 0.6857 | 0.8664 | 0.7431 | 0.0875 | 0.1408 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | 17 | 0.7804 | 0.7361 | 0.6461 | 0.6882 | 0.8662 | 0.7437 | 0.0855 | 0.1390 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | 19 | 0.7744 | 0.7276 | 0.6372 | 0.6794 | 0.8659 | 0.7403 | 0.0785 | 0.1432 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | 23 | 0.7785 | 0.7336 | 0.6431 | 0.6854 | 0.8660 | 0.7440 | 0.0825 | 0.1402 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | drift_only | 29 | 0.7800 | 0.7353 | 0.6461 | 0.6878 | 0.8667 | 0.7446 | 0.0805 | 0.1396 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | 13 | 0.8322 | 0.7668 | 0.7942 | 0.7803 | 0.8996 | 0.7883 | 0.1014 | 0.1450 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | 17 | 0.8274 | 0.7618 | 0.7853 | 0.7734 | 0.9001 | 0.7924 | 0.0964 | 0.1474 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | 19 | 0.8289 | 0.7627 | 0.7893 | 0.7758 | 0.8995 | 0.7915 | 0.1093 | 0.1474 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | 23 | 0.8311 | 0.7682 | 0.7873 | 0.7776 | 0.9022 | 0.8014 | 0.1024 | 0.1426 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | no_manifold | 29 | 0.8315 | 0.7684 | 0.7883 | 0.7782 | 0.8998 | 0.7989 | 0.1133 | 0.1426 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | 13 | 0.9541 | 0.9185 | 0.9632 | 0.9403 | 0.9923 | 0.9883 | 0.8559 | 0.0513 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | 17 | 0.9538 | 0.9184 | 0.9622 | 0.9398 | 0.9924 | 0.9880 | 0.8509 | 0.0513 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | 19 | 0.9545 | 0.9178 | 0.9652 | 0.9409 | 0.9920 | 0.9878 | 0.8340 | 0.0519 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | 23 | 0.9523 | 0.9149 | 0.9622 | 0.9380 | 0.9914 | 0.9868 | 0.8370 | 0.0537 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | linear_probe | 29 | 0.9504 | 0.9145 | 0.9573 | 0.9354 | 0.9905 | 0.9858 | 0.8449 | 0.0537 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | 13 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4497 | 0.3231 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | 17 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4231 | 0.3147 | 0.0010 | 0.0000 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | 19 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4021 | 0.3026 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | 23 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4186 | 0.3047 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_p_yes | 29 | 0.6249 | 0.0000 | 0.0000 | 0.0000 | 0.4416 | 0.3169 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | 13 | 0.5089 | 0.1552 | 0.0696 | 0.0961 | 0.6602 | 0.4297 | 0.0000 | 0.2273 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | 17 | 0.5048 | 0.1438 | 0.0646 | 0.0892 | 0.6613 | 0.4304 | 0.0000 | 0.2309 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | 19 | 0.5112 | 0.1573 | 0.0696 | 0.0965 | 0.6592 | 0.4289 | 0.0000 | 0.2237 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | 23 | 0.5063 | 0.1482 | 0.0666 | 0.0919 | 0.6601 | 0.4298 | 0.0000 | 0.2297 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_logit_margin | 29 | 0.5086 | 0.1579 | 0.0716 | 0.0985 | 0.6576 | 0.4285 | 0.0000 | 0.2291 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 13 | 0.6260 | 0.5030 | 0.2535 | 0.3371 | 0.7046 | 0.4938 | 0.0010 | 0.1504 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 17 | 0.6271 | 0.5059 | 0.2545 | 0.3386 | 0.7057 | 0.4924 | 0.0010 | 0.1492 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 19 | 0.6260 | 0.5029 | 0.2575 | 0.3406 | 0.6973 | 0.4910 | 0.0050 | 0.1527 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 23 | 0.6271 | 0.5059 | 0.2565 | 0.3404 | 0.7009 | 0.4940 | 0.0050 | 0.1504 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 29 | 0.6260 | 0.5029 | 0.2565 | 0.3397 | 0.6930 | 0.4888 | 0.0030 | 0.1521 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | 13 | 0.7506 | 0.7163 | 0.5547 | 0.6252 | 0.8347 | 0.7074 | 0.0825 | 0.1319 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | 17 | 0.7506 | 0.7152 | 0.5567 | 0.6260 | 0.8347 | 0.7058 | 0.0726 | 0.1331 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | 19 | 0.7476 | 0.7112 | 0.5507 | 0.6207 | 0.8342 | 0.7024 | 0.0746 | 0.1342 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | 23 | 0.7498 | 0.7167 | 0.5507 | 0.6228 | 0.8342 | 0.7060 | 0.0815 | 0.1307 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_curve_only | 29 | 0.7528 | 0.7190 | 0.5596 | 0.6294 | 0.8344 | 0.7066 | 0.0805 | 0.1313 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 13 | 0.7569 | 0.7087 | 0.5974 | 0.6483 | 0.8404 | 0.7234 | 0.1133 | 0.1474 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 17 | 0.7543 | 0.7053 | 0.5924 | 0.6440 | 0.8400 | 0.7212 | 0.1133 | 0.1486 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 19 | 0.7580 | 0.7128 | 0.5944 | 0.6482 | 0.8382 | 0.7159 | 0.0795 | 0.1438 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 23 | 0.7550 | 0.7095 | 0.5875 | 0.6427 | 0.8398 | 0.7216 | 0.1123 | 0.1444 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 29 | 0.7569 | 0.7073 | 0.6004 | 0.6495 | 0.8386 | 0.7198 | 0.1034 | 0.1492 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 13 | 0.7774 | 0.7426 | 0.6223 | 0.6771 | 0.8505 | 0.7236 | 0.0547 | 0.1295 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 17 | 0.7737 | 0.7339 | 0.6223 | 0.6735 | 0.8505 | 0.7224 | 0.0567 | 0.1354 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 19 | 0.7763 | 0.7405 | 0.6213 | 0.6757 | 0.8487 | 0.7172 | 0.0517 | 0.1307 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 23 | 0.7778 | 0.7429 | 0.6233 | 0.6778 | 0.8486 | 0.7209 | 0.0497 | 0.1295 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 29 | 0.7774 | 0.7461 | 0.6163 | 0.6750 | 0.8496 | 0.7231 | 0.0537 | 0.1259 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 13 | 0.7696 | 0.7377 | 0.5984 | 0.6608 | 0.8498 | 0.7339 | 0.0954 | 0.1277 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 17 | 0.7688 | 0.7331 | 0.6034 | 0.6619 | 0.8471 | 0.7313 | 0.1014 | 0.1319 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 19 | 0.7673 | 0.7290 | 0.6044 | 0.6609 | 0.8474 | 0.7289 | 0.0964 | 0.1348 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 23 | 0.7677 | 0.7344 | 0.5964 | 0.6583 | 0.8491 | 0.7315 | 0.0954 | 0.1295 |
+| LLaVA-OneVision-7B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 29 | 0.7692 | 0.7329 | 0.6054 | 0.6630 | 0.8491 | 0.7325 | 0.0895 | 0.1325 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8085 | 0.0874 | 0.0337 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8119 | 0.1044 | 0.0787 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8087 | 0.0993 | 0.0674 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8212 | 0.0990 | 0.0337 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | full | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8173 | 0.0984 | 0.0562 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8030 | 0.0941 | 0.0562 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8050 | 0.1203 | 0.0787 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8024 | 0.1100 | 0.0899 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8092 | 0.1063 | 0.0562 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | drift_only | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8092 | 0.1220 | 0.0449 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | 13 | 0.9700 | 0.0000 | 0.0000 | 0.0000 | 0.8078 | 0.1282 | 0.0674 | 0.0003 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | 17 | 0.9707 | 0.6667 | 0.0225 | 0.0435 | 0.8056 | 0.1461 | 0.0899 | 0.0003 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | 19 | 0.9703 | 0.5000 | 0.0112 | 0.0220 | 0.7791 | 0.1335 | 0.0899 | 0.0003 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | 23 | 0.9707 | 1.0000 | 0.0112 | 0.0222 | 0.7861 | 0.1397 | 0.0787 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | no_manifold | 29 | 0.9707 | 1.0000 | 0.0112 | 0.0222 | 0.8174 | 0.1594 | 0.1236 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | linear_probe | 13 | 0.9677 | 0.4394 | 0.3258 | 0.3742 | 0.8833 | 0.3238 | 0.2809 | 0.0127 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | linear_probe | 17 | 0.9673 | 0.4182 | 0.2584 | 0.3194 | 0.9016 | 0.3661 | 0.2584 | 0.0110 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6200 | 0.0357 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6215 | 0.0356 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6237 | 0.0358 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6217 | 0.0356 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_p_yes | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6203 | 0.0356 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6095 | 0.0347 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6115 | 0.0349 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6129 | 0.0349 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.5991 | 0.0336 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_logit_margin | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.6098 | 0.0348 | 0.0000 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 13 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8277 | 0.1195 | 0.0562 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 17 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8345 | 0.1145 | 0.0225 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 19 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8400 | 0.1214 | 0.0562 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 23 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8346 | 0.1173 | 0.0562 | 0.0000 |
+| LLaVA-OneVision-7B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 29 | 0.9703 | 0.0000 | 0.0000 | 0.0000 | 0.8373 | 0.1188 | 0.0225 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | 13 | 0.7189 | 0.5700 | 0.2769 | 0.3727 | 0.7795 | 0.5422 | 0.0260 | 0.0902 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | 17 | 0.7200 | 0.5747 | 0.2756 | 0.3726 | 0.7813 | 0.5467 | 0.0247 | 0.0881 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | 19 | 0.7181 | 0.5681 | 0.2732 | 0.3689 | 0.7813 | 0.5473 | 0.0321 | 0.0897 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | 23 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7823 | 0.5455 | 0.0235 | 0.0886 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | full | 29 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7793 | 0.5407 | 0.0247 | 0.0886 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | 13 | 0.7431 | 0.6415 | 0.3362 | 0.4412 | 0.7967 | 0.5611 | 0.0260 | 0.0812 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | 17 | 0.7420 | 0.6370 | 0.3362 | 0.4401 | 0.7973 | 0.5639 | 0.0247 | 0.0828 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | 19 | 0.7412 | 0.6353 | 0.3337 | 0.4376 | 0.7976 | 0.5670 | 0.0260 | 0.0828 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | 23 | 0.7397 | 0.6306 | 0.3313 | 0.4344 | 0.7980 | 0.5649 | 0.0272 | 0.0838 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | drift_only | 29 | 0.7431 | 0.6408 | 0.3375 | 0.4421 | 0.7966 | 0.5603 | 0.0210 | 0.0817 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | 13 | 0.7804 | 0.6467 | 0.5995 | 0.6222 | 0.8655 | 0.6861 | 0.0977 | 0.1415 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | 17 | 0.7826 | 0.6507 | 0.6032 | 0.6260 | 0.8665 | 0.6881 | 0.1001 | 0.1399 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | 19 | 0.7767 | 0.6378 | 0.6007 | 0.6187 | 0.8652 | 0.6854 | 0.0952 | 0.1474 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | 23 | 0.7767 | 0.6385 | 0.5983 | 0.6177 | 0.8642 | 0.6860 | 0.1088 | 0.1463 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | no_manifold | 29 | 0.7789 | 0.6421 | 0.6032 | 0.6221 | 0.8638 | 0.6833 | 0.1001 | 0.1452 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | 13 | 0.9258 | 0.8474 | 0.9197 | 0.8820 | 0.9775 | 0.9561 | 0.6885 | 0.0715 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | 17 | 0.9236 | 0.8424 | 0.9184 | 0.8788 | 0.9764 | 0.9544 | 0.6885 | 0.0742 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | 19 | 0.9183 | 0.8315 | 0.9147 | 0.8711 | 0.9749 | 0.9517 | 0.6959 | 0.0801 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | 23 | 0.9187 | 0.8377 | 0.9061 | 0.8705 | 0.9737 | 0.9500 | 0.7132 | 0.0758 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | linear_probe | 29 | 0.9269 | 0.8487 | 0.9221 | 0.8839 | 0.9758 | 0.9552 | 0.7058 | 0.0710 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | 13 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6170 | 0.3289 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | 17 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6158 | 0.3285 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | 19 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6163 | 0.3288 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | 23 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6158 | 0.3280 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_p_yes | 29 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.6171 | 0.3288 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | 13 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5369 | 0.2878 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | 17 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5256 | 0.2829 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | 19 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5308 | 0.2857 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | 23 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5318 | 0.2857 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_logit_margin | 29 | 0.6984 | 0.0000 | 0.0000 | 0.0000 | 0.5363 | 0.2873 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | 13 | 0.6954 | 0.0000 | 0.0000 | 0.0000 | 0.6369 | 0.3425 | 0.0000 | 0.0043 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | 17 | 0.6898 | 0.0000 | 0.0000 | 0.0000 | 0.6353 | 0.3417 | 0.0000 | 0.0123 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | 19 | 0.6980 | 0.0000 | 0.0000 | 0.0000 | 0.6364 | 0.3425 | 0.0000 | 0.0005 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | 23 | 0.6939 | 0.0000 | 0.0000 | 0.0000 | 0.6361 | 0.3418 | 0.0000 | 0.0064 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | output_chosen_answer_confidence | 29 | 0.6957 | 0.0000 | 0.0000 | 0.0000 | 0.6368 | 0.3425 | 0.0000 | 0.0037 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | 13 | 0.7032 | 0.5210 | 0.1990 | 0.2880 | 0.7753 | 0.5089 | 0.0099 | 0.0790 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | 17 | 0.6991 | 0.5031 | 0.1990 | 0.2852 | 0.7756 | 0.5092 | 0.0087 | 0.0849 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | 19 | 0.7006 | 0.5093 | 0.2040 | 0.2913 | 0.7773 | 0.5128 | 0.0099 | 0.0849 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | 23 | 0.7013 | 0.5128 | 0.1978 | 0.2855 | 0.7775 | 0.5111 | 0.0124 | 0.0812 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_curve_only | 29 | 0.7006 | 0.5093 | 0.2027 | 0.2900 | 0.7768 | 0.5084 | 0.0124 | 0.0844 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 13 | 0.7189 | 0.5700 | 0.2769 | 0.3727 | 0.7795 | 0.5422 | 0.0260 | 0.0902 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 17 | 0.7200 | 0.5747 | 0.2756 | 0.3726 | 0.7813 | 0.5467 | 0.0247 | 0.0881 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 19 | 0.7181 | 0.5681 | 0.2732 | 0.3689 | 0.7813 | 0.5473 | 0.0321 | 0.0897 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 23 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7823 | 0.5455 | 0.0235 | 0.0886 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 29 | 0.7177 | 0.5677 | 0.2695 | 0.3655 | 0.7793 | 0.5407 | 0.0247 | 0.0886 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 13 | 0.7498 | 0.6597 | 0.3523 | 0.4593 | 0.7987 | 0.5911 | 0.0507 | 0.0785 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 17 | 0.7479 | 0.6536 | 0.3498 | 0.4557 | 0.7997 | 0.5990 | 0.0643 | 0.0801 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 19 | 0.7535 | 0.6697 | 0.3609 | 0.4691 | 0.7979 | 0.5919 | 0.0519 | 0.0769 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 23 | 0.7517 | 0.6629 | 0.3597 | 0.4663 | 0.8012 | 0.5959 | 0.0507 | 0.0790 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 29 | 0.7491 | 0.6581 | 0.3498 | 0.4568 | 0.7982 | 0.5853 | 0.0420 | 0.0785 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 13 | 0.7226 | 0.5931 | 0.2559 | 0.3575 | 0.7788 | 0.5421 | 0.0210 | 0.0758 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 17 | 0.7241 | 0.5961 | 0.2645 | 0.3664 | 0.7790 | 0.5440 | 0.0222 | 0.0774 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 19 | 0.7263 | 0.6056 | 0.2658 | 0.3694 | 0.7823 | 0.5479 | 0.0297 | 0.0747 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 23 | 0.7245 | 0.5994 | 0.2608 | 0.3635 | 0.7820 | 0.5460 | 0.0297 | 0.0753 |
+| Molmo-7B-D-0924 | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 29 | 0.7248 | 0.6006 | 0.2621 | 0.3649 | 0.7793 | 0.5411 | 0.0247 | 0.0753 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8839 | 0.2992 | 0.1342 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8854 | 0.2796 | 0.1208 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8851 | 0.2829 | 0.1141 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8785 | 0.2673 | 0.1342 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | full | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8836 | 0.2898 | 0.1342 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8346 | 0.1651 | 0.0470 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8343 | 0.1619 | 0.0134 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8362 | 0.1640 | 0.0134 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8340 | 0.1651 | 0.0268 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | drift_only | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8360 | 0.1646 | 0.0336 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8256 | 0.1857 | 0.0604 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8255 | 0.1784 | 0.0201 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | 19 | 0.9500 | 0.0000 | 0.0000 | 0.0000 | 0.8249 | 0.1738 | 0.0268 | 0.0004 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.8294 | 0.1921 | 0.0537 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | no_manifold | 29 | 0.9500 | 0.0000 | 0.0000 | 0.0000 | 0.8236 | 0.1728 | 0.0336 | 0.0004 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | linear_probe | 13 | 0.9573 | 0.5755 | 0.5369 | 0.5556 | 0.9209 | 0.5606 | 0.4161 | 0.0207 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | linear_probe | 17 | 0.9543 | 0.5390 | 0.5570 | 0.5479 | 0.9270 | 0.5655 | 0.4362 | 0.0249 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5658 | 0.0512 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5201 | 0.0469 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5142 | 0.0459 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5666 | 0.0512 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_p_yes | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5871 | 0.0540 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5810 | 0.0541 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5527 | 0.0499 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5725 | 0.0526 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5707 | 0.0524 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_logit_margin | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.5852 | 0.0547 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | 13 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6522 | 0.0687 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | 17 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6442 | 0.0677 | 0.0000 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | 19 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6479 | 0.0675 | 0.0067 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | 23 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6519 | 0.0696 | 0.0134 | 0.0000 |
+| Molmo-7B-D-0924 | POPE popular | image_grouped | object | output_chosen_answer_confidence | 29 | 0.9503 | 0.0000 | 0.0000 | 0.0000 | 0.6551 | 0.0702 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | full | 13 | 0.8445 | 0.7266 | 0.6186 | 0.6683 | 0.9193 | 0.7374 | 0.1237 | 0.0789 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | full | 17 | 0.8434 | 0.7252 | 0.6141 | 0.6651 | 0.9186 | 0.7406 | 0.1178 | 0.0789 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | full | 19 | 0.8419 | 0.7179 | 0.6186 | 0.6646 | 0.9191 | 0.7376 | 0.1208 | 0.0824 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | full | 23 | 0.8378 | 0.7125 | 0.6024 | 0.6528 | 0.9179 | 0.7388 | 0.1208 | 0.0824 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | full | 29 | 0.8468 | 0.7351 | 0.6171 | 0.6709 | 0.9203 | 0.7446 | 0.1311 | 0.0754 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | 13 | 0.8475 | 0.7288 | 0.6333 | 0.6777 | 0.9185 | 0.7371 | 0.1325 | 0.0799 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | 17 | 0.8434 | 0.7237 | 0.6171 | 0.6661 | 0.9189 | 0.7378 | 0.1163 | 0.0799 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | 19 | 0.8456 | 0.7242 | 0.6303 | 0.6740 | 0.9188 | 0.7370 | 0.1370 | 0.0814 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | 23 | 0.8430 | 0.7232 | 0.6156 | 0.6651 | 0.9189 | 0.7360 | 0.1222 | 0.0799 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | drift_only | 29 | 0.8430 | 0.7209 | 0.6200 | 0.6667 | 0.9189 | 0.7374 | 0.1281 | 0.0814 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | 13 | 0.8598 | 0.7258 | 0.7172 | 0.7215 | 0.9290 | 0.7784 | 0.2150 | 0.0919 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | 17 | 0.8606 | 0.7286 | 0.7158 | 0.7221 | 0.9273 | 0.7760 | 0.1841 | 0.0904 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | 19 | 0.8583 | 0.7215 | 0.7172 | 0.7194 | 0.9244 | 0.7714 | 0.1856 | 0.0939 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | 23 | 0.8602 | 0.7289 | 0.7128 | 0.7208 | 0.9278 | 0.7782 | 0.2194 | 0.0899 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | no_manifold | 29 | 0.8561 | 0.7203 | 0.7054 | 0.7128 | 0.9280 | 0.7716 | 0.1635 | 0.0929 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | 13 | 0.9463 | 0.8399 | 0.9735 | 0.9018 | 0.9909 | 0.9779 | 0.8439 | 0.0629 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | 17 | 0.9452 | 0.8359 | 0.9750 | 0.9001 | 0.9919 | 0.9791 | 0.8351 | 0.0649 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | 19 | 0.9448 | 0.8331 | 0.9779 | 0.8997 | 0.9924 | 0.9800 | 0.8115 | 0.0664 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | 23 | 0.9478 | 0.8433 | 0.9750 | 0.9044 | 0.9919 | 0.9797 | 0.8395 | 0.0614 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | linear_probe | 29 | 0.9471 | 0.8369 | 0.9823 | 0.9038 | 0.9931 | 0.9810 | 0.8409 | 0.0649 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | 13 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4764 | 0.2193 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | 17 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4734 | 0.2190 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | 19 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4763 | 0.2198 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | 23 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4606 | 0.2142 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_p_yes | 29 | 0.7468 | 0.0000 | 0.0000 | 0.0000 | 0.4693 | 0.2173 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | 13 | 0.7431 | 0.0000 | 0.0000 | 0.0000 | 0.6160 | 0.2801 | 0.0000 | 0.0050 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | 17 | 0.7438 | 0.0000 | 0.0000 | 0.0000 | 0.6170 | 0.2801 | 0.0000 | 0.0040 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | 19 | 0.7438 | 0.0000 | 0.0000 | 0.0000 | 0.6158 | 0.2801 | 0.0000 | 0.0040 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | 23 | 0.7442 | 0.0000 | 0.0000 | 0.0000 | 0.6163 | 0.2802 | 0.0000 | 0.0035 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_logit_margin | 29 | 0.7438 | 0.0000 | 0.0000 | 0.0000 | 0.6160 | 0.2800 | 0.0000 | 0.0040 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 13 | 0.7457 | 0.4908 | 0.1178 | 0.1900 | 0.6856 | 0.4057 | 0.0250 | 0.0414 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 17 | 0.7468 | 0.5000 | 0.1208 | 0.1945 | 0.6975 | 0.4113 | 0.0309 | 0.0409 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 19 | 0.7461 | 0.4938 | 0.1178 | 0.1902 | 0.6993 | 0.4127 | 0.0236 | 0.0409 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 23 | 0.7465 | 0.4970 | 0.1208 | 0.1943 | 0.7167 | 0.4210 | 0.0280 | 0.0414 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | output_chosen_answer_confidence | 29 | 0.7465 | 0.4970 | 0.1208 | 0.1943 | 0.6934 | 0.4098 | 0.0280 | 0.0414 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | 13 | 0.8419 | 0.7233 | 0.6082 | 0.6608 | 0.9208 | 0.7429 | 0.1281 | 0.0789 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | 17 | 0.8430 | 0.7271 | 0.6082 | 0.6624 | 0.9207 | 0.7439 | 0.1237 | 0.0774 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | 19 | 0.8412 | 0.7231 | 0.6038 | 0.6581 | 0.9208 | 0.7427 | 0.1193 | 0.0784 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | 23 | 0.8449 | 0.7319 | 0.6112 | 0.6661 | 0.9206 | 0.7429 | 0.1237 | 0.0759 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_curve_only | 29 | 0.8408 | 0.7234 | 0.6009 | 0.6565 | 0.9215 | 0.7442 | 0.1237 | 0.0779 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 13 | 0.8445 | 0.7266 | 0.6186 | 0.6683 | 0.9193 | 0.7374 | 0.1237 | 0.0789 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 17 | 0.8434 | 0.7252 | 0.6141 | 0.6651 | 0.9186 | 0.7406 | 0.1178 | 0.0789 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 19 | 0.8419 | 0.7179 | 0.6186 | 0.6646 | 0.9191 | 0.7376 | 0.1208 | 0.0824 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 23 | 0.8378 | 0.7125 | 0.6024 | 0.6528 | 0.9179 | 0.7388 | 0.1208 | 0.0824 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_simple | 29 | 0.8468 | 0.7351 | 0.6171 | 0.6709 | 0.9203 | 0.7446 | 0.1311 | 0.0754 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 13 | 0.8579 | 0.7578 | 0.6451 | 0.6969 | 0.9291 | 0.7697 | 0.1576 | 0.0699 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 17 | 0.8568 | 0.7513 | 0.6495 | 0.6967 | 0.9283 | 0.7664 | 0.1664 | 0.0729 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 19 | 0.8579 | 0.7517 | 0.6554 | 0.7002 | 0.9286 | 0.7630 | 0.1414 | 0.0734 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 23 | 0.8579 | 0.7569 | 0.6465 | 0.6974 | 0.9281 | 0.7664 | 0.1546 | 0.0704 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_full_curve | 29 | 0.8583 | 0.7556 | 0.6510 | 0.6994 | 0.9300 | 0.7697 | 0.1502 | 0.0714 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 13 | 0.8404 | 0.7198 | 0.6053 | 0.6576 | 0.9179 | 0.7360 | 0.1311 | 0.0799 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 17 | 0.8415 | 0.7236 | 0.6053 | 0.6592 | 0.9178 | 0.7358 | 0.1546 | 0.0784 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 19 | 0.8427 | 0.7235 | 0.6127 | 0.6635 | 0.9165 | 0.7324 | 0.1252 | 0.0794 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 23 | 0.8382 | 0.7176 | 0.5950 | 0.6506 | 0.9179 | 0.7359 | 0.1443 | 0.0794 |
+| Qwen3-VL-8B | DASH-B | image_grouped | object | raw_plus_calibrated_haar | 29 | 0.8412 | 0.7239 | 0.6024 | 0.6576 | 0.9192 | 0.7411 | 0.1237 | 0.0779 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6342 | 0.0451 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6321 | 0.0451 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6309 | 0.0449 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6251 | 0.0444 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6346 | 0.0452 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | full | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8908 | 0.1741 | 0.0631 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | full | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8884 | 0.1831 | 0.0811 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | full | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8872 | 0.1734 | 0.0631 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | full | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8895 | 0.1781 | 0.0721 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | full | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8908 | 0.1832 | 0.0721 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8497 | 0.1253 | 0.0360 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8484 | 0.1344 | 0.0721 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8460 | 0.1226 | 0.0541 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8507 | 0.1330 | 0.0901 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | drift_only | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8485 | 0.1355 | 0.0631 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8385 | 0.1983 | 0.0811 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | 17 | 0.9617 | 0.0000 | 0.0000 | 0.0000 | 0.8166 | 0.1675 | 0.0811 | 0.0014 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8050 | 0.1822 | 0.1171 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | 23 | 0.9627 | 0.0000 | 0.0000 | 0.0000 | 0.8227 | 0.1689 | 0.0901 | 0.0003 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | no_manifold | 29 | 0.9623 | 0.0000 | 0.0000 | 0.0000 | 0.8305 | 0.1801 | 0.0991 | 0.0007 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | linear_probe | 13 | 0.9600 | 0.4526 | 0.3874 | 0.4175 | 0.9161 | 0.3803 | 0.2523 | 0.0180 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | linear_probe | 17 | 0.9597 | 0.4468 | 0.3784 | 0.4098 | 0.8938 | 0.4005 | 0.2973 | 0.0180 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6342 | 0.0451 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6321 | 0.0451 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6309 | 0.0449 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6251 | 0.0444 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_p_yes | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6346 | 0.0452 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5955 | 0.0422 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.6000 | 0.0431 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5894 | 0.0415 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5948 | 0.0426 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_logit_margin | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.5888 | 0.0416 | 0.0000 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 13 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7947 | 0.1462 | 0.0901 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 17 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.8569 | 0.1660 | 0.0901 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 19 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7562 | 0.1434 | 0.0811 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 23 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7684 | 0.1561 | 0.0991 | 0.0000 |
+| Qwen3-VL-8B | POPE popular | image_grouped | object | output_chosen_answer_confidence | 29 | 0.9630 | 0.0000 | 0.0000 | 0.0000 | 0.7800 | 0.1445 | 0.0901 | 0.0000 |

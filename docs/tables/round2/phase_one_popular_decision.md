@@ -1,9 +1,5 @@
 # Phase-One Popular Decision
 
-Current source:
-
-- `outputs/round2_2026_04/decision_gate/pope_popular_phase_one_decision.json`
-
 Decision:
 
 - default full MIND feature set:
