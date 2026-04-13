@@ -21,6 +21,6 @@ def create_model_wrapper(config: ModelConfig):
         return LlavaOnevisionWrapper(config)
     if family == "molmo":
         return MolmoWrapper(config)
-    if family in {"qwen_vl", "qwen-vl"} or "vl" in config.model_id.lower():
+    if family in {"qwen_vl", "qwen-vl"}:
         return QwenVLWrapper(config)
     return QwenTextWrapper(config)

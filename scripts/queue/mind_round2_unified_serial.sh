@@ -275,10 +275,10 @@ if not shard_paths:
 
 def iter_entries():
     for shard_path in shard_paths:
-        payload = torch.load(shard_path, weights_only=False)
+        payload = torch.load(shard_path, weights_only=True)
         if isinstance(payload, dict) and payload.get("format") == CHUNKED_CACHE_SHARD_FORMAT:
             for part_name in payload.get("parts", []):
-                part_entries = torch.load(shard_path.parent / str(part_name), weights_only=False)
+                part_entries = torch.load(shard_path.parent / str(part_name), weights_only=True)
                 for entry in part_entries:
                     yield entry
         elif isinstance(payload, list):

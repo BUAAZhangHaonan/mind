@@ -55,15 +55,23 @@ def build_shuffled_mapping_output_path(*, output_root: Path, model_name: str) ->
     return output_root / model_name / SHUFFLED_OBJECT_MAP_FILENAME
 
 
-def load_saved_reference_bank(reference_root: Path, model_name: str) -> dict[str, dict[int, torch.Tensor]]:
+def load_saved_reference_bank(
+    reference_root: Path,
+    model_name: str,
+    *,
+    bank_scope: str = "object",
+) -> dict[str, dict[int, torch.Tensor]]:
     model_root = reference_root / model_name
     bank: dict[str, dict[int, torch.Tensor]] = {}
     for layer_path in sorted(model_root.glob("*/layer-*.pt")):
         object_name = layer_path.parent.name
-        if object_name == SHARED_BANK_KEY:
+        if bank_scope == "shared":
+            if object_name != SHARED_BANK_KEY:
+                continue
+        elif object_name == SHARED_BANK_KEY:
             continue
         layer_index = int(layer_path.stem.split("-")[-1])
-        bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
+        bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=True)
     if not bank:
         raise ValueError(f"No saved reference bank tensors found under {model_root}.")
     return bank
@@ -242,7 +250,7 @@ def save_reference_bank_from_saved_tensors(
     shuffle_seed: int = 13,
     subsample_size: int | None = None,
 ) -> list[Path]:
-    source_bank = load_saved_reference_bank(reference_root, model_name)
+    source_bank = load_saved_reference_bank(reference_root, model_name, bank_scope=bank_scope)
     source_bank = _subsample_saved_bank(source_bank, subsample_size=subsample_size)
     derived_bank, shuffled_object_mapping = _derive_bank_from_saved_tensors(
         source_bank,
@@ -267,9 +275,9 @@ def load_cache_entries(reference_cache: Path) -> list[dict[str, object]]:
     if reference_cache.is_dir():
         entries: list[dict[str, object]] = []
         for shard_path in sorted(reference_cache.rglob("*.pt")):
-            entries.extend(torch.load(shard_path, weights_only=False))
+            entries.extend(torch.load(shard_path, weights_only=True))
         return entries
-    return list(torch.load(reference_cache, weights_only=False))
+    return list(torch.load(reference_cache, weights_only=True))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,15 +312,7 @@ def main(argv: list[str] | None = None) -> int:
             ):
                 print(path)
             return 0
-        print(
-            build_output_path(
-                output_root=args.output_root,
-                model_name=args.model_name,
-                object_name=args.object_name,
-                layer_index=args.layer_index,
-            )
-        )
-        return 0
+        raise ValueError("Provide either --reference-cache or --reference-bank-root.")
 
     entries = load_cache_entries(args.reference_cache)
     for path in save_reference_bank(

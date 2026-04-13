@@ -39,11 +39,6 @@ def build_plot_paths(*, output_root: Path, experiment_name: str) -> dict[str, Pa
             experiment_name=experiment_name,
             plot_name="drift_curves",
         ),
-        "heatmap": build_plot_output_path(
-            output_root=output_root,
-            experiment_name=experiment_name,
-            plot_name="wavelet_heatmap",
-        ),
         "wavelet": build_plot_output_path(
             output_root=output_root,
             experiment_name=experiment_name,

@@ -91,7 +91,7 @@ def load_reference_bank(
         if bank_scope == "shared" and object_name != "__shared__":
             continue
         layer_index = int(layer_path.stem.split("-")[-1])
-        bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
+        bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=True)
     return bank
 
 
@@ -109,7 +109,7 @@ def load_reference_stats(
             continue
         if bank_scope == "shared" and object_name != "__shared__":
             continue
-        payload = torch.load(stats_path, weights_only=False)
+        payload = torch.load(stats_path, weights_only=True)
         stats_map[object_name] = {
             int(layer_index): {str(key): float(value) for key, value in layer_stats.items()}
             for layer_index, layer_stats in payload.items()
@@ -124,11 +124,10 @@ def load_reference_support_counts(
     bank_scope: str = "object",
 ) -> pd.DataFrame:
     counts_path = reference_root / model_name / "reference_counts.csv"
-    normalized_scope = "object" if bank_scope == "shuffled_object" else bank_scope
     if counts_path.exists():
         counts = pd.read_csv(counts_path)
         if "bank_scope" in counts.columns:
-            counts = counts[counts["bank_scope"] == normalized_scope].copy()
+            counts = counts[counts["bank_scope"] == bank_scope].copy()
         if "count" in counts.columns:
             counts = counts[counts["count"].fillna(0).astype(int) > 0].copy()
         if "object_name" in counts.columns:
@@ -136,7 +135,7 @@ def load_reference_support_counts(
         return counts.reset_index(drop=True)
 
     model_root = reference_root / model_name
-    if normalized_scope == "shared":
+    if bank_scope == "shared":
         shared_root = model_root / "__shared__"
         if not shared_root.exists():
             raise ValueError(f"Missing shared reference bank under {shared_root}.")
@@ -150,7 +149,7 @@ def load_reference_support_counts(
             continue
         object_rows.append(
             {
-                "bank_scope": normalized_scope,
+                "bank_scope": bank_scope,
                 "object_name": object_dir.name,
                 "count": 1,
             }
@@ -278,7 +277,7 @@ def _load_cache_shard_entries(
     *,
     keep_fields: set[str] | None,
 ) -> list[dict[str, object]]:
-    payload = torch.load(shard_path, weights_only=False)
+    payload = torch.load(shard_path, weights_only=True)
     if isinstance(payload, dict) and payload.get("format") == CHUNKED_CACHE_SHARD_FORMAT:
         part_names = payload.get("parts")
         if not isinstance(part_names, list):
@@ -286,7 +285,7 @@ def _load_cache_shard_entries(
         entries: list[dict[str, object]] = []
         for part_name in part_names:
             part_path = shard_path.parent / str(part_name)
-            part_entries = torch.load(part_path, weights_only=False)
+            part_entries = torch.load(part_path, weights_only=True)
             entries.extend(
                 _trim_cache_entry(entry, keep_fields=keep_fields)
                 for entry in part_entries

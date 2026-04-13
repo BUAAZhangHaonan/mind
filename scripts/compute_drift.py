@@ -46,7 +46,7 @@ def load_reference_bank(
         if bank_scope == "shared" and object_name != "__shared__":
             continue
         layer_index = int(layer_path.stem.split("-")[-1])
-        bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=False)
+        bank.setdefault(object_name, {})[layer_index] = torch.load(layer_path, weights_only=True)
     return bank
 
 
@@ -64,7 +64,7 @@ def load_reference_stats(
             continue
         if bank_scope == "shared" and object_name != "__shared__":
             continue
-        payload = torch.load(stats_path, weights_only=False)
+        payload = torch.load(stats_path, weights_only=True)
         stats_map[object_name] = {
             int(layer_index): {str(key): float(value) for key, value in layer_stats.items()}
             for layer_index, layer_stats in payload.items()
@@ -76,9 +76,9 @@ def load_cache_entries(cache_path: Path) -> list[dict[str, object]]:
     if cache_path.is_dir():
         entries: list[dict[str, object]] = []
         for shard_path in sorted(cache_path.rglob("*.pt")):
-            entries.extend(torch.load(shard_path, weights_only=False))
+            entries.extend(torch.load(shard_path, weights_only=True))
         return entries
-    return list(torch.load(cache_path, weights_only=False))
+    return list(torch.load(cache_path, weights_only=True))
 
 
 def _format_missing_reference_coverage(missing_entries: list[dict[str, object]]) -> str:
