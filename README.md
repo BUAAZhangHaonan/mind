@@ -38,7 +38,7 @@ Key modules:
 ## Environment
 
 The project environment name is `mind-py311`. The canonical runtime is the named conda environment, and all documented commands now use `conda run --no-capture-output -n mind-py311 ...` through the shipped `Makefile`.
-Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, this project uses GPU 0 or GPU 1 only, and the queue exports `PYTHONNOUSERSITE=1` so user-site torch packages do not shadow the conda env.
+Mainline queue note: long-running MIND training or queue jobs must start in `tmux` or `nohup`, this project uses GPU 0 only, and the queue exports `PYTHONNOUSERSITE=1` so user-site torch packages do not shadow the conda env.
 
 ```bash
 make env
@@ -79,8 +79,8 @@ Question files already downloaded locally:
 
 Normalized copies already written to:
 
-- `outputs/normalized/pope/*.jsonl`
-- `outputs/normalized/repope/*.jsonl`
+- `outputs/round2_2026_04/normalized/pope/*.jsonl`
+- `outputs/round2_2026_04/normalized/repope/*.jsonl`
 
 Local multimodal assets already present:
 
@@ -138,13 +138,13 @@ make plan-smoke
 
 Canonical artifact layout:
 
-- `outputs/cache/<model>/<dataset>/<split>/shard-xxxxx.pt`
-- `outputs/reference_banks/<model>/<object>/layer-xx.pt`
-- `outputs/features/<experiment>/<split>.parquet`
-- `outputs/reports/<experiment>/metrics.json`
-- `outputs/reports/<experiment>/results.csv`
-- `outputs/plots/<experiment>/*.png`
-- corrected signal-evaluation reruns in this phase were written under `outputs/correction_phase/`
+- `outputs/round2_2026_04/cache/<model>/<dataset>/<split>/shard-xxxxx.pt`
+- `outputs/round2_2026_04/reference_banks/<model>/<object>/layer-xx.pt`
+- `outputs/round2_2026_04/features/<experiment>/<split>.parquet`
+- `outputs/round2_2026_04/reports/<experiment>/metrics.json`
+- `outputs/round2_2026_04/reports/<experiment>/results.csv`
+- selected comparison figures are retained in the round-two report tree under `outputs/round2_2026_04/reports/`
+- corrected signal-evaluation reruns in this phase were written under `outputs/round2_2026_04/reports/`
 
 ## Current Status
 
@@ -172,7 +172,7 @@ Correction-phase experiment checkpoints completed on the existing popular caches
 - corrected InternVL popular rerun under `image_grouped`
 - corrected InternVL popular rerun under legacy `row`
 - corrected InternVL popular rerun under `object_heldout`
-- grouped comparison figure written to `outputs/correction_phase/plots/correction_summary_protocols.png`
+- grouped comparison figure written to the round-two report tree under `outputs/round2_2026_04/reports/`
 - corrected popular RePOPE relabel reports written for both model families:
   - `correction-qwen3-vl-8b-popular-repope`
   - `correction-internvl3.5-8b-popular-repope`
@@ -234,9 +234,10 @@ Current environment note:
 - as of `2026-04-01`, the target closeout server is healthy:
   - `nvidia-smi` reports `2 x NVIDIA A100 80GB PCIe`
   - fresh `mind-py311` PyTorch processes report `torch.cuda.is_available() == True`
+  - long training and extraction jobs should use GPU 0 only, and long runs should be launched with `nohup` or in `tmux`
   - the missing `InternVL3.5-8B` adversarial rerun completed from this environment
   - the final `artifacts/paper_closeout/` package was exported from this environment
 - older `3 GPU` and `4 GPU` notes in the journal remain historical incident notes from the previous server
 - H-POPE remains blocked because the public benchmark package was not found in a directly usable release
 
-See `docs/results_summary.md` for the corrected tables, `docs/runbooks/experiments.md` for the staged and corrected commands, `journal/progress.md` for the full command log, and `docs/paper_outline.md` for the revised writing direction.
+See `docs/tables/` for the corrected tables and `Project_Summary_Report.md` for the staged and corrected commands and revised writing direction.

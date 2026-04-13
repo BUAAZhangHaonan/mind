@@ -916,27 +916,27 @@ def test_run_experiment_builds_stage_commands_from_flat_config(tmp_path: Path) -
         stages=["prepare", "build_reference", "extract_eval"],
     )
 
-    assert commands["prepare"][0].endswith("python")
-    assert commands["prepare"][1:] == [
+    assert commands["prepare"][0][0].endswith("python")
+    assert commands["prepare"][0][1:] == [
         "scripts/prepare_data.py",
         "normalize-object-yes-no",
         "--source",
         "data/pope/popular.jsonl",
         "--output",
-        "outputs/normalized/pope/popular.jsonl",
+        "outputs/round2_2026_04/normalized/pope/popular.jsonl",
         "--subset",
         "popular",
         "--split",
         "val",
     ]
-    assert commands["build_reference"][1] == "scripts/prepare_data.py"
-    assert "--allowed-objects-from" in commands["build_reference"]
-    assert "outputs/normalized/pope/popular.jsonl" in commands["build_reference"]
-    assert commands["extract_eval"][1] == "scripts/extract_eval_states.py"
-    assert "--records" in commands["extract_eval"]
-    assert "outputs/normalized/pope/popular.jsonl" in commands["extract_eval"]
-    assert "--image-root" in commands["extract_eval"]
-    assert "data/coco/val2014" in commands["extract_eval"]
+    assert commands["build_reference"][0][1] == "scripts/prepare_data.py"
+    assert "--allowed-objects-from" in commands["build_reference"][0]
+    assert "outputs/round2_2026_04/normalized/pope/popular.jsonl" in commands["build_reference"][0]
+    assert commands["extract_eval"][0][1] == "scripts/extract_eval_states.py"
+    assert "--records" in commands["extract_eval"][0]
+    assert "outputs/round2_2026_04/normalized/pope/popular.jsonl" in commands["extract_eval"][0]
+    assert "--image-root" in commands["extract_eval"][0]
+    assert "data/coco/val2014" in commands["extract_eval"][0]
 
 
 def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: Path) -> None:
@@ -977,13 +977,13 @@ def test_run_experiment_prepare_stage_supports_dash_b_dataset_config(tmp_path: P
         stages=["prepare"],
     )
 
-    assert commands["prepare"][1:] == [
+    assert commands["prepare"][0][1:] == [
         "scripts/prepare_data.py",
         "normalize-object-yes-no",
         "--source",
         "data/dash_b",
         "--output",
-        "outputs/normalized/dash-b/main.jsonl",
+        "outputs/round2_2026_04/normalized/dash-b/main.jsonl",
         "--subset",
         "main",
         "--split",
@@ -1040,7 +1040,57 @@ def test_run_experiment_prepare_stage_prefers_dash_b_subset_file_over_directory_
         stages=["prepare"],
     )
 
-    assert commands["prepare"][4] == "data/dash_b/main.jsonl"
+    assert commands["prepare"][0][4] == "data/dash_b/main.jsonl"
+
+
+def test_run_experiment_builds_multiple_subset_commands(tmp_path: Path) -> None:
+    config_path = tmp_path / "experiment.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: smoke-qwen3.5-4b-popular",
+                "model_config: configs/models/qwen3_5_4b.yaml",
+                "dataset_config: configs/data/pope.yaml",
+                "subset: [popular, adversarial]",
+                "split: val",
+                "selected_layers: 16",
+                "detector: logistic",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commands = run_experiment.build_stage_commands(
+        config_path=config_path,
+        stages=["prepare", "extract_eval", "compute_drift", "baselines", "evaluate", "plot"],
+    )
+
+    assert len(commands["prepare"]) == 2
+    assert len(commands["extract_eval"]) == 2
+    assert len(commands["compute_drift"]) == 2
+    assert len(commands["baselines"]) == 2
+    assert len(commands["evaluate"]) == 2
+    assert len(commands["plot"]) == 2
+
+    assert "outputs/round2_2026_04/normalized/pope/popular.jsonl" in commands["prepare"][0]
+    assert "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" in commands["prepare"][1]
+    assert "outputs/round2_2026_04/normalized/pope/popular.jsonl" in commands["extract_eval"][0]
+    assert "outputs/round2_2026_04/normalized/pope/adversarial.jsonl" in commands["extract_eval"][1]
+    assert "--experiment-name" in commands["compute_drift"][0]
+    assert "smoke-qwen3.5-4b-popular" in commands["compute_drift"][0]
+    assert "--experiment-name" in commands["compute_drift"][1]
+    assert "smoke-qwen3.5-4b-popular-adversarial" in commands["compute_drift"][1]
+    assert "--experiment-name" in commands["baselines"][0]
+    assert "smoke-qwen3.5-4b-popular" in commands["baselines"][0]
+    assert "--experiment-name" in commands["baselines"][1]
+    assert "smoke-qwen3.5-4b-popular-adversarial" in commands["baselines"][1]
+    assert "--experiment-name" in commands["evaluate"][0]
+    assert "smoke-qwen3.5-4b-popular" in commands["evaluate"][0]
+    assert "--experiment-name" in commands["evaluate"][1]
+    assert "smoke-qwen3.5-4b-popular-adversarial" in commands["evaluate"][1]
+    assert "--features-path" in commands["plot"][1]
+    assert "outputs/round2_2026_04/features/smoke-qwen3.5-4b-popular-adversarial/adversarial.parquet" in commands["plot"][1]
 
 
 def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_path: Path) -> None:
@@ -1066,8 +1116,8 @@ def test_run_experiment_threads_bank_scope_into_reference_and_drift_stages(tmp_p
         stages=["build_manifolds", "compute_drift"],
     )
 
-    assert commands["build_manifolds"][-2:] == ["--bank-scope", "shared"]
-    assert commands["compute_drift"][-2:] == ["--bank-scope", "shared"]
+    assert commands["build_manifolds"][0][-2:] == ["--bank-scope", "shared"]
+    assert commands["compute_drift"][0][-2:] == ["--bank-scope", "shared"]
 
 
 def test_run_experiment_supports_output_root_and_baselines_stage(tmp_path: Path) -> None:
@@ -1094,10 +1144,12 @@ def test_run_experiment_supports_output_root_and_baselines_stage(tmp_path: Path)
         output_root=tmp_path / "round2",
     )
 
-    assert commands["compute_drift"][5] == str(tmp_path / "round2" / "reference_banks")
-    assert commands["baselines"][1] == "scripts/compute_baselines.py"
-    assert str(tmp_path / "round2" / "features" / "smoke-qwen3.5-4b-popular" / "popular.parquet") in commands["baselines"]
-    assert commands["baselines"][-2:] == ["--full-variant", "raw_plus_calibrated_simple"]
+    assert str(tmp_path / "round2" / "reference_banks") in commands["compute_drift"][0]
+    assert commands["baselines"][0][1] == "scripts/compute_baselines.py"
+    assert str(
+        tmp_path / "round2" / "features" / "smoke-qwen3.5-4b-popular" / "popular.parquet"
+    ) in commands["baselines"][0]
+    assert commands["baselines"][0][-2:] == ["--full-variant", "raw_plus_calibrated_simple"]
 
 
 def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_path: Path) -> None:

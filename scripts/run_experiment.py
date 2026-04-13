@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, Sequence
 
 import pandas as pd
 import yaml
@@ -28,6 +29,47 @@ DEFAULT_STAGES = [
     "evaluate",
     "plot",
 ]
+
+
+def resolve_subset_list(raw_subset: Any) -> list[str]:
+    if isinstance(raw_subset, str):
+        value = raw_subset.strip()
+        if not value:
+            raise ValueError("subset must be a non-empty string or non-empty list of strings")
+        return [value]
+    if isinstance(raw_subset, Sequence) and not isinstance(raw_subset, (bytes, bytearray)):
+        values: list[str] = []
+        for item in raw_subset:
+            if not isinstance(item, str):
+                raise TypeError(f"Unsupported subset item type: {type(item)!r}")
+            value = item.strip()
+            if value:
+                values.append(value)
+        if not values:
+            raise ValueError("subset must be a non-empty string or non-empty list of strings")
+        # Preserve order while avoiding redundant repeated passes.
+        seen: set[str] = set()
+        deduplicated: list[str] = []
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            deduplicated.append(value)
+        return deduplicated
+    raise TypeError(f"Unsupported subset type: {type(raw_subset)!r}")
+
+
+def resolve_subset_experiment_name(
+    experiment_name: str,
+    subset: str,
+    *,
+    subset_count: int,
+) -> str:
+    if subset_count <= 1:
+        return experiment_name
+    if experiment_name.endswith(f"-{subset}"):
+        return experiment_name
+    return f"{experiment_name}-{subset}"
 
 
 def parse_stage_list(value: str) -> list[str]:
@@ -104,21 +146,31 @@ def build_runtime_paths(
     dataset: DatasetConfig,
     model: ModelConfig,
     output_root: Path,
+    subset: str,
+    subset_count: int,
 ) -> dict[str, str]:
-    subset = str(experiment["subset"])
     dataset_name = dataset.name
     experiment_name = str(experiment["name"])
+    resolved_experiment_name = resolve_subset_experiment_name(
+        experiment_name=experiment_name,
+        subset=subset,
+        subset_count=subset_count,
+    )
     reference_banks_root = resolve_reference_banks_root(output_root, str(experiment["bank_scope"]))
     return {
         "normalized": str(output_root / "normalized" / dataset_name / f"{subset}.jsonl"),
         "reference_cache": str(
-            output_root / "cache" / model.name / str(experiment["reference_dataset_name"]) / str(experiment["reference_split"])
+            output_root
+            / "cache"
+            / model.name
+            / str(experiment["reference_dataset_name"])
+            / str(experiment["reference_split"])
         ),
         "eval_cache": str(output_root / "cache" / model.name / dataset_name / subset),
         "reference_banks": str(reference_banks_root),
-        "features": str(output_root / "features" / experiment_name / f"{subset}.parquet"),
-        "reports": str(output_root / "reports" / experiment_name),
-        "plots": str(output_root / "plots" / experiment_name),
+        "features": str(output_root / "features" / resolved_experiment_name / f"{subset}.parquet"),
+        "reports": str(output_root / "reports" / resolved_experiment_name),
+        "plots": str(output_root / "plots" / resolved_experiment_name),
     }
 
 
@@ -128,45 +180,63 @@ def build_stage_commands(
     stages: list[str],
     python_bin: str | None = None,
     output_root: Path | None = None,
-) -> dict[str, list[str]]:
+) -> dict[str, list[list[str]]]:
     python_bin = python_bin or sys.executable
-    output_root = output_root or Path("outputs")
+    output_root = output_root or Path("outputs/round2_2026_04")
     experiment = load_experiment_spec(config_path)
     dataset = load_yaml_config(Path(str(experiment["dataset_config"])), DatasetConfig)
     model = load_yaml_config(Path(str(experiment["model_config"])), ModelConfig)
-    paths = build_runtime_paths(experiment=experiment, dataset=dataset, model=model, output_root=output_root)
-    subset = str(experiment["subset"])
-    split = str(experiment["split"])
+    subsets = resolve_subset_list(experiment["subset"])
     selected_layers = str(experiment["selected_layers"])
     layer_range = str(experiment["layer_range"])
+    split = str(experiment["split"])
     limit = str(experiment["limit"])
     bank_scope = str(experiment["bank_scope"])
     full_variant = str(experiment["full_variant"])
     dataset_source = dataset.source_dataset or ("repope" if dataset.name == "repope" else dataset.name)
     normalizer = dataset.normalizer.strip().lower()
 
-    commands: dict[str, list[str]] = {}
+    paths_by_subset = {
+        subset: build_runtime_paths(
+            experiment=experiment,
+            dataset=dataset,
+            model=model,
+            output_root=output_root,
+            subset=subset,
+            subset_count=len(subsets),
+        )
+        for subset in subsets
+    }
+    reference_cache = paths_by_subset[subsets[0]]["reference_cache"]
+    reference_banks = paths_by_subset[subsets[0]]["reference_banks"]
+
+    commands: dict[str, list[list[str]]] = {}
     for stage in stages:
         if stage == "prepare":
             if normalizer not in {"object_yes_no", "object-yes-no", "pope"}:
                 raise ValueError(f"Unsupported dataset normalizer: {dataset.normalizer}")
-            command = [
-                python_bin,
-                "scripts/prepare_data.py",
-                "normalize-object-yes-no",
-                "--source",
-                resolve_prepare_source(dataset.root, subset, dataset.name),
-                "--output",
-                paths["normalized"],
-                "--subset",
-                subset,
-                "--split",
-                split,
-            ]
-            if dataset_source != "pope":
-                command.extend(["--source-dataset", dataset_source])
-            if dataset.question_template:
-                command.extend(["--question-template", dataset.question_template])
+            stage_commands: list[list[str]] = []
+            for subset in subsets:
+                paths = paths_by_subset[subset]
+                command = [
+                    python_bin,
+                    "scripts/prepare_data.py",
+                    "normalize-object-yes-no",
+                    "--source",
+                    resolve_prepare_source(dataset.root, subset, dataset.name),
+                    "--output",
+                    paths["normalized"],
+                    "--subset",
+                    subset,
+                    "--split",
+                    split,
+                ]
+                if dataset_source != "pope":
+                    command.extend(["--source-dataset", dataset_source])
+                if dataset.question_template:
+                    command.extend(["--question-template", dataset.question_template])
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         elif stage == "cache_reference":
             command = [
                 python_bin,
@@ -192,6 +262,7 @@ def build_stage_commands(
             ]
             if int(limit) > 0:
                 command.extend(["--limit", limit])
+            commands[stage] = [command]
         elif stage == "build_reference":
             command = [
                 python_bin,
@@ -201,153 +272,206 @@ def build_stage_commands(
                 str(experiment["reference_instances_json"]),
                 "--output",
                 str(experiment["reference_candidates"]),
-                "--allowed-objects-from",
-                paths["normalized"],
                 "--max-images-per-object",
                 str(experiment["reference_max_images_per_object"]),
             ]
+            for subset in subsets:
+                command.extend(["--allowed-objects-from", paths_by_subset[subset]["normalized"]])
+            commands[stage] = [command]
         elif stage == "extract_eval":
-            command = [
-                python_bin,
-                "scripts/extract_eval_states.py",
-                "--records",
-                paths["normalized"],
-                "--model-config",
-                str(experiment["model_config"]),
-                "--output-root",
-                str(output_root / "cache"),
-                "--dataset-name",
-                dataset.name,
-                "--split",
-                subset,
-                "--device",
-                str(experiment["device"]),
-                "--selected-layers",
-                selected_layers,
-                "--layer-range",
-                layer_range,
-            ]
-            if dataset.image_root:
-                command.extend(["--image-root", dataset.image_root])
-            if int(limit) > 0:
-                command.extend(["--limit", limit])
+            stage_commands = []
+            for subset in subsets:
+                paths = paths_by_subset[subset]
+                command = [
+                    python_bin,
+                    "scripts/extract_eval_states.py",
+                    "--records",
+                    paths["normalized"],
+                    "--model-config",
+                    str(experiment["model_config"]),
+                    "--output-root",
+                    str(output_root / "cache"),
+                    "--dataset-name",
+                    dataset.name,
+                    "--split",
+                    subset,
+                    "--device",
+                    str(experiment["device"]),
+                    "--selected-layers",
+                    selected_layers,
+                    "--layer-range",
+                    layer_range,
+                ]
+                if dataset.image_root:
+                    command.extend(["--image-root", dataset.image_root])
+                if int(limit) > 0:
+                    command.extend(["--limit", limit])
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         elif stage == "build_manifolds":
             command = [
                 python_bin,
                 "scripts/build_manifolds.py",
                 "--reference-cache",
-                paths["reference_cache"],
+                reference_cache,
                 "--output-root",
-                paths["reference_banks"],
+                reference_banks,
                 "--model-name",
                 model.name,
                 "--bank-scope",
                 bank_scope,
             ]
+            commands[stage] = [command]
         elif stage == "compute_drift":
-            command = [
-                python_bin,
-                "scripts/compute_drift.py",
-                "--cache-path",
-                paths["eval_cache"],
-                "--reference-root",
-                paths["reference_banks"],
-                "--model-name",
-                model.name,
-                "--output-root",
-                str(output_root / "features"),
-                "--experiment-name",
-                str(experiment["name"]),
-                "--split",
-                subset,
-                "--bank-scope",
-                bank_scope,
-            ]
+            stage_commands = []
+            for subset in subsets:
+                paths = paths_by_subset[subset]
+                command = [
+                    python_bin,
+                    "scripts/compute_drift.py",
+                    "--cache-path",
+                    paths["eval_cache"],
+                    "--reference-root",
+                    reference_banks,
+                    "--model-name",
+                    model.name,
+                    "--output-root",
+                    str(output_root / "features"),
+                    "--experiment-name",
+                    resolve_subset_experiment_name(
+                        experiment_name=str(experiment["name"]),
+                        subset=subset,
+                        subset_count=len(subsets),
+                    ),
+                    "--split",
+                    subset,
+                    "--bank-scope",
+                    bank_scope,
+                ]
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         elif stage == "baselines":
-            command = [
-                python_bin,
-                "scripts/compute_baselines.py",
-                "--features-path",
-                paths["features"],
-                "--cache-path",
-                paths["eval_cache"],
-                "--reference-root",
-                paths["reference_banks"],
-                "--model-name",
-                model.name,
-                "--output-root",
-                str(output_root / "reports"),
-                "--experiment-name",
-                str(experiment["name"]),
-                "--split-strategy",
-                str(experiment["split_strategy"]),
-                "--num-folds",
-                str(experiment["num_folds"]),
-                "--test-size",
-                str(experiment["test_size"]),
-                "--random-state",
-                str(experiment["random_state"]),
-                "--bootstrap-resamples",
-                str(experiment["bootstrap_resamples"]),
-                "--split-seeds",
-                str(experiment["split_seeds"]),
-                "--bank-scope",
-                bank_scope,
-                "--full-variant",
-                full_variant,
-            ]
-            if str(experiment["label_overrides"]).strip():
-                command.extend(["--label-overrides", str(experiment["label_overrides"])])
+            stage_commands = []
+            for subset in subsets:
+                paths = paths_by_subset[subset]
+                experiment_name = resolve_subset_experiment_name(
+                    experiment_name=str(experiment["name"]),
+                    subset=subset,
+                    subset_count=len(subsets),
+                )
+                command = [
+                    python_bin,
+                    "scripts/compute_baselines.py",
+                    "--features-path",
+                    paths["features"],
+                    "--cache-path",
+                    paths["eval_cache"],
+                    "--reference-root",
+                    reference_banks,
+                    "--model-name",
+                    model.name,
+                    "--output-root",
+                    str(output_root / "reports"),
+                    "--experiment-name",
+                    experiment_name,
+                    "--split-strategy",
+                    str(experiment["split_strategy"]),
+                    "--num-folds",
+                    str(experiment["num_folds"]),
+                    "--test-size",
+                    str(experiment["test_size"]),
+                    "--random-state",
+                    str(experiment["random_state"]),
+                    "--bootstrap-resamples",
+                    str(experiment["bootstrap_resamples"]),
+                    "--split-seeds",
+                    str(experiment["split_seeds"]),
+                    "--bank-scope",
+                    bank_scope,
+                    "--full-variant",
+                    full_variant,
+                ]
+                if str(experiment["label_overrides"]).strip():
+                    command.extend(["--label-overrides", str(experiment["label_overrides"])])
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         elif stage == "train_detector":
-            command = [
-                python_bin,
-                "scripts/train_detector.py",
-                "--train-path",
-                paths["features"],
-                "--output-root",
-                str(output_root / "reports"),
-                "--experiment-name",
-                str(experiment["name"]),
-                "--feature-variant",
-                full_variant,
-                "--split-strategy",
-                str(experiment["split_strategy"]),
-                "--num-folds",
-                str(experiment["num_folds"]),
-                "--test-size",
-                str(experiment["test_size"]),
-                "--random-state",
-                str(experiment["random_state"]),
-            ]
+            stage_commands = []
+            for subset in subsets:
+                paths = paths_by_subset[subset]
+                command = [
+                    python_bin,
+                    "scripts/train_detector.py",
+                    "--train-path",
+                    paths["features"],
+                    "--output-root",
+                    str(output_root / "reports"),
+                    "--experiment-name",
+                    resolve_subset_experiment_name(
+                        experiment_name=str(experiment["name"]),
+                        subset=subset,
+                        subset_count=len(subsets),
+                    ),
+                    "--feature-variant",
+                    full_variant,
+                    "--split-strategy",
+                    str(experiment["split_strategy"]),
+                    "--num-folds",
+                    str(experiment["num_folds"]),
+                    "--test-size",
+                    str(experiment["test_size"]),
+                    "--random-state",
+                    str(experiment["random_state"]),
+                ]
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         elif stage == "evaluate":
-            command = [
-                python_bin,
-                "scripts/evaluate.py",
-                "--input-path",
-                f"{paths['reports']}/results.csv",
-                "--output-root",
-                str(output_root / "reports"),
-                "--experiment-name",
-                str(experiment["name"]),
-            ]
-            if str(experiment["label_overrides"]).strip():
-                command.extend(["--label-overrides", str(experiment["label_overrides"])])
+            stage_commands = []
+            for subset in subsets:
+                experiment_name = resolve_subset_experiment_name(
+                    experiment_name=str(experiment["name"]),
+                    subset=subset,
+                    subset_count=len(subsets),
+                )
+                command = [
+                    python_bin,
+                    "scripts/evaluate.py",
+                    "--input-path",
+                    f"{output_root / 'reports' / experiment_name}/results.csv",
+                    "--output-root",
+                    str(output_root / "reports"),
+                    "--experiment-name",
+                    experiment_name,
+                ]
+                if str(experiment["label_overrides"]).strip():
+                    command.extend(["--label-overrides", str(experiment["label_overrides"])])
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         elif stage == "plot":
-            command = [
-                python_bin,
-                "scripts/plot_results.py",
-                "--features-path",
-                paths["features"],
-                "--results-path",
-                f"{paths['reports']}/results.csv",
-                "--output-root",
-                str(output_root / "plots"),
-                "--experiment-name",
-                str(experiment["name"]),
-            ]
+            stage_commands = []
+            for subset in subsets:
+                paths = paths_by_subset[subset]
+                experiment_name = resolve_subset_experiment_name(
+                    experiment_name=str(experiment["name"]),
+                    subset=subset,
+                    subset_count=len(subsets),
+                )
+                command = [
+                    python_bin,
+                    "scripts/plot_results.py",
+                    "--features-path",
+                    paths["features"],
+                    "--results-path",
+                    f"{output_root / 'reports' / experiment_name / 'results.csv'}",
+                    "--output-root",
+                    str(output_root / "plots" / experiment_name),
+                    "--experiment-name",
+                    experiment_name,
+                ]
+                stage_commands.append(command)
+            commands[stage] = stage_commands
         else:
             raise ValueError(f"Unsupported stage: {stage}")
-        commands[stage] = command
     return commands
 
 
@@ -374,7 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--stages", default="all")
     parser.add_argument("--execute", action="store_true")
-    parser.add_argument("--output-root", type=Path, default=Path("outputs"))
+    parser.add_argument("--output-root", type=Path, default=Path("outputs/round2_2026_04"))
     return parser
 
 
@@ -383,11 +507,14 @@ def main(argv: list[str] | None = None) -> int:
     stages = parse_stage_list(args.stages)
     commands = build_stage_commands(config_path=args.config, stages=stages, output_root=args.output_root)
     for stage in stages:
-        command = commands[stage]
-        rendered = " ".join(shlex.quote(part) for part in command)
-        print(f"{stage}: {rendered}")
-        if args.execute:
-            subprocess.run(command, check=True)
+        for command_index, command in enumerate(commands[stage], start=1):
+            rendered = " ".join(shlex.quote(part) for part in command)
+            if len(commands[stage]) > 1:
+                print(f"{stage}[{command_index}]: {rendered}")
+            else:
+                print(f"{stage}: {rendered}")
+            if args.execute:
+                subprocess.run(command, check=True)
     return 0
 
 

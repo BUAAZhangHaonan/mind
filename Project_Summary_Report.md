@@ -2,15 +2,15 @@
 
 ## Evidence Note
 
-This report uses tracked repo materials plus retained local round-two outputs available in the workspace at `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`. The report relies on source code, configs, tests, tracked round-two tables under `docs/tables/`, review notes under `docs/review/`, and the retained workspace outputs used as the source of truth for paper-facing results. [Sources: `docs/results_summary.md`; `docs/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`; `docs/tables/`]
+This report uses tracked repo materials plus retained local round-two outputs available in the workspace at `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`. The report relies on source code, configs, tests, tracked round-two tables under `docs/tables/`, and the retained workspace outputs used as the source of truth for paper-facing results. [Sources: `docs/_archive/review/results_summary.md`; `docs/_archive/review/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`; `docs/tables/`]
 
 ## 1. Project Overview and Background
 
-The project is named `MIND`. In `README.md`, `MIND` is expanded as “Multi-scale Internal Normal-residual Drift,” but the current paper outline says the paper should stop expanding the acronym and should treat `MIND` as a method name. That naming mismatch is still present in the repository. [Sources: `README.md`; `docs/paper_outline.md`]
+The project is named `MIND`. In `README.md`, `MIND` is expanded as “Multi-scale Internal Normal-residual Drift,” but the current paper outline says the paper should stop expanding the acronym and should treat `MIND` as a method name. That naming mismatch is still present in the repository. [Sources: `README.md`; `docs/_archive/review/paper_outline.md`]
 
-The project studies early detection of multimodal object hallucination in vision-language models. The maintained scope in the current repository is object hallucination detection only. The paper outline states the core question as whether grounded and hallucinated behavior leave a useful pre-answer geometric signal in hidden states before answer generation starts. [Sources: `README.md`; `docs/paper_outline.md`]
+The project studies early detection of multimodal object hallucination in vision-language models. The maintained scope in the current repository is object hallucination detection only. The paper outline states the core question as whether grounded and hallucinated behavior leave a useful pre-answer geometric signal in hidden states before answer generation starts. [Sources: `README.md`; `docs/_archive/review/paper_outline.md`]
 
-The codebase is organized as a research pipeline. Config files define models and datasets, scripts run staged experiments, tests cover method behavior, and export tooling writes paper tables and figures. [Sources: `README.md`; `scripts/run_experiment.py`; `scripts/export_paper_package.py`; `tests/integration/test_paper_export.py`]
+The codebase is organized as a research pipeline. Config files define models and datasets, scripts run staged experiments, tests cover method behavior, and export tooling writes paper tables and PNG figure assets. [Sources: `README.md`; `scripts/run_experiment.py`; `scripts/export_paper_package.py`; `tests/integration/test_paper_export.py`]
 
 The intended users are `[Not Found]`. The repository does not contain a direct statement naming the intended users. [Sources: repository contents inspected across `README.md`, `docs/`, `configs/`, `scripts/`, and `tests/`]
 
@@ -18,13 +18,13 @@ The benchmark surface recorded in the configs is POPE, RePOPE, DASH-B, and optio
 
 ## 2. Application Scenarios
 
-The repository supports research evaluation of pre-answer hallucination signals in large vision-language models. The current staged workflow is: normalize a benchmark into a shared yes/no object-existence format, extract pre-generation hidden states, build grounded reference banks, compute drift features, score baseline methods, run official HALP row comparisons where available, and export paper tables. [Sources: `scripts/prepare_data.py`; `scripts/extract_eval_states.py`; `scripts/build_manifolds.py`; `scripts/compute_drift.py`; `scripts/compute_baselines.py`; `scripts/run_halp.py`; `scripts/export_paper_package.py`]
+The repository supports research evaluation of pre-answer hallucination signals in large vision-language models. The current staged workflow is: normalize a benchmark into a shared yes/no object-existence format, extract pre-generation hidden states, build reference banks with `build_reference`, compute drift features, score baseline methods, run official HALP row comparisons where available, and export paper tables. [Sources: `scripts/prepare_data.py`; `scripts/extract_eval_states.py`; `scripts/build_manifolds.py`; `scripts/compute_drift.py`; `scripts/compute_baselines.py`; `scripts/run_halp.py`; `scripts/export_paper_package.py`]
 
-The repository also supports controlled comparison across four model families in the retained round-two lane: Qwen3-VL-8B, InternVL3.5-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924. The wrapper layer standardizes prompt construction, multimodal batching, generation, and hidden-state extraction across those families. [Sources: `configs/models/qwen3_vl_8b.yaml`; `configs/models/internvl3_5_8b.yaml`; `configs/models/llava_onevision_7b.yaml`; `configs/models/molmo_7b_d_0924.yaml`; `src/mind/models/factory.py`; `src/mind/models/wrappers.py`]
+The repository also supports controlled comparison across four model configs in the retained round-two lane: Qwen3-VL-8B, InternVL3.5-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924. The wrapper layer standardizes prompt construction, multimodal batching, generation, and hidden-state extraction across the retained round-two model configs, with model-specific wrapper selection handled by the factory. [Sources: `configs/models/qwen3_vl_8b.yaml`; `configs/models/internvl3_5_8b.yaml`; `configs/models/llava_onevision_7b.yaml`; `configs/models/molmo_7b_d_0924.yaml`; `src/mind/models/factory.py`; `src/mind/models/wrappers.py`]
 
 The export path is part of the maintained workflow. `scripts/export_paper_package.py` reads saved round-two reports and writes markdown and CSV tables into `docs/tables/`. [Sources: `scripts/export_paper_package.py`; `docs/tables/`]
 
-The current repository materials describe experimental runtime constraints rather than product deployment constraints. The runbooks and environment checks reference local benchmark assets, Hugging Face checkpoints, the `mind-py311` environment, and A100 GPUs. [Sources: `README.md`; `docs/runbooks/experiments.md`; `scripts/verify_env.py`]
+The current repository materials describe experimental runtime constraints rather than product deployment constraints. The active documentation and environment checks reference local benchmark assets, Hugging Face checkpoints, the `mind-py311` environment, and A100 GPUs. [Sources: `README.md`; `scripts/verify_env.py`]
 
 Several failure cases are handled explicitly in code. Unsupported dataset directory layouts raise errors, missing H-POPE files raise `DatasetUnavailableError`, infeasible object-heldout folds raise errors, and missing reference coverage during drift computation raises an error instead of silently continuing. [Sources: `src/mind/data/pope.py`; `src/mind/evaluation/baselines.py`; `scripts/compute_drift.py`]
 
@@ -43,7 +43,7 @@ The checked-in code defines a staged experiment pipeline. The table below summar
 | Drift feature generation | Eval cache shards, reference banks, saved stats | Feature parquet with raw drift and calibrated features | Each evaluation example receives valid features; missing reference coverage causes failure |
 | Baseline evaluation | Feature frame, cache entries, reference banks, split protocol | `baselines.json`, variant CSVs, and split sensitivity outputs | Full MIND, drift-only, no-manifold, linear probe, and output baselines are scored with metrics and confidence intervals |
 | Comparator evaluation | Compact readout caches | `halp.json`, `halp_results.csv`, and `halp_selection.csv` | Official HALP row metrics are saved for the selected model and benchmark |
-| Paper export | Round-two report directories | Markdown and CSV tables plus figure bundle | Tracked tables in `docs/tables/` and export artifacts are generated from saved reports |
+| Paper export | Round-two report directories | Markdown and CSV tables plus PNG figure assets and a figure manifest | Tracked tables in `docs/tables/` and export artifacts are generated from saved reports |
 | Verification | Unit tests, integration tests, environment checks | Passing test output and verified runtime notes | Synthetic pipeline and paper export tests pass; environment and model loading are checked |
 
 [Sources: `src/mind/data/pope.py`; `src/mind/extractors/prefill.py`; `scripts/build_manifolds.py`; `scripts/compute_drift.py`; `scripts/compute_baselines.py`; `scripts/run_halp.py`; `scripts/export_paper_package.py`; `tests/integration/test_synthetic_pipeline.py`; `tests/integration/test_paper_export.py`]
@@ -52,11 +52,11 @@ The checked-in code defines a staged experiment pipeline. The table below summar
 
 ### 4.1 Overall pipeline
 
-The experiment runner is a staged CLI workflow. An experiment config combines model config, dataset config, subset, split, selected layer count, and detector choice. `scripts/run_experiment.py` expands that config into stages such as `prepare`, `cache_reference`, `extract_eval`, `build_manifolds`, `compute_drift`, `baselines`, `train_detector`, `evaluate`, and `plot`. [Sources: `src/mind/config/schema.py`; `configs/experiments/medium/qwen3_vl_8b_pope_popular.yaml`; `configs/experiments/main/qwen3_vl_8b_pope_all.yaml`; `scripts/run_experiment.py`]
+The experiment runner is a staged CLI workflow. An experiment config combines model config, dataset config, subset, split, selected layer count, and detector choice. `scripts/run_experiment.py` expands that config into stages such as `prepare`, `build_reference`, `cache_reference`, `extract_eval`, `build_manifolds`, `compute_drift`, `baselines`, `train_detector`, `evaluate`, and `plot`, and `plot` writes PNGs under `plots/<experiment_name>/`. [Sources: `src/mind/config/schema.py`; `configs/experiments/medium/qwen3_vl_8b_pope_popular.yaml`; `configs/experiments/main/qwen3_vl_8b_pope_all.yaml`; `scripts/run_experiment.py`; `scripts/plot_results.py`]
 
 ### 4.2 Data model and normalization
 
-The normalization layer converts POPE-style object-existence tasks into a shared record type. `load_object_yes_no_records` builds `HallucinationRecord` objects with consistent fields, and `apply_repope_labels` reassigns labels by `sample_id` for RePOPE. DASH-B is normalized through a directory-to-row conversion that builds yes/no questions from object names. [Sources: `src/mind/data/pope.py`; `docs/runbooks/experiments.md`]
+The normalization layer converts POPE-style object-existence tasks into a shared record type. `load_object_yes_no_records` builds `HallucinationRecord` objects with consistent fields, and `apply_repope_labels` reassigns labels by `sample_id` for RePOPE. DASH-B is normalized through a directory-to-row conversion that builds yes/no questions from object names. [Sources: `src/mind/data/pope.py`; `docs/_archive/review/results_summary.md`]
 
 The dataset configs tie the live workflow to their intended sources. POPE and RePOPE point to COCO `val2014`, DASH-B uses its own image root, and H-POPE remains optional because public assets were not available locally. [Sources: `configs/data/pope.yaml`; `configs/data/repope.yaml`; `configs/data/dash_b.yaml`; `configs/data/hpope.yaml`; `src/mind/data/pope.py`]
 
@@ -78,13 +78,13 @@ The code also saves support statistics such as residual mean, residual standard 
 
 ### 4.5 Drift features and detector variants
 
-`compute_drift_curve` scores each selected layer against the reference bank. `calibrate_drift_curve` then z-scores the raw curve using saved bank statistics. `build_drift_features` keeps raw drift values and raw summary statistics, while Haar wavelet features are extracted only from the calibrated curve. The paper notes freeze the default full feature set as `raw + calibrated simple stats`. [Sources: `src/mind/drift/features.py`; `src/mind/wavelets/features.py`; `docs/tables/phase_one_popular_decision.md`; `docs/paper_outline.md`]
+`compute_drift_curve` scores each selected layer against the reference bank. `calibrate_drift_curve` then z-scores the raw curve using saved bank statistics. `build_drift_features` keeps raw drift values and raw summary statistics, while Haar wavelet features are extracted only from the calibrated curve. The paper notes freeze the default full feature set as `raw + calibrated simple stats`. [Sources: `src/mind/drift/features.py`; `src/mind/wavelets/features.py`; `docs/tables/phase_one_popular_decision.md`; `docs/_archive/review/paper_outline.md`]
 
 The baseline framework exposes four named feature variants: `raw_curve_only`, `raw_plus_calibrated_simple`, `raw_plus_calibrated_full_curve`, and `raw_plus_calibrated_haar`. The default full variant is `raw_plus_calibrated_simple`. The current baseline lane also evaluates `drift_only`, `no_manifold`, `linear_probe`, `output_p_yes`, `output_logit_margin`, and `output_chosen_answer_confidence`. [Sources: `src/mind/evaluation/baselines.py`; `scripts/compute_baselines.py`; `tests/unit/test_baselines.py`]
 
 ### 4.6 Evaluation protocols
 
-The evaluation layer supports three split strategies: `row`, `image_grouped`, and `object_heldout`. Group columns are tied to the selected strategy, and confidence intervals are computed on the corresponding grouping unit. The object-heldout path filters to supported objects and refuses infeasible fold counts. [Sources: `src/mind/evaluation/baselines.py`; `scripts/compute_baselines.py`; `docs/runbooks/experiments.md`]
+The evaluation layer supports three split strategies: `row`, `image_grouped`, and `object_heldout`. Group columns are tied to the selected strategy, and confidence intervals are computed on the corresponding grouping unit. The object-heldout path filters to supported objects and refuses infeasible fold counts. [Sources: `src/mind/evaluation/baselines.py`; `scripts/compute_baselines.py`; `docs/_archive/review/results_summary.md`]
 
 The hallucination label is reconstructed from `ground_truth_label` and `answer_label` as “object absent in ground truth, but answered yes by the model.” [Sources: `src/mind/evaluation/baselines.py`; `scripts/compute_drift.py`]
 
@@ -92,7 +92,7 @@ The hallucination label is reconstructed from `ground_truth_label` and `answer_l
 
 HALP is part of the maintained comparator lane. The HALP utilities define the official 11-probe setup: one `vision_only` probe plus query-token and vision-token probes at five layer positions chosen by `resolve_halp_layer_indices`. The tests confirm the five-layer schedule and the probe list. [Sources: `src/mind/comparators/halp.py`; `tests/unit/test_halp.py`]
 
-The maintained CLI surface for HALP is row-split only. `scripts/run_halp.py` exposes `--split-strategy row` and writes `halp.json`, `halp_results.csv`, and `halp_selection.csv`. [Sources: `scripts/run_halp.py`]
+`scripts/run_halp.py` accepts `--split-strategy` values `row`, `image_grouped`, and `object_heldout`, while the retained official row evidence is limited to the POPE popular and DASH-B row outputs. The script writes `halp.json`, `halp_results.csv`, and `halp_selection.csv`. [Sources: `scripts/run_halp.py`; `docs/_archive/review/results_summary.md`]
 
 Official GLSim is not implemented in the current POPE/DASH-B workflow. `scripts/run_glsim.py` exits with a message that official GLSim is not wired into the current round-two workflow, and `src/mind/comparators/glsim.py` exports no active implementation. [Sources: `scripts/run_glsim.py`; `src/mind/comparators/glsim.py`]
 
@@ -102,13 +102,13 @@ The repository uses PyTorch for model inference and probes, Transformers and Acc
 
 ## 5. Innovations and Contributions
 
-The project does not introduce a new base model. The main contribution in the current repository is a research pipeline for measuring pre-answer geometric drift in VLM hidden states across multiple model families and benchmark datasets. [Sources: `README.md`; `docs/paper_outline.md`; `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`]
+The project does not introduce a new base model. The main contribution in the current repository is a research pipeline for measuring pre-answer geometric drift in VLM hidden states across multiple model families and benchmark datasets. [Sources: `README.md`; `docs/_archive/review/paper_outline.md`; `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`]
 
-The central method contribution is object-conditioned manifold drift before answer generation. The pipeline builds grounded reference banks, fits local PCA neighborhoods, and measures normalized off-manifold residuals layer by layer before the answer starts. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/paper_outline.md`]
+The central method contribution is object-conditioned manifold drift before answer generation. The pipeline builds grounded reference banks, fits local PCA neighborhoods, and measures normalized off-manifold residuals layer by layer before the answer starts. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/_archive/review/paper_outline.md`]
 
-The second contribution is calibration. The repository stores reference-bank statistics, calibrates each layer by those statistics, freezes `raw + calibrated simple stats` as the default full feature set, and keeps full-curve and Haar variants as ablations. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/tables/phase_one_popular_decision.md`; `docs/paper_outline.md`]
+The second contribution is calibration. The repository stores reference-bank statistics, calibrates each layer by those statistics, freezes `raw + calibrated simple stats` as the default full feature set, and keeps full-curve and Haar variants as ablations. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/tables/phase_one_popular_decision.md`; `docs/_archive/review/paper_outline.md`]
 
-The third contribution is a shared normalization and evaluation surface for POPE, RePOPE, and DASH-B. The retained code paths use the same normalization layer and the same baseline machinery across those benchmarks. [Sources: `src/mind/data/pope.py`; `docs/runbooks/experiments.md`; `scripts/compute_baselines.py`]
+The third contribution is a shared normalization and evaluation surface for POPE, RePOPE, and DASH-B. The retained code paths use the same normalization layer and the same baseline machinery across those benchmarks. [Sources: `src/mind/data/pope.py`; `scripts/compute_baselines.py`; `docs/_archive/review/results_summary.md`]
 
 The fourth contribution is reproducibility support through typed configs, staged scripts, synthetic end-to-end tests, paper export tests, and tracked round-two tables. [Sources: `src/mind/config/schema.py`; `tests/integration/test_synthetic_pipeline.py`; `tests/integration/test_paper_export.py`; `docs/tables/`]
 
@@ -168,7 +168,7 @@ The feature-ablation variants are `raw_only`, `raw_plus_simple_stats`, `raw_plus
 
 ### 6.6 Hardware and software environment
 
-The current documented environment is the `mind-py311` conda environment, Python 3.11, PyTorch 2.6.0 with CUDA 12.4, and `2 x NVIDIA A100 80GB PCIe`. [Sources: `README.md`; `docs/runbooks/experiments.md`; `scripts/verify_env.py`]
+The current documented environment is the `mind-py311` conda environment, Python 3.11, PyTorch 2.6.0 with CUDA 12.4, and `2 x NVIDIA A100 80GB PCIe`. [Sources: `README.md`; `scripts/verify_env.py`]
 
 ## 7. Experimental Results
 
@@ -183,7 +183,7 @@ The current documented environment is the `mind-py311` conda environment, Python
 
 [Sources: `docs/tables/table1_pope_popular.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular/baselines.json`]
 
-On this table, full MIND is higher than the three output-confidence baselines on all four models. `linear_probe` is higher than full MIND on all four rows. For LLaVA-OneVision-7B, `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/table1_pope_popular.md`; `docs/review/2026-04-round2-findings-summary.md`]
+On this table, full MIND is higher than the three output-confidence baselines on all four models. `linear_probe` is higher than full MIND on all four rows. For LLaVA-OneVision-7B, `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/table1_pope_popular.md`; retained round-two `baselines.json` files]
 
 ### 7.2 Final round-two main results: DASH-B
 
@@ -196,7 +196,7 @@ On this table, full MIND is higher than the three output-confidence baselines on
 
 [Sources: `docs/tables/table1_dash_b.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b/baselines.json`]
 
-On this table, full MIND is higher than the three output-confidence baselines on all four models. `no_manifold` is higher than full MIND on all four rows, and `linear_probe` is higher than both on all four rows. [Sources: `docs/tables/table1_dash_b.md`; `docs/review/2026-04-round2-findings-summary.md`]
+On this table, full MIND is higher than the three output-confidence baselines on all four models. `no_manifold` is higher than full MIND on all four rows, and `linear_probe` is higher than both on all four rows. [Sources: `docs/tables/table1_dash_b.md`; retained round-two `baselines.json` files]
 
 ### 7.3 Supplementary benchmark results: POPE adversarial
 
@@ -209,7 +209,7 @@ On this table, full MIND is higher than the three output-confidence baselines on
 
 [Sources: `docs/tables/supp_pope_adversarial.md`; retained adversarial `baselines.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`]
 
-On this benchmark, full MIND has the highest ROC-AUC on Qwen3-VL-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924, while `linear_probe` has the highest PR-AUC on all four models. [Sources: `docs/tables/supp_pope_adversarial.md`; `docs/review/2026-04-round2-findings-summary.md`]
+On this benchmark, full MIND has the highest ROC-AUC on Qwen3-VL-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924, while `linear_probe` has the highest PR-AUC on all four models. [Sources: `docs/tables/supp_pope_adversarial.md`; retained adversarial `baselines.json` files]
 
 ### 7.4 Supplementary benchmark results: RePOPE
 
@@ -226,7 +226,7 @@ The retained round-two RePOPE report directories contain saved `baselines.json` 
 
 ### 7.5 Saved official HALP row results
 
-The retained comparator tree contains official HALP row outputs for POPE popular and DASH-B. The grouped, object-heldout, and RePOPE HALP artifacts are not part of the tracked repo tree used by this report. [Sources: retained HALP row `halp.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`; `scripts/run_halp.py`; `docs/results_summary.md`]
+The retained comparator tree contains official HALP row outputs for POPE popular and DASH-B. The grouped, object-heldout, and RePOPE HALP artifacts are not part of the tracked repo tree used by this report. [Sources: retained HALP row `halp.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`; `scripts/run_halp.py`; `docs/_archive/review/results_summary.md`]
 
 | model | POPE popular row HALP | DASH-B row HALP |
 | --- | --- | --- |
@@ -256,11 +256,11 @@ The retained feature-ablation evidence now comes from `docs/tables/table2_featur
 
 [Sources: `docs/tables/phase_one_popular_decision.md`; `docs/tables/table2_feature_ablation.md`; `docs/tables/table2_feature_ablation.csv`]
 
-The retained ablation evidence is one reason the paper notes freeze `raw + calibrated simple stats` as the default full feature set. [Sources: `docs/tables/phase_one_popular_decision.md`; `docs/paper_outline.md`]
+The retained ablation evidence is one reason the paper notes freeze `raw + calibrated simple stats` as the default full feature set. [Sources: `docs/tables/phase_one_popular_decision.md`; `docs/_archive/review/paper_outline.md`]
 
 ### 7.7 Retained gaps and excluded material
 
-The maintained report excludes historical and correction-phase artifacts because they are not part of the tracked repo tree used by this document. [Sources: `docs/results_summary.md`; `docs/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`]
+The maintained report excludes historical and correction-phase artifacts because they are not part of the tracked repo tree used by this document. [Sources: `docs/_archive/review/results_summary.md`; `docs/_archive/review/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`]
 
 The tracked transfer-control table is now populated for both `image_grouped` and `object_heldout`. In the fresh `object_heldout` rows, full MIND reports ROC-AUC / PR-AUC of `0.6381 / 0.0461` for Qwen3-VL-8B, `0.8833 / 0.4610` for InternVL3.5-8B, `0.7226 / 0.0475` for LLaVA-OneVision-7B, and `0.7300 / 0.0865` for Molmo-7B-D-0924. `linear_probe` remains higher than full MIND on all four object-heldout rows. [Sources: `docs/tables/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json`]
 
@@ -272,12 +272,12 @@ The retained mainline evidence does not support a strongest-detector claim. `lin
 
 The current maintained limitations are:
 
-1. The naming mismatch remains. `README.md` still expands `MIND` as a multi-scale acronym, while the paper outline says not to do that. [Sources: `README.md`; `docs/paper_outline.md`]
+1. The naming mismatch remains. `README.md` still expands `MIND` as a multi-scale acronym, while the paper outline says not to do that. [Sources: `README.md`; `docs/_archive/review/paper_outline.md`]
 2. H-POPE remains unavailable in the local environment. [Sources: `configs/data/hpope.yaml`; `src/mind/data/pope.py`; `README.md`]
 
 The retained future work is documentation and evidence closure on the maintained surface:
 
-1. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger under both `image_grouped` and `object_heldout` transfer controls. [Sources: `docs/review/2026-04-round2-findings-summary.md`; `docs/paper_outline.md`; `docs/tables/table3_transfer_controls.md`; retained HALP row `halp.json` files]
+1. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger under both `image_grouped` and `object_heldout` transfer controls. [Sources: `docs/_archive/review/paper_outline.md`; `docs/tables/table3_transfer_controls.md`; retained HALP row `halp.json` files]
 2. Keep non-official comparator adaptations out of the maintained official workflow unless they are separately implemented and documented as official methods. [Sources: `scripts/run_glsim.py`; `src/mind/comparators/glsim.py`]
 
 ---
@@ -286,8 +286,9 @@ The retained future work is documentation and evidence closure on the maintained
 
 | Date | Section | Change | Source |
 |------|---------|--------|--------|
-| 2026-04-12 | Evidence Note and Sections 1-6 | Swapped stale `docs/review/...` source citations for the current `docs/results_summary.md` and `docs/paper_outline.md` paths while keeping the verified narrative intact | `docs/results_summary.md`; `docs/paper_outline.md`; `README.md`; `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py` |
+| 2026-04-12 | Evidence Note and Sections 1-6 | Swapped stale historical source citations for the archived `docs/_archive/review/results_summary.md` and `docs/_archive/review/paper_outline.md` paths while keeping the verified narrative intact | `docs/_archive/review/results_summary.md`; `docs/_archive/review/paper_outline.md`; `README.md`; `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py` |
 | 2026-04-12 | Sections 6-7 | Re-anchored dataset inventory and result tables to retained normalized files, retained round-two tables, retained `baselines.json` files, and retained HALP row `halp.json` files | `/home/team/zhanghaonan/mind/outputs/round2_2026_04/normalized/`; `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`; `docs/tables/supp_pope_adversarial.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
 | 2026-04-12 | Sections 7.4-7.7 | Marked the RePOPE table as populated, filled the LLaVA and Molmo POPE popular ablation rows, and narrowed the remaining tracked gap to blank `object_heldout` cells in `table3_transfer_controls.md` | `docs/tables/supp_repope.md`; `docs/tables/table2_feature_ablation.md`; `docs/tables/table3_transfer_controls.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
 | 2026-04-12 | Section 8 | Updated the limitations and future-work notes to match the current tracked-table state and the remaining transfer-control gap | `docs/tables/table3_transfer_controls.md`; `README.md`; `configs/data/hpope.yaml` |
 | 2026-04-13 | Sections 7.7-8 | Populated the previously blank `object_heldout` transfer-control rows from fresh Qwen, InternVL, LLaVA, and Molmo held-out reports, and removed the stale “remaining tracked gap” language | `docs/tables/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json` |
+| 2026-04-13 | Sections 1, 3, 4, 7 | Corrected wrapper dispatch wording, named `build_reference` in the staged workflow, aligned HALP CLI wording with the retained official row evidence, and updated the plot artifact contract | `/home/team/zhanghaonan/mind/Project_Summary_Report.md` |
