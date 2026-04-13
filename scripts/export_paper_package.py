@@ -842,7 +842,7 @@ def export_paper_package(
     *,
     reports_root: Path,
     output_root: Path,
-    tables_root: Path = Path("docs/tables/round2"),
+    tables_root: Path = Path("docs/tables"),
 ) -> dict[str, Path]:
     paths = build_output_paths(output_root)
     reports = discover_round_two_reports(reports_root)
@@ -948,7 +948,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reports-root", type=Path, default=Path("outputs/round2_2026_04/reports"))
     parser.add_argument("--output-root", type=Path, default=Path("artifacts/paper_closeout"))
-    parser.add_argument("--tables-root", type=Path, default=Path("docs/tables/round2"))
+    parser.add_argument("--tables-root", type=Path, default=Path("docs/tables"))
     return parser
 
 

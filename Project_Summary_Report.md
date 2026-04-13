@@ -2,7 +2,7 @@
 
 ## Evidence Note
 
-This report uses tracked repo materials plus retained local round-two outputs available in the workspace at `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`. The report relies on source code, configs, tests, tracked round-two tables under `docs/tables/round2/`, review notes under `docs/review/`, and the retained workspace outputs used as the source of truth for paper-facing results. [Sources: `docs/results_summary.md`; `docs/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`; `docs/tables/round2/`]
+This report uses tracked repo materials plus retained local round-two outputs available in the workspace at `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`. The report relies on source code, configs, tests, tracked round-two tables under `docs/tables/`, review notes under `docs/review/`, and the retained workspace outputs used as the source of truth for paper-facing results. [Sources: `docs/results_summary.md`; `docs/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`; `docs/tables/`]
 
 ## 1. Project Overview and Background
 
@@ -22,7 +22,7 @@ The repository supports research evaluation of pre-answer hallucination signals 
 
 The repository also supports controlled comparison across four model families in the retained round-two lane: Qwen3-VL-8B, InternVL3.5-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924. The wrapper layer standardizes prompt construction, multimodal batching, generation, and hidden-state extraction across those families. [Sources: `configs/models/qwen3_vl_8b.yaml`; `configs/models/internvl3_5_8b.yaml`; `configs/models/llava_onevision_7b.yaml`; `configs/models/molmo_7b_d_0924.yaml`; `src/mind/models/factory.py`; `src/mind/models/wrappers.py`]
 
-The export path is part of the maintained workflow. `scripts/export_paper_package.py` reads saved round-two reports and writes markdown and CSV tables into `docs/tables/round2/`. [Sources: `scripts/export_paper_package.py`; `docs/tables/round2/`]
+The export path is part of the maintained workflow. `scripts/export_paper_package.py` reads saved round-two reports and writes markdown and CSV tables into `docs/tables/`. [Sources: `scripts/export_paper_package.py`; `docs/tables/`]
 
 The current repository materials describe experimental runtime constraints rather than product deployment constraints. The runbooks and environment checks reference local benchmark assets, Hugging Face checkpoints, the `mind-py311` environment, and A100 GPUs. [Sources: `README.md`; `docs/runbooks/experiments.md`; `scripts/verify_env.py`]
 
@@ -43,7 +43,7 @@ The checked-in code defines a staged experiment pipeline. The table below summar
 | Drift feature generation | Eval cache shards, reference banks, saved stats | Feature parquet with raw drift and calibrated features | Each evaluation example receives valid features; missing reference coverage causes failure |
 | Baseline evaluation | Feature frame, cache entries, reference banks, split protocol | `baselines.json`, variant CSVs, and split sensitivity outputs | Full MIND, drift-only, no-manifold, linear probe, and output baselines are scored with metrics and confidence intervals |
 | Comparator evaluation | Compact readout caches | `halp.json`, `halp_results.csv`, and `halp_selection.csv` | Official HALP row metrics are saved for the selected model and benchmark |
-| Paper export | Round-two report directories | Markdown and CSV tables plus figure bundle | Tracked tables in `docs/tables/round2/` and export artifacts are generated from saved reports |
+| Paper export | Round-two report directories | Markdown and CSV tables plus figure bundle | Tracked tables in `docs/tables/` and export artifacts are generated from saved reports |
 | Verification | Unit tests, integration tests, environment checks | Passing test output and verified runtime notes | Synthetic pipeline and paper export tests pass; environment and model loading are checked |
 
 [Sources: `src/mind/data/pope.py`; `src/mind/extractors/prefill.py`; `scripts/build_manifolds.py`; `scripts/compute_drift.py`; `scripts/compute_baselines.py`; `scripts/run_halp.py`; `scripts/export_paper_package.py`; `tests/integration/test_synthetic_pipeline.py`; `tests/integration/test_paper_export.py`]
@@ -78,7 +78,7 @@ The code also saves support statistics such as residual mean, residual standard 
 
 ### 4.5 Drift features and detector variants
 
-`compute_drift_curve` scores each selected layer against the reference bank. `calibrate_drift_curve` then z-scores the raw curve using saved bank statistics. `build_drift_features` keeps raw drift values and raw summary statistics, while Haar wavelet features are extracted only from the calibrated curve. The paper notes freeze the default full feature set as `raw + calibrated simple stats`. [Sources: `src/mind/drift/features.py`; `src/mind/wavelets/features.py`; `docs/tables/round2/phase_one_popular_decision.md`; `docs/paper_outline.md`]
+`compute_drift_curve` scores each selected layer against the reference bank. `calibrate_drift_curve` then z-scores the raw curve using saved bank statistics. `build_drift_features` keeps raw drift values and raw summary statistics, while Haar wavelet features are extracted only from the calibrated curve. The paper notes freeze the default full feature set as `raw + calibrated simple stats`. [Sources: `src/mind/drift/features.py`; `src/mind/wavelets/features.py`; `docs/tables/phase_one_popular_decision.md`; `docs/paper_outline.md`]
 
 The baseline framework exposes four named feature variants: `raw_curve_only`, `raw_plus_calibrated_simple`, `raw_plus_calibrated_full_curve`, and `raw_plus_calibrated_haar`. The default full variant is `raw_plus_calibrated_simple`. The current baseline lane also evaluates `drift_only`, `no_manifold`, `linear_probe`, `output_p_yes`, `output_logit_margin`, and `output_chosen_answer_confidence`. [Sources: `src/mind/evaluation/baselines.py`; `scripts/compute_baselines.py`; `tests/unit/test_baselines.py`]
 
@@ -106,11 +106,11 @@ The project does not introduce a new base model. The main contribution in the cu
 
 The central method contribution is object-conditioned manifold drift before answer generation. The pipeline builds grounded reference banks, fits local PCA neighborhoods, and measures normalized off-manifold residuals layer by layer before the answer starts. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/paper_outline.md`]
 
-The second contribution is calibration. The repository stores reference-bank statistics, calibrates each layer by those statistics, freezes `raw + calibrated simple stats` as the default full feature set, and keeps full-curve and Haar variants as ablations. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/tables/round2/phase_one_popular_decision.md`; `docs/paper_outline.md`]
+The second contribution is calibration. The repository stores reference-bank statistics, calibrates each layer by those statistics, freezes `raw + calibrated simple stats` as the default full feature set, and keeps full-curve and Haar variants as ablations. [Sources: `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py`; `docs/tables/phase_one_popular_decision.md`; `docs/paper_outline.md`]
 
 The third contribution is a shared normalization and evaluation surface for POPE, RePOPE, and DASH-B. The retained code paths use the same normalization layer and the same baseline machinery across those benchmarks. [Sources: `src/mind/data/pope.py`; `docs/runbooks/experiments.md`; `scripts/compute_baselines.py`]
 
-The fourth contribution is reproducibility support through typed configs, staged scripts, synthetic end-to-end tests, paper export tests, and tracked round-two tables. [Sources: `src/mind/config/schema.py`; `tests/integration/test_synthetic_pipeline.py`; `tests/integration/test_paper_export.py`; `docs/tables/round2/`]
+The fourth contribution is reproducibility support through typed configs, staged scripts, synthetic end-to-end tests, paper export tests, and tracked round-two tables. [Sources: `src/mind/config/schema.py`; `tests/integration/test_synthetic_pipeline.py`; `tests/integration/test_paper_export.py`; `docs/tables/`]
 
 The maintained report also makes an explicit boundary between official HALP row evidence and methods that are not part of the current official workflow, such as official GLSim. [Sources: `scripts/run_halp.py`; `scripts/run_glsim.py`; `src/mind/comparators/glsim.py`]
 
@@ -164,7 +164,7 @@ The baseline set used in the retained round-two main tables is:
 - `full MIND`
 - `linear_probe`
 
-The feature-ablation variants are `raw_only`, `raw_plus_simple_stats`, `raw_plus_full_curve`, and `raw_plus_Haar`. The retained comparator evidence is official HALP row outputs for POPE popular and DASH-B. Official GLSim is not part of the current workflow. [Sources: `scripts/export_paper_package.py`; `src/mind/evaluation/baselines.py`; `docs/tables/round2/table1_pope_popular.md`; `docs/tables/round2/table1_dash_b.md`; `docs/tables/round2/table2_feature_ablation.md`; `scripts/run_halp.py`; `scripts/run_glsim.py`]
+The feature-ablation variants are `raw_only`, `raw_plus_simple_stats`, `raw_plus_full_curve`, and `raw_plus_Haar`. The retained comparator evidence is official HALP row outputs for POPE popular and DASH-B. Official GLSim is not part of the current workflow. [Sources: `scripts/export_paper_package.py`; `src/mind/evaluation/baselines.py`; `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`; `docs/tables/table2_feature_ablation.md`; `scripts/run_halp.py`; `scripts/run_glsim.py`]
 
 ### 6.6 Hardware and software environment
 
@@ -181,9 +181,9 @@ The current documented environment is the `mind-py311` conda environment, Python
 | LLaVA-OneVision-7B | POPE popular | ROC 0.6200 [0.6044, 0.6366]; PR 0.0357 [0.0289, 0.0429] | ROC 0.6095 [0.5933, 0.6266]; PR 0.0347 [0.0280, 0.0415] | ROC 0.8277 [0.7772, 0.8742]; PR 0.1195 [0.0877, 0.1585] | ROC 0.8030 [0.7708, 0.8364]; PR 0.0941 [0.0683, 0.1332] | ROC 0.8078 [0.7618, 0.8537]; PR 0.1282 [0.0886, 0.1947] | ROC 0.8085 [0.7809, 0.8405]; PR 0.0874 [0.0642, 0.1225] | ROC 0.8833 [0.8403, 0.9228]; PR 0.3238 [0.2347, 0.4311] |
 | Molmo-7B-D-0924 | POPE popular | ROC 0.5658 [0.5412, 0.5908]; PR 0.0512 [0.0430, 0.0591] | ROC 0.5810 [0.5658, 0.5964]; PR 0.0541 [0.0462, 0.0618] | ROC 0.6522 [0.6200, 0.6863]; PR 0.0687 [0.0556, 0.0834] | ROC 0.8346 [0.8099, 0.8578]; PR 0.1651 [0.1324, 0.2014] | ROC 0.8256 [0.7956, 0.8557]; PR 0.1857 [0.1459, 0.2341] | ROC 0.8839 [0.8608, 0.9060]; PR 0.2992 [0.2327, 0.3691] | ROC 0.9209 [0.8988, 0.9424]; PR 0.5606 [0.4703, 0.6409] |
 
-[Sources: `docs/tables/round2/table1_pope_popular.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular/baselines.json`]
+[Sources: `docs/tables/table1_pope_popular.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-final/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular/baselines.json`]
 
-On this table, full MIND is higher than the three output-confidence baselines on all four models. `linear_probe` is higher than full MIND on all four rows. For LLaVA-OneVision-7B, `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/round2/table1_pope_popular.md`; `docs/review/2026-04-round2-findings-summary.md`]
+On this table, full MIND is higher than the three output-confidence baselines on all four models. `linear_probe` is higher than full MIND on all four rows. For LLaVA-OneVision-7B, `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/table1_pope_popular.md`; `docs/review/2026-04-round2-findings-summary.md`]
 
 ### 7.2 Final round-two main results: DASH-B
 
@@ -194,9 +194,9 @@ On this table, full MIND is higher than the three output-confidence baselines on
 | LLaVA-OneVision-7B | DASH-B | ROC 0.4497 [0.4009, 0.5000]; PR 0.3231 [0.2726, 0.3801] | ROC 0.6602 [0.6198, 0.6949]; PR 0.4297 [0.4019, 0.4562] | ROC 0.7046 [0.6754, 0.7331]; PR 0.4938 [0.4596, 0.5265] | ROC 0.8664 [0.8488, 0.8830]; PR 0.7431 [0.7105, 0.7736] | ROC 0.8996 [0.8839, 0.9130]; PR 0.7883 [0.7549, 0.8201] | ROC 0.8404 [0.8208, 0.8599]; PR 0.7234 [0.6893, 0.7553] | ROC 0.9923 [0.9896, 0.9944]; PR 0.9883 [0.9845, 0.9916] |
 | Molmo-7B-D-0924 | DASH-B | ROC 0.6170 [0.5772, 0.6528]; PR 0.3289 [0.3022, 0.3538] | ROC 0.5369 [0.4955, 0.5745]; PR 0.2878 [0.2634, 0.3099] | ROC 0.6369 [0.5992, 0.6718]; PR 0.3425 [0.3164, 0.3673] | ROC 0.7967 [0.7775, 0.8149]; PR 0.5611 [0.5185, 0.6002] | ROC 0.8655 [0.8479, 0.8819]; PR 0.6861 [0.6479, 0.7191] | ROC 0.7795 [0.7589, 0.7978]; PR 0.5422 [0.5010, 0.5794] | ROC 0.9775 [0.9722, 0.9827]; PR 0.9561 [0.9450, 0.9655] |
 
-[Sources: `docs/tables/round2/table1_dash_b.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b/baselines.json`]
+[Sources: `docs/tables/table1_dash_b.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b/baselines.json`]
 
-On this table, full MIND is higher than the three output-confidence baselines on all four models. `no_manifold` is higher than full MIND on all four rows, and `linear_probe` is higher than both on all four rows. [Sources: `docs/tables/round2/table1_dash_b.md`; `docs/review/2026-04-round2-findings-summary.md`]
+On this table, full MIND is higher than the three output-confidence baselines on all four models. `no_manifold` is higher than full MIND on all four rows, and `linear_probe` is higher than both on all four rows. [Sources: `docs/tables/table1_dash_b.md`; `docs/review/2026-04-round2-findings-summary.md`]
 
 ### 7.3 Supplementary benchmark results: POPE adversarial
 
@@ -207,13 +207,13 @@ On this table, full MIND is higher than the three output-confidence baselines on
 | LLaVA-OneVision-7B | POPE adversarial | ROC 0.6135 [0.5981, 0.6284]; PR 0.0579 [0.0493, 0.0664] | ROC 0.6061 [0.5918, 0.6197]; PR 0.0571 [0.0485, 0.0654] | ROC 0.8269 [0.7964, 0.8564]; PR 0.1763 [0.1379, 0.2232] | ROC 0.8050 [0.7758, 0.8328]; PR 0.1485 [0.1166, 0.1875] | ROC 0.6986 [0.6601, 0.7343]; PR 0.0948 [0.0747, 0.1211] | ROC 0.8076 [0.7798, 0.8362]; PR 0.1535 [0.1208, 0.1947] | ROC 0.7933 [0.7472, 0.8339]; PR 0.2638 [0.1960, 0.3391] |
 | Molmo-7B-D-0924 | POPE adversarial | ROC 0.5161 [0.4881, 0.5449]; PR 0.0667 [0.0584, 0.0764] | ROC 0.5605 [0.5449, 0.5756]; PR 0.0735 [0.0652, 0.0827] | ROC 0.6659 [0.6327, 0.7001]; PR 0.1096 [0.0923, 0.1299] | ROC 0.8149 [0.7890, 0.8382]; PR 0.2235 [0.1814, 0.2695] | ROC 0.7527 [0.7151, 0.7850]; PR 0.1688 [0.1397, 0.2062] | ROC 0.8442 [0.8190, 0.8681]; PR 0.2850 [0.2342, 0.3426] | ROC 0.8298 [0.7965, 0.8573]; PR 0.3265 [0.2634, 0.4010] |
 
-[Sources: `docs/tables/round2/supp_pope_adversarial.md`; retained adversarial `baselines.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`]
+[Sources: `docs/tables/supp_pope_adversarial.md`; retained adversarial `baselines.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`]
 
-On this benchmark, full MIND has the highest ROC-AUC on Qwen3-VL-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924, while `linear_probe` has the highest PR-AUC on all four models. [Sources: `docs/tables/round2/supp_pope_adversarial.md`; `docs/review/2026-04-round2-findings-summary.md`]
+On this benchmark, full MIND has the highest ROC-AUC on Qwen3-VL-8B, LLaVA-OneVision-7B, and Molmo-7B-D-0924, while `linear_probe` has the highest PR-AUC on all four models. [Sources: `docs/tables/supp_pope_adversarial.md`; `docs/review/2026-04-round2-findings-summary.md`]
 
 ### 7.4 Supplementary benchmark results: RePOPE
 
-The retained round-two RePOPE report directories contain saved `baselines.json` files, and the tracked markdown table `docs/tables/round2/supp_repope.md` is populated from those retained results. [Sources: `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-repope/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-repope/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-repope/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-repope/baselines.json`; `docs/tables/round2/supp_repope.md`]
+The retained round-two RePOPE report directories contain saved `baselines.json` files, and the tracked markdown table `docs/tables/supp_repope.md` is populated from those retained results. [Sources: `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-repope/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-repope/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-repope/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-repope/baselines.json`; `docs/tables/supp_repope.md`]
 
 | model | benchmark | p_yes | logit_margin | chosen_confidence | drift_only | no_manifold | full_MIND | linear_probe |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -237,11 +237,11 @@ The retained comparator tree contains official HALP row outputs for POPE popular
 
 [Sources: `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-dash-b-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-dash-b-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-dash-b-halp-row/halp.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-dash-b-halp-row/halp.json`]
 
-Each saved HALP row score is higher than the corresponding full MIND score on the same model and benchmark in the retained POPE popular and DASH-B tables. [Sources: retained HALP row `halp.json` files; `docs/tables/round2/table1_pope_popular.md`; `docs/tables/round2/table1_dash_b.md`]
+Each saved HALP row score is higher than the corresponding full MIND score on the same model and benchmark in the retained POPE popular and DASH-B tables. [Sources: retained HALP row `halp.json` files; `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`]
 
 ### 7.6 Saved feature-ablation results
 
-The retained feature-ablation evidence now comes from `docs/tables/round2/table2_feature_ablation.md` for both POPE popular and DASH-B rows, with `docs/tables/round2/phase_one_popular_decision.md` recording the freeze to `raw + calibrated simple stats`. The LLaVA-OneVision-7B and Molmo-7B-D-0924 POPE popular rows are populated in the tracked table. [Sources: `docs/tables/round2/phase_one_popular_decision.md`; `docs/tables/round2/table2_feature_ablation.md`; `docs/tables/round2/table2_feature_ablation.csv`]
+The retained feature-ablation evidence now comes from `docs/tables/table2_feature_ablation.md` for both POPE popular and DASH-B rows, with `docs/tables/phase_one_popular_decision.md` recording the freeze to `raw + calibrated simple stats`. The LLaVA-OneVision-7B and Molmo-7B-D-0924 POPE popular rows are populated in the tracked table. [Sources: `docs/tables/phase_one_popular_decision.md`; `docs/tables/table2_feature_ablation.md`; `docs/tables/table2_feature_ablation.csv`]
 
 | model | benchmark | raw_only | raw_plus_simple_stats | raw_plus_full_curve | raw_plus_Haar |
 | --- | --- | --- | --- | --- | --- |
@@ -254,21 +254,21 @@ The retained feature-ablation evidence now comes from `docs/tables/round2/table2
 | LLaVA-OneVision-7B | DASH-B | ROC 0.8347 [0.8149, 0.8543]; PR 0.7074 [0.6720, 0.7398] | ROC 0.8404 [0.8208, 0.8599]; PR 0.7234 [0.6893, 0.7553] | ROC 0.8505 [0.8314, 0.8691]; PR 0.7236 [0.6869, 0.7557] | ROC 0.8498 [0.8302, 0.8684]; PR 0.7339 [0.7009, 0.7640] |
 | Molmo-7B-D-0924 | DASH-B | ROC 0.7753 [0.7565, 0.7929]; PR 0.5089 [0.4695, 0.5474] | ROC 0.7795 [0.7589, 0.7978]; PR 0.5422 [0.5010, 0.5794] | ROC 0.7987 [0.7798, 0.8155]; PR 0.5911 [0.5457, 0.6298] | ROC 0.7788 [0.7578, 0.7973]; PR 0.5421 [0.5021, 0.5778] |
 
-[Sources: `docs/tables/round2/phase_one_popular_decision.md`; `docs/tables/round2/table2_feature_ablation.md`; `docs/tables/round2/table2_feature_ablation.csv`]
+[Sources: `docs/tables/phase_one_popular_decision.md`; `docs/tables/table2_feature_ablation.md`; `docs/tables/table2_feature_ablation.csv`]
 
-The retained ablation evidence is one reason the paper notes freeze `raw + calibrated simple stats` as the default full feature set. [Sources: `docs/tables/round2/phase_one_popular_decision.md`; `docs/paper_outline.md`]
+The retained ablation evidence is one reason the paper notes freeze `raw + calibrated simple stats` as the default full feature set. [Sources: `docs/tables/phase_one_popular_decision.md`; `docs/paper_outline.md`]
 
 ### 7.7 Retained gaps and excluded material
 
 The maintained report excludes historical and correction-phase artifacts because they are not part of the tracked repo tree used by this document. [Sources: `docs/results_summary.md`; `docs/paper_outline.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/`]
 
-The tracked transfer-control table is now populated for both `image_grouped` and `object_heldout`. In the fresh `object_heldout` rows, full MIND reports ROC-AUC / PR-AUC of `0.6381 / 0.0461` for Qwen3-VL-8B, `0.8833 / 0.4610` for InternVL3.5-8B, `0.7226 / 0.0475` for LLaVA-OneVision-7B, and `0.7300 / 0.0865` for Molmo-7B-D-0924. `linear_probe` remains higher than full MIND on all four object-heldout rows. [Sources: `docs/tables/round2/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json`]
+The tracked transfer-control table is now populated for both `image_grouped` and `object_heldout`. In the fresh `object_heldout` rows, full MIND reports ROC-AUC / PR-AUC of `0.6381 / 0.0461` for Qwen3-VL-8B, `0.8833 / 0.4610` for InternVL3.5-8B, `0.7226 / 0.0475` for LLaVA-OneVision-7B, and `0.7300 / 0.0865` for Molmo-7B-D-0924. `linear_probe` remains higher than full MIND on all four object-heldout rows. [Sources: `docs/tables/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json`]
 
 ## 8. Conclusion and Future Work
 
-The retained mainline evidence supports a narrow detector claim. Full MIND is higher than the simple output-confidence baselines on the retained POPE popular, DASH-B, and POPE adversarial rows, with one popular-table exception where LLaVA-OneVision-7B `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/round2/table1_pope_popular.md`; `docs/tables/round2/table1_dash_b.md`; `docs/tables/round2/supp_pope_adversarial.md`]
+The retained mainline evidence supports a narrow detector claim. Full MIND is higher than the simple output-confidence baselines on the retained POPE popular, DASH-B, and POPE adversarial rows, with one popular-table exception where LLaVA-OneVision-7B `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`; `docs/tables/supp_pope_adversarial.md`]
 
-The retained mainline evidence does not support a strongest-detector claim. `linear_probe` is higher than full MIND on every retained POPE popular and DASH-B main-table row, and official HALP row scores are higher than full MIND on every retained popular and DASH-B comparator row. [Sources: `docs/tables/round2/table1_pope_popular.md`; `docs/tables/round2/table1_dash_b.md`; retained HALP row `halp.json` files]
+The retained mainline evidence does not support a strongest-detector claim. `linear_probe` is higher than full MIND on every retained POPE popular and DASH-B main-table row, and official HALP row scores are higher than full MIND on every retained popular and DASH-B comparator row. [Sources: `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`; retained HALP row `halp.json` files]
 
 The current maintained limitations are:
 
@@ -277,7 +277,7 @@ The current maintained limitations are:
 
 The retained future work is documentation and evidence closure on the maintained surface:
 
-1. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger under both `image_grouped` and `object_heldout` transfer controls. [Sources: `docs/review/2026-04-round2-findings-summary.md`; `docs/paper_outline.md`; `docs/tables/round2/table3_transfer_controls.md`; retained HALP row `halp.json` files]
+1. Keep the paper framing aligned with the retained evidence: compact pre-answer geometry versus simple output baselines, with explicit acknowledgment that richer internal baselines remain stronger under both `image_grouped` and `object_heldout` transfer controls. [Sources: `docs/review/2026-04-round2-findings-summary.md`; `docs/paper_outline.md`; `docs/tables/table3_transfer_controls.md`; retained HALP row `halp.json` files]
 2. Keep non-official comparator adaptations out of the maintained official workflow unless they are separately implemented and documented as official methods. [Sources: `scripts/run_glsim.py`; `src/mind/comparators/glsim.py`]
 
 ---
@@ -287,7 +287,7 @@ The retained future work is documentation and evidence closure on the maintained
 | Date | Section | Change | Source |
 |------|---------|--------|--------|
 | 2026-04-12 | Evidence Note and Sections 1-6 | Swapped stale `docs/review/...` source citations for the current `docs/results_summary.md` and `docs/paper_outline.md` paths while keeping the verified narrative intact | `docs/results_summary.md`; `docs/paper_outline.md`; `README.md`; `src/mind/manifolds/local_pca.py`; `src/mind/drift/features.py` |
-| 2026-04-12 | Sections 6-7 | Re-anchored dataset inventory and result tables to retained normalized files, retained round-two tables, retained `baselines.json` files, and retained HALP row `halp.json` files | `/home/team/zhanghaonan/mind/outputs/round2_2026_04/normalized/`; `docs/tables/round2/table1_pope_popular.md`; `docs/tables/round2/table1_dash_b.md`; `docs/tables/round2/supp_pope_adversarial.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
-| 2026-04-12 | Sections 7.4-7.7 | Marked the RePOPE table as populated, filled the LLaVA and Molmo POPE popular ablation rows, and narrowed the remaining tracked gap to blank `object_heldout` cells in `table3_transfer_controls.md` | `docs/tables/round2/supp_repope.md`; `docs/tables/round2/table2_feature_ablation.md`; `docs/tables/round2/table3_transfer_controls.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
-| 2026-04-12 | Section 8 | Updated the limitations and future-work notes to match the current tracked-table state and the remaining transfer-control gap | `docs/tables/round2/table3_transfer_controls.md`; `README.md`; `configs/data/hpope.yaml` |
-| 2026-04-13 | Sections 7.7-8 | Populated the previously blank `object_heldout` transfer-control rows from fresh Qwen, InternVL, LLaVA, and Molmo held-out reports, and removed the stale “remaining tracked gap” language | `docs/tables/round2/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json` |
+| 2026-04-12 | Sections 6-7 | Re-anchored dataset inventory and result tables to retained normalized files, retained round-two tables, retained `baselines.json` files, and retained HALP row `halp.json` files | `/home/team/zhanghaonan/mind/outputs/round2_2026_04/normalized/`; `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`; `docs/tables/supp_pope_adversarial.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
+| 2026-04-12 | Sections 7.4-7.7 | Marked the RePOPE table as populated, filled the LLaVA and Molmo POPE popular ablation rows, and narrowed the remaining tracked gap to blank `object_heldout` cells in `table3_transfer_controls.md` | `docs/tables/supp_repope.md`; `docs/tables/table2_feature_ablation.md`; `docs/tables/table3_transfer_controls.md`; retained `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/` |
+| 2026-04-12 | Section 8 | Updated the limitations and future-work notes to match the current tracked-table state and the remaining transfer-control gap | `docs/tables/table3_transfer_controls.md`; `README.md`; `configs/data/hpope.yaml` |
+| 2026-04-13 | Sections 7.7-8 | Populated the previously blank `object_heldout` transfer-control rows from fresh Qwen, InternVL, LLaVA, and Molmo held-out reports, and removed the stale “remaining tracked gap” language | `docs/tables/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json` |
