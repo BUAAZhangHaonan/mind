@@ -129,6 +129,8 @@ The retained normalized files available in `/home/team/zhanghaonan/mind/outputs/
 
 [Sources: retained normalized files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/normalized/`]
 
+POPE random and RePOPE adversarial are not part of the current retained inventory. Neither retained round-two normalized subset exists in the workspace, and the older pre-archive normalized tree also does not contain surviving copies, so both subsets remain earlier-plan material outside the current retained scope. [Sources: retained normalized files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/normalized/`; workspace sweep of the legacy normalized tree before archival]
+
 The dataset configs tie these files to their intended image roots and public sources. POPE and RePOPE use COCO `val2014`, DASH-B uses its own image tree, and H-POPE remains optional because assets are not available locally. [Sources: `configs/data/pope.yaml`; `configs/data/repope.yaml`; `configs/data/dash_b.yaml`; `configs/data/hpope.yaml`; `src/mind/data/pope.py`]
 
 ### 6.2 Model set
@@ -226,7 +228,7 @@ The retained round-two RePOPE report directories contain saved `baselines.json` 
 
 ### 7.5 Saved official HALP row results
 
-The retained comparator tree contains official HALP row outputs for POPE popular and DASH-B. The grouped, object-heldout, and RePOPE HALP artifacts are not part of the tracked repo tree used by this report. [Sources: retained HALP row `halp.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`; `scripts/run_halp.py`; `docs/_archive/review/results_summary.md`]
+The retained comparator tree contains official HALP row outputs for POPE popular and DASH-B. The grouped, object-heldout, and RePOPE HALP artifacts are not retained in the current workspace, so only row-split evidence is kept here. [Sources: retained HALP row `halp.json` files under `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/`; `scripts/run_halp.py`; `docs/_archive/review/results_summary.md`]
 
 | model | POPE popular row HALP | DASH-B row HALP |
 | --- | --- | --- |
@@ -264,6 +266,14 @@ The maintained report excludes historical and correction-phase artifacts because
 
 The tracked transfer-control table is now populated for both `image_grouped` and `object_heldout`. In the fresh `object_heldout` rows, full MIND reports ROC-AUC / PR-AUC of `0.6381 / 0.0461` for Qwen3-VL-8B, `0.8833 / 0.4610` for InternVL3.5-8B, `0.7226 / 0.0475` for LLaVA-OneVision-7B, and `0.7300 / 0.0865` for Molmo-7B-D-0924. `linear_probe` remains higher than full MIND on all four object-heldout rows. [Sources: `docs/tables/table3_transfer_controls.md`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-qwen3-vl-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-internvl3.5-8b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-llava-onevision-7b-popular-object-heldout/baselines.json`; `/home/team/zhanghaonan/mind/outputs/round2_2026_04/reports/round2-molmo-7b-d-0924-popular-object-heldout/baselines.json`]
 
+### 7.8 Supplementary table status
+
+| table | status | note |
+| --- | --- | --- |
+| `docs/tables/supp_dash_b_transfer.md` | populated | Retained DASH-B transfer rows were exported from the round-two dash-B reports in `outputs/round2_2026_04/reports/`. |
+| `docs/tables/supp_bank_size.md` | placeholder-not-run | No bank-size-specific retained report artifact was found under `outputs/round2_2026_04/`. |
+| `docs/tables/supp_layer_count.md` | placeholder-not-run | No layer-count-specific retained report artifact was found under `outputs/round2_2026_04/`. |
+
 ## 8. Conclusion and Future Work
 
 The retained mainline evidence supports a narrow detector claim. Full MIND is higher than the simple output-confidence baselines on the retained POPE popular, DASH-B, and POPE adversarial rows, with one popular-table exception where LLaVA-OneVision-7B `chosen_confidence` is higher than full MIND. [Sources: `docs/tables/table1_pope_popular.md`; `docs/tables/table1_dash_b.md`; `docs/tables/supp_pope_adversarial.md`]
@@ -273,7 +283,7 @@ The retained mainline evidence does not support a strongest-detector claim. `lin
 The current maintained limitations are:
 
 1. The naming mismatch remains. `README.md` still expands `MIND` as a multi-scale acronym, while the paper outline says not to do that. [Sources: `README.md`; `docs/_archive/review/paper_outline.md`]
-2. H-POPE remains unavailable in the local environment. [Sources: `configs/data/hpope.yaml`; `src/mind/data/pope.py`; `README.md`]
+2. H-POPE is configured but remains unavailable. This is a known limitation and is not blocking any current deliverable. [Sources: `configs/data/hpope.yaml`; `src/mind/data/pope.py`]
 
 The retained future work is documentation and evidence closure on the maintained surface:
 
