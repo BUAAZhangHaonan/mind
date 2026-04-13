@@ -2,5 +2,5 @@ name: llava-onevision-7b
 model_id: llava-hf/llava-onevision-qwen2-7b-ov-hf
 family: llava_onevision
 dtype: float16
-attn_implementation: sdpa
+attn_implementation: eager
 trust_remote_code: true

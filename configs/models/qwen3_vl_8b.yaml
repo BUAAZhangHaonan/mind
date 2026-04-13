@@ -2,5 +2,5 @@ name: qwen3-vl-8b
 model_id: Qwen/Qwen3-VL-8B-Instruct
 family: qwen_vl
 dtype: float16
-attn_implementation: sdpa
+attn_implementation: eager
 trust_remote_code: true

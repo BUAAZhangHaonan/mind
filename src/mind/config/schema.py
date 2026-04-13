@@ -10,7 +10,7 @@ class ModelConfig(BaseModel):
     model_id: str
     family: str
     dtype: str = "float16"
-    attn_implementation: str = "sdpa"
+    attn_implementation: str | None = None
     trust_remote_code: bool = True
 
 

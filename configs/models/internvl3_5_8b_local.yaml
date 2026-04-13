@@ -2,5 +2,5 @@ name: internvl3.5-8b
 model_id: /home/team/zhanghaonan/.cache/huggingface/hub/models--OpenGVLab--InternVL3_5-8B-HF/snapshots/741a7d03020411e666c6109218ab71e08151ef86
 family: internvl
 dtype: float16
-attn_implementation: sdpa
+attn_implementation: eager
 trust_remote_code: true

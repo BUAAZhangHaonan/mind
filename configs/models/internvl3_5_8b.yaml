@@ -2,5 +2,5 @@ name: internvl3.5-8b
 model_id: OpenGVLab/InternVL3_5-8B-HF
 family: internvl
 dtype: float16
-attn_implementation: sdpa
+attn_implementation: eager
 trust_remote_code: true

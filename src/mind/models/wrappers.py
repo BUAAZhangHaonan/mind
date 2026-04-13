@@ -204,9 +204,10 @@ class BaseModelWrapper:
     def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "trust_remote_code": self.config.trust_remote_code,
-            "attn_implementation": self.config.attn_implementation,
             "torch_dtype": resolve_torch_dtype(self.config.dtype),
         }
+        if self.config.attn_implementation is not None:
+            kwargs["attn_implementation"] = self.config.attn_implementation
         if device.startswith("cuda"):
             kwargs["device_map"] = "auto"
         return kwargs

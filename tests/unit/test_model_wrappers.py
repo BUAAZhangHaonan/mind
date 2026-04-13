@@ -130,6 +130,43 @@ def test_load_bundle_uses_standard_transformers_kwargs(monkeypatch) -> None:
     assert captured["model"][1]["torch_dtype"] == torch.float16
 
 
+def test_load_bundle_omits_attention_backend_when_unset() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeProcessorFactory:
+        @staticmethod
+        def from_pretrained(model_id: str, **kwargs):
+            captured["processor"] = (model_id, kwargs)
+            return SimpleNamespace(name="processor")
+
+    class FakeModelFactory:
+        @staticmethod
+        def from_pretrained(model_id: str, **kwargs):
+            captured["model"] = (model_id, kwargs)
+            return SimpleNamespace(name="model")
+
+    wrapper = QwenWrapper(
+        ModelConfig(
+            name="qwen3-vl-8b",
+            model_id="Qwen/Qwen3-VL-8B-Instruct",
+            family="qwen",
+            dtype="float16",
+            trust_remote_code=True,
+        )
+    )
+
+    bundle = wrapper.load_bundle(
+        model_factory=FakeModelFactory,
+        processor_factory=FakeProcessorFactory,
+    )
+
+    assert isinstance(bundle, LoadedModelBundle)
+    assert captured["model"][0] == "Qwen/Qwen3-VL-8B-Instruct"
+    assert captured["model"][1]["device_map"] == "auto"
+    assert "attn_implementation" not in captured["model"][1]
+    assert captured["model"][1]["torch_dtype"] == torch.float16
+
+
 def test_molmo_wrapper_forces_eager_attention_for_model_load(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -205,6 +242,37 @@ def test_molmo_wrapper_normalizes_placeholder_past_key_values(monkeypatch) -> No
 
     assert fake_model.calls[0]["past_key_values"] is None
     assert result["past_key_values"] is None
+
+
+def test_molmo_wrapper_omits_attention_backend_when_unset(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_from_pretrained(model_id: str, **kwargs):
+        captured["model_id"] = model_id
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(name="molmo-model")
+
+    monkeypatch.setattr(
+        "mind.models.wrappers.AutoModelForCausalLM.from_pretrained",
+        fake_from_pretrained,
+    )
+
+    wrapper = MolmoWrapper(
+        ModelConfig(
+            name="molmo-7b-d-0924",
+            model_id="allenai/Molmo-7B-D-0924",
+            family="molmo",
+            dtype="float16",
+            trust_remote_code=True,
+        )
+    )
+
+    model = wrapper.load_model(device="cuda")
+
+    assert model.name == "molmo-model"
+    assert captured["model_id"] == "allenai/Molmo-7B-D-0924"
+    assert captured["kwargs"]["device_map"] == "auto"
+    assert "attn_implementation" not in captured["kwargs"]
 
 
 def test_base_wrapper_extract_prefill_hidden_states_uses_forward_pass() -> None:
