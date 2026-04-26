@@ -727,7 +727,7 @@ def plot_method_diagram(output_path: Path) -> None:
         "Pre-answer hidden states",
         "Round-two reference banks",
         "Layerwise drift curve",
-        "Simple-stat feature set",
+        "Full calibrated drift curve",
         "Compact early-warning score",
     ]
     x_positions = np.linspace(0.08, 0.92, len(steps))
@@ -759,7 +759,7 @@ def plot_method_diagram(output_path: Path) -> None:
     axis.text(
         0.5,
         0.14,
-        "Object hallucination detection from pre-answer geometry, frozen on simple calibrated statistics.",
+        "Object hallucination detection from pre-answer geometry, frozen on the full calibrated curve.",
         ha="center",
         va="center",
         fontsize=11,

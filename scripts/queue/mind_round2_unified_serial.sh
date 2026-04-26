@@ -575,7 +575,7 @@ ensure_baseline_report() {
         --split-strategy "$split_strategy" \
         --num-folds "$num_folds" \
         --bank-scope "$bank_scope" \
-        --full-variant raw_plus_calibrated_simple
+        --full-variant raw_plus_calibrated_full_curve
 }
 
 ensure_reference_bank() {

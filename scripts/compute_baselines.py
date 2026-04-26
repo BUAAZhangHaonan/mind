@@ -15,7 +15,7 @@ import pandas as pd
 from mind.utils import output_root_lock
 
 
-DEFAULT_FULL_VARIANT = "raw_plus_calibrated_simple"
+DEFAULT_FULL_VARIANT = "raw_plus_calibrated_full_curve"
 FEATURE_VARIANT_NAMES = (
     "raw_curve_only",
     "raw_plus_calibrated_simple",

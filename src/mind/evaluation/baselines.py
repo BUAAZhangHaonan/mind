@@ -42,7 +42,7 @@ FEATURE_VARIANT_NAMES = (
     "raw_plus_calibrated_haar",
 )
 
-DEFAULT_FULL_VARIANT = "raw_plus_calibrated_simple"
+DEFAULT_FULL_VARIANT = "raw_plus_calibrated_full_curve"
 CHUNKED_CACHE_PART_FILE_PATTERN = re.compile(r"\.part-\d{5}\.pt$")
 
 

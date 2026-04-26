@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -88,7 +89,7 @@ def _write_results_table(frame: pd.DataFrame, output_path: Path, *, extra_column
 
 def _baseline_variants(base_roc: float, base_pr: float) -> dict[str, dict[str, object]]:
     variant_deltas = {
-        "full": (0.00, 0.00),
+        "full": (0.02, 0.02),
         "drift_only": (-0.05, -0.06),
         "no_manifold": (-0.08, -0.08),
         "linear_probe": (0.04, 0.03),
@@ -131,7 +132,7 @@ def _write_baseline_report(
 
     variants = _baseline_variants(base_roc, base_pr)
     (report_root / "baselines.json").write_text(
-        json.dumps({"bank_scope": bank_scope, "full_variant": "raw_plus_calibrated_simple", **variants}, indent=2, sort_keys=True),
+        json.dumps({"bank_scope": bank_scope, "full_variant": "raw_plus_calibrated_full_curve", **variants}, indent=2, sort_keys=True),
         encoding="utf-8",
     )
 
@@ -147,14 +148,14 @@ def _write_baseline_report(
 
     split_sensitivity = pd.DataFrame(
         [
-            {"variant": "full", "seed": 13, "roc_auc": base_roc, "pr_auc": base_pr},
-            {"variant": "full", "seed": 17, "roc_auc": base_roc + 0.01, "pr_auc": base_pr + 0.01},
+            {"variant": "full", "seed": 13, "roc_auc": base_roc + 0.02, "pr_auc": base_pr + 0.02},
+            {"variant": "full", "seed": 17, "roc_auc": base_roc + 0.03, "pr_auc": base_pr + 0.03},
         ]
     )
     split_sensitivity.to_csv(report_root / "split_sensitivity.csv", index=False)
 
     variant_frames = {
-        "full": _results_frame(label_shift=label_shift),
+        "full": _results_frame(label_shift=label_shift - 0.005),
         "drift_only": _results_frame(label_shift=label_shift + 0.01),
         "no_manifold": _results_frame(label_shift=label_shift + 0.02),
         "linear_probe": _results_frame(label_shift=label_shift - 0.01),
@@ -509,13 +510,13 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
         & (table1["benchmark"] == "POPE popular")
         & (table1["method"] == "full MIND")
     ].iloc[0]
-    assert qwen_popular_full["roc_auc"] == 0.89
-    assert qwen_popular_full["pr_auc"] == 0.17
+    assert qwen_popular_full["roc_auc"] == 0.91
+    assert qwen_popular_full["pr_auc"] == 0.19
     qwen_popular_full_wide = table1_popular.loc[
         table1_popular["model"] == "Qwen3-VL-8B",
         "full_MIND",
     ].iloc[0]
-    assert qwen_popular_full_wide == "ROC 0.8900 [0.8800, 0.9000]; PR 0.1700 [0.1500, 0.1900]"
+    assert qwen_popular_full_wide == "ROC 0.9100 [0.9000, 0.9200]; PR 0.1900 [0.1700, 0.2100]"
 
     assert list(table2.columns) == [
         "model",
@@ -525,6 +526,11 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
         "raw_plus_full_curve",
         "raw_plus_Haar",
     ]
+    qwen_popular_features = table2.loc[
+        (table2["model"] == "Qwen3-VL-8B") & (table2["benchmark"] == "POPE popular")
+    ].iloc[0]
+    assert qwen_popular_features["raw_plus_simple_stats"] == "ROC 0.9000 [0.8900, 0.9100]; PR 0.1800 [0.1600, 0.2000]"
+    assert qwen_popular_features["raw_plus_full_curve"] == qwen_popular_full_wide
     assert list(table3.columns) == [
         "model",
         "benchmark",
@@ -548,6 +554,15 @@ def test_export_paper_package_reads_round_two_artifacts_only(tmp_path: Path) -> 
 
     assert "metrics.json" not in {path.name for path in reports_root.rglob("*") if path.is_file()}
     assert "results.csv" not in {path.name for path in reports_root.rglob("*") if path.is_file()}
+
+
+def test_method_diagram_uses_full_curve_language() -> None:
+    source = inspect.getsource(paper_export.plot_method_diagram)
+
+    assert "Full calibrated drift curve" in source
+    assert "full calibrated curve" in source
+    assert "Simple-stat feature set" not in source
+    assert "simple calibrated statistics" not in source
 
 
 def test_export_parser_defaults_to_paper_closeout() -> None:

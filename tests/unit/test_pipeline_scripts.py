@@ -1131,7 +1131,6 @@ def test_run_experiment_supports_output_root_and_baselines_stage(tmp_path: Path)
                 "subset: popular",
                 "split: val",
                 "selected_layers: 16",
-                "full_variant: raw_plus_calibrated_simple",
             ]
         )
         + "\n",
@@ -1149,7 +1148,14 @@ def test_run_experiment_supports_output_root_and_baselines_stage(tmp_path: Path)
     assert str(
         tmp_path / "round2" / "features" / "smoke-qwen3.5-4b-popular" / "popular.parquet"
     ) in commands["baselines"][0]
-    assert commands["baselines"][0][-2:] == ["--full-variant", "raw_plus_calibrated_simple"]
+    assert commands["baselines"][0][-2:] == ["--full-variant", "raw_plus_calibrated_full_curve"]
+
+
+def test_unified_round2_queue_uses_full_curve_headline_variant() -> None:
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "queue" / "mind_round2_unified_serial.sh"
+    script_text = script_path.read_text(encoding="utf-8")
+
+    assert "--full-variant raw_plus_calibrated_full_curve" in " ".join(script_text.split())
 
 
 def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_path: Path) -> None:
@@ -1296,7 +1302,12 @@ def test_compute_baselines_writes_variant_results_and_uncertainty_artifacts(tmp_
     full_results = pd.read_csv(variant_results_root / "full.csv")
     assert "full" in payload
     assert "output_p_yes" in payload
+    assert payload["full_variant"] == "raw_plus_calibrated_full_curve"
     assert "confidence_intervals" in payload["full"]
+    assert "raw_plus_calibrated_simple" in payload
+    assert "raw_plus_calibrated_full_curve" in payload
+    assert payload["full"]["roc_auc"] == payload["raw_plus_calibrated_full_curve"]["roc_auc"]
+    assert payload["full"]["pr_auc"] == payload["raw_plus_calibrated_full_curve"]["pr_auc"]
     assert full_results.columns.tolist() == [
         "sample_id",
         "image_id",
