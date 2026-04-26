@@ -80,7 +80,8 @@ compute_bank_features() {
     --output-root "$OUT/features" \
     --experiment-name "$experiment" \
     --split "$split" \
-    --bank-scope "$bank_scope"
+    --bank-scope "$bank_scope" \
+    --batch-size 32
 }
 
 compute_bank_baseline() {

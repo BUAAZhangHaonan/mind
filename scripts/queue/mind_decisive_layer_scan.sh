@@ -140,7 +140,8 @@ compute_features() {
     --output-root "$OUT/features" \
     --experiment-name "$experiment" \
     --split "$split" \
-    --bank-scope object
+    --bank-scope object \
+    --batch-size 32
 }
 
 compute_baselines() {

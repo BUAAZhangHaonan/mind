@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 import sys
 
+import numpy as np
 import pandas as pd
 import torch
 
@@ -16,7 +17,11 @@ if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
 sys.path.insert(0, repo_src_path)
 
-from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
+from mind.drift import (
+    build_drift_features,
+    calibrate_drift_curve,
+    compute_drift_curves_batched,
+)
 from mind.evaluation import compute_object_hallucination_label
 from mind.manifolds import resolve_reference_scope_key
 from mind.utils import output_root_lock
@@ -97,10 +102,15 @@ def build_feature_frame(
     reference_bank: dict[str, dict[int, torch.Tensor]],
     reference_stats: dict[str, dict[int, dict[str, float]]],
     bank_scope: str = "object",
+    batch_size: int = 32,
 ) -> pd.DataFrame:
-    rows: list[dict[str, object]] = []
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
     missing_entries: list[dict[str, object]] = []
-    for entry in cache_entries:
+    prepared_entries: list[dict[str, object]] = []
+    grouped_indices: dict[tuple[tuple[int, ...], str], list[int]] = {}
+    for entry_index, entry in enumerate(cache_entries):
         selected_layers = [int(layer) for layer in entry["selected_layers"]]
         object_name = str(entry["object_name"])
         bank_key = resolve_reference_scope_key(object_name, bank_scope)
@@ -130,13 +140,53 @@ def build_feature_frame(
                 {"sample_id": entry["sample_id"], "reason": "; ".join(reason_parts)}
             )
             continue
-        raw_curve = compute_drift_curve(
-            layer_vectors=entry["layer_vectors"],
-            selected_layers=selected_layers,
-            object_name=object_name,
-            reference_bank=reference_bank,
-            bank_scope=bank_scope,
+        prepared_entries.append(
+            {
+                "entry_index": entry_index,
+                "entry": entry,
+                "selected_layers": selected_layers,
+                "object_name": object_name,
+                "bank_key": bank_key,
+            }
         )
+        grouped_indices.setdefault((tuple(selected_layers), bank_key), []).append(len(prepared_entries) - 1)
+
+    if missing_entries:
+        raise ValueError(_format_missing_reference_coverage(missing_entries))
+
+    raw_curves: list[np.ndarray | None] = [None for _ in prepared_entries]
+    for (selected_layers_key, bank_key), group_indices in grouped_indices.items():
+        selected_layers = list(selected_layers_key)
+        for start in range(0, len(group_indices), batch_size):
+            batch_indices = group_indices[start : start + batch_size]
+            layer_vectors_batch = torch.stack(
+                [
+                    prepared_entries[prepared_index]["entry"]["layer_vectors"]
+                    for prepared_index in batch_indices
+                ],
+                dim=0,
+            )
+            batch_curves = compute_drift_curves_batched(
+                layer_vectors_batch=layer_vectors_batch,
+                selected_layers=selected_layers,
+                object_name=str(prepared_entries[batch_indices[0]]["object_name"]),
+                reference_bank=reference_bank,
+                bank_scope=bank_scope,
+                bank_key=bank_key,
+                batch_size=batch_size,
+            )
+            for batch_offset, prepared_index in enumerate(batch_indices):
+                raw_curves[prepared_index] = batch_curves[batch_offset]
+
+    rows: list[dict[str, object]] = []
+    for prepared_index, prepared in enumerate(prepared_entries):
+        entry = prepared["entry"]
+        selected_layers = prepared["selected_layers"]
+        object_name = str(prepared["object_name"])
+        bank_key = str(prepared["bank_key"])
+        raw_curve = raw_curves[prepared_index]
+        if raw_curve is None:
+            raise RuntimeError(f"Missing drift curve for {entry['sample_id']}")
         calibrated_curve = calibrate_drift_curve(
             raw_curve,
             selected_layers=selected_layers,
@@ -163,8 +213,6 @@ def build_feature_frame(
                 **features,
             }
         )
-    if missing_entries:
-        raise ValueError(_format_missing_reference_coverage(missing_entries))
     return pd.DataFrame(rows)
 
 
@@ -177,6 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--split", required=True)
     parser.add_argument("--bank-scope", choices=["object", "shared", "shuffled_object"], default="object")
+    parser.add_argument("--batch-size", type=int, default=32)
     return parser
 
 
@@ -203,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
             reference_bank=reference_bank,
             reference_stats=reference_stats,
             bank_scope=args.bank_scope,
+            batch_size=args.batch_size,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_parquet(output_path, index=False)

@@ -784,7 +784,7 @@ def test_build_feature_frame_raises_on_entries_without_reference_coverage(tmp_pa
         )
 
 
-def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path) -> None:
+def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path, monkeypatch) -> None:
     reference_root = tmp_path / "reference_banks" / "qwen3-vl-8b" / "__shared__"
     reference_root.mkdir(parents=True)
     torch.save(
@@ -799,6 +799,15 @@ def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path) -> No
         reference_root / "layer-08.pt",
     )
     torch.save({8: {"residual_mean": 0.1, "residual_std": 0.2}}, reference_root / "stats.pt")
+
+    calls = {"batched": 0}
+    real_batched = compute_drift.compute_drift_curves_batched
+
+    def _wrapped_batched_drift(*args, **kwargs):
+        calls["batched"] += 1
+        return real_batched(*args, **kwargs)
+
+    monkeypatch.setattr(compute_drift, "compute_drift_curves_batched", _wrapped_batched_drift)
 
     frame = compute_drift.build_feature_frame(
         cache_entries=[
@@ -836,8 +845,9 @@ def test_build_feature_frame_can_use_shared_reference_bank(tmp_path: Path) -> No
         bank_scope="shared",
     )
 
-    assert sorted(frame["sample_id"].tolist()) == ["cat-sample", "dog-sample"]
+    assert frame["sample_id"].tolist() == ["dog-sample", "cat-sample"]
     assert "cal_drift_0" in frame.columns
+    assert calls["batched"] == 1
 
 
 def test_compute_drift_parser_accepts_shuffled_object_scope() -> None:

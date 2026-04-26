@@ -8,7 +8,12 @@ import pandas as pd
 import torch
 
 from mind.detectors import fit_logistic_detector
-from mind.drift import build_drift_features, calibrate_drift_curve, compute_drift_curve
+from mind.drift import (
+    build_drift_features,
+    calibrate_drift_curve,
+    compute_drift_curve,
+    compute_drift_curves_batched,
+)
 from mind.evaluation import compute_object_hallucination_label
 from mind.wavelets import extract_wavelet_features
 
@@ -59,6 +64,121 @@ def test_compute_drift_curve_scores_each_layer_against_reference_bank() -> None:
     assert len(drift) == 2
     assert drift[0] < 1e-5
     assert drift[1] > 0.4
+
+
+def test_compute_drift_curves_batched_matches_scalar_object_bank_for_multiple_queries_and_layers() -> None:
+    reference_bank = {
+        "dog": {
+            8: torch.tensor(
+                [
+                    [0.0, 0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0, 0.2],
+                    [0.0, 1.0, 0.0, 0.1],
+                    [1.0, 1.0, 0.0, 0.3],
+                    [0.2, 0.6, 0.3, 0.4],
+                ]
+            ),
+            13: torch.tensor(
+                [
+                    [0.0, 0.0, 0.0, 0.1],
+                    [1.0, 0.0, 0.2, 0.1],
+                    [0.0, 1.0, 0.1, 0.2],
+                    [1.0, 1.0, 0.3, 0.2],
+                    [0.5, 0.4, 0.8, 0.3],
+                ]
+            ),
+        }
+    }
+    layer_vector_batch = torch.tensor(
+        [
+            [[0.3, 0.4, 0.1, 0.2], [0.2, 0.4, 0.7, 0.2]],
+            [[0.7, 0.2, 0.3, 0.1], [0.8, 0.2, 0.4, 0.2]],
+            [[0.1, 0.8, 0.2, 0.4], [0.2, 0.7, 0.9, 0.3]],
+        ]
+    )
+
+    batched = compute_drift_curves_batched(
+        layer_vectors_batch=layer_vector_batch,
+        selected_layers=[8, 13],
+        object_name="dog",
+        reference_bank=reference_bank,
+        k_neighbors=4,
+        batch_size=2,
+    )
+    scalar = np.stack(
+        [
+            compute_drift_curve(
+                layer_vectors=layer_vectors,
+                selected_layers=[8, 13],
+                object_name="dog",
+                reference_bank=reference_bank,
+                k_neighbors=4,
+            )
+            for layer_vectors in layer_vector_batch
+        ],
+        axis=0,
+    )
+
+    assert batched.dtype == np.float32
+    assert batched.shape == scalar.shape
+    assert np.allclose(batched, scalar, atol=1e-5)
+
+
+def test_compute_drift_curves_batched_matches_scalar_shared_bank_for_multiple_queries_and_layers() -> None:
+    reference_bank = {
+        "__shared__": {
+            8: torch.tensor(
+                [
+                    [0.0, 0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0, 0.2],
+                    [0.0, 1.0, 0.0, 0.1],
+                    [1.0, 1.0, 0.0, 0.3],
+                    [0.2, 0.6, 0.3, 0.4],
+                ]
+            ),
+            13: torch.tensor(
+                [
+                    [0.0, 0.0, 0.0, 0.1],
+                    [1.0, 0.0, 0.2, 0.1],
+                    [0.0, 1.0, 0.1, 0.2],
+                    [1.0, 1.0, 0.3, 0.2],
+                    [0.5, 0.4, 0.8, 0.3],
+                ]
+            ),
+        }
+    }
+    layer_vector_batch = torch.tensor(
+        [
+            [[0.3, 0.4, 0.1, 0.2], [0.2, 0.4, 0.7, 0.2]],
+            [[0.7, 0.2, 0.3, 0.1], [0.8, 0.2, 0.4, 0.2]],
+        ]
+    )
+
+    batched = compute_drift_curves_batched(
+        layer_vectors_batch=layer_vector_batch,
+        selected_layers=[8, 13],
+        object_name="cat",
+        reference_bank=reference_bank,
+        bank_scope="shared",
+        k_neighbors=4,
+        batch_size=2,
+    )
+    scalar = np.stack(
+        [
+            compute_drift_curve(
+                layer_vectors=layer_vectors,
+                selected_layers=[8, 13],
+                object_name="cat",
+                reference_bank=reference_bank,
+                bank_scope="shared",
+                k_neighbors=4,
+            )
+            for layer_vectors in layer_vector_batch
+        ],
+        axis=0,
+    )
+
+    assert np.allclose(batched, scalar, atol=1e-5)
 
 
 def test_calibrate_drift_curve_uses_reference_stats_not_self_normalization() -> None:
