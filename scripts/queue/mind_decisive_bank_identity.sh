@@ -51,6 +51,7 @@ build_banks() {
 extract_dash_cache() {
   local model="$1"
   local model_config="$2"
+  local selected_layers="$3"
 
   run_py scripts/extract_eval_states.py \
     --records "$ROUND2/normalized/dash-b/main.jsonl" \
@@ -60,7 +61,7 @@ extract_dash_cache() {
     --split main \
     --image-root "$PROJECT_ROOT/data/dash_b" \
     --device cuda \
-    --selected-layers 16 \
+    --selected-layers "$selected_layers" \
     --layer-range middle
 }
 
@@ -111,13 +112,14 @@ compute_bank_baseline() {
 run_model() {
   local model="$1"
   local model_config="$2"
+  local dash_selected_layers="$3"
 
   local pope_cache="$ROUND2/cache/$model/pope/popular"
   local dash_cache="$OUT/cache/$model/dash-b/main"
 
   build_banks "$model" "$ROUND2/reference_banks" "$OUT/reference_banks_shared" "$OUT/reference_banks_shuffled"
   build_banks "$model" "$ROUND2/reference_banks_dash_b" "$OUT/reference_banks_dash_b_shared" "$OUT/reference_banks_dash_b_shuffled"
-  extract_dash_cache "$model" "$model_config"
+  extract_dash_cache "$model" "$model_config" "$dash_selected_layers"
 
   for bank_scope in object shared shuffled_object; do
     local pope_reference="$ROUND2/reference_banks"
@@ -140,5 +142,5 @@ run_model() {
   done
 }
 
-run_model qwen3-vl-8b configs/models/qwen3_vl_8b_local.yaml
-run_model molmo-7b-d-0924 configs/models/molmo_7b_d_0924_local.yaml
+run_model qwen3-vl-8b configs/models/qwen3_vl_8b_local.yaml 16
+run_model molmo-7b-d-0924 configs/models/molmo_7b_d_0924_local.yaml 14
