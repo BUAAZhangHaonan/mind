@@ -655,6 +655,40 @@ def test_save_reference_bank_writes_shared_bank_artifacts(tmp_path: Path) -> Non
     assert counts.loc[0, "count"] == 2
 
 
+def test_save_reference_bank_from_saved_object_tensors_writes_shared_bank(tmp_path: Path) -> None:
+    reference_root = tmp_path / "reference_banks"
+    output_root = tmp_path / "derived_banks"
+    model_name = "qwen3-vl-8b"
+    dog_root = reference_root / model_name / "dog"
+    cat_root = reference_root / model_name / "cat"
+    dog_root.mkdir(parents=True)
+    cat_root.mkdir(parents=True)
+    torch.save(torch.tensor([[0.0, 0.0], [1.0, 0.0]]), dog_root / "layer-08.pt")
+    torch.save(torch.tensor([[0.0, 1.0], [1.0, 1.0]]), cat_root / "layer-08.pt")
+
+    written_paths = build_manifolds.save_reference_bank_from_saved_tensors(
+        reference_root=reference_root,
+        output_root=output_root,
+        model_name=model_name,
+        k_neighbors=2,
+        bank_scope="shared",
+    )
+
+    layer_path = output_root / model_name / "__shared__" / "layer-08.pt"
+    stats_path = output_root / model_name / "__shared__" / "stats.pt"
+    counts_path = output_root / model_name / "reference_counts.csv"
+    assert layer_path in written_paths
+    assert layer_path.exists()
+    assert stats_path.exists()
+    shared_tensor = torch.load(layer_path, weights_only=True)
+    assert shared_tensor.shape == (4, 2)
+    assert sorted(shared_tensor.tolist()) == [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]
+    counts = pd.read_csv(counts_path)
+    assert counts.loc[0, "bank_scope"] == "shared"
+    assert counts.loc[0, "object_name"] == "__shared__"
+    assert counts.loc[0, "count"] == 4
+
+
 def test_save_reference_bank_writes_shuffled_object_mapping(tmp_path: Path) -> None:
     written_paths = build_manifolds.save_reference_bank(
         entries=[

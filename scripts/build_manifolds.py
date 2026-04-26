@@ -250,7 +250,8 @@ def save_reference_bank_from_saved_tensors(
     shuffle_seed: int = 13,
     subsample_size: int | None = None,
 ) -> list[Path]:
-    source_bank = load_saved_reference_bank(reference_root, model_name, bank_scope=bank_scope)
+    source_bank_scope = "object" if bank_scope in {"shared", "shuffled_object"} else bank_scope
+    source_bank = load_saved_reference_bank(reference_root, model_name, bank_scope=source_bank_scope)
     source_bank = _subsample_saved_bank(source_bank, subsample_size=subsample_size)
     derived_bank, shuffled_object_mapping = _derive_bank_from_saved_tensors(
         source_bank,
