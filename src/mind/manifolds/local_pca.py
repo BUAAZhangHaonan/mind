@@ -103,7 +103,7 @@ def _compute_layer_statistics(
     max_components: int = 32,
     batch_size: int = 64,
 ) -> dict[str, float]:
-    compute_device = torch.device("cuda" if torch.cuda.is_available() and vectors.shape[0] >= 256 else "cpu")
+    compute_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vectors = vectors.to(device=compute_device, dtype=torch.float32)
     count = int(vectors.shape[0])
     if count <= 1:
