@@ -75,11 +75,17 @@ def _compute_layer_drift_batch(
     layer_scores: list[torch.Tensor] = []
 
     with torch.no_grad():
+        reference_norms = reference_vectors.square().sum(dim=1).unsqueeze(0)
         for start in range(0, int(query_vectors.shape[0]), batch_size):
             queries = query_vectors[start : start + batch_size]
-            distances = torch.norm(reference_vectors.unsqueeze(0) - queries.unsqueeze(1), dim=2)
+            query_norms = queries.square().sum(dim=1, keepdim=True)
+            distance_squares = (
+                query_norms
+                + reference_norms
+                - 2.0 * (queries @ reference_vectors.T)
+            ).clamp_min(0.0)
             neighbor_indices = torch.topk(
-                distances,
+                distance_squares,
                 k=neighbor_count,
                 largest=False,
                 dim=1,
