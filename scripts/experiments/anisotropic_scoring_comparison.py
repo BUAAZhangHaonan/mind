@@ -199,7 +199,23 @@ def _slugify(value: object) -> str:
     return text.strip("-") or "unknown"
 
 
+MODEL_KEY_ALIASES = {
+    "internvl3-5-8b": "internvl3.5-8b",
+}
+
+
 def _model_key(value: object) -> str:
+    return MODEL_KEY_ALIASES.get(_slugify(value), _slugify(value))
+
+
+def _model_display(value: object) -> str:
+    text = str(value).strip()
+    if not text:
+        return text
+    return MODEL_KEY_ALIASES.get(_slugify(text), text)
+
+
+def _model_path_slug(value: object) -> str:
     return _slugify(value)
 
 
@@ -236,7 +252,7 @@ def build_artifact_paths(
     split_strategy: str,
     variant: str,
 ) -> ArtifactPaths:
-    model_slug = _model_key(model_name)
+    model_slug = _model_path_slug(model_name)
     benchmark_slug = _slugify(benchmark)
     return ArtifactPaths(
         feature_path=output_root / "features" / model_slug / benchmark_slug / split_strategy / f"{variant}.parquet",
@@ -246,11 +262,11 @@ def build_artifact_paths(
 
 
 def build_radii_path(*, output_root: Path, model_name: str, benchmark: str) -> Path:
-    return output_root / "radii" / _model_key(model_name) / _slugify(benchmark) / "radii.json"
+    return output_root / "radii" / _model_path_slug(model_name) / _slugify(benchmark) / "radii.json"
 
 
 def build_summary_path(*, output_root: Path, model_name: str, benchmark: str) -> Path:
-    return output_root / "summaries" / _model_key(model_name) / _slugify(benchmark) / "metrics.csv"
+    return output_root / "summaries" / _model_path_slug(model_name) / _slugify(benchmark) / "metrics.csv"
 
 
 def _metric_cell(row: dict[str, object] | None) -> str:
@@ -291,18 +307,82 @@ def _metric_from_text_cell(cell: object) -> dict[str, float] | None:
 def _read_csv_rows(paths: Sequence[Path]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for path in paths:
-        if path is None or not path.exists():
+        if path is None:
+            continue
+        resolved_path = _resolve_existing_csv_path(path)
+        if resolved_path is None:
             continue
         try:
-            frame = pd.read_csv(path)
+            frame = pd.read_csv(resolved_path)
         except pd.errors.EmptyDataError:
             continue
         rows.extend(frame.where(pd.notna(frame), None).to_dict(orient="records"))
     return rows
 
 
+def _resolve_existing_csv_path(path: Path) -> Path | None:
+    if path.exists():
+        return path
+    for candidate in _summary_csv_path_candidates(path):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _summary_csv_path_candidates(path: Path) -> list[Path]:
+    if path.name != "metrics.csv":
+        return []
+    parts = list(path.parts)
+    try:
+        summary_index = len(parts) - 1 - list(reversed(parts)).index("summaries")
+    except ValueError:
+        return []
+    if summary_index + 3 >= len(parts):
+        return []
+
+    model_part = parts[summary_index + 1]
+    benchmark_part = parts[summary_index + 2]
+    model_candidates = _unique_strings(
+        (
+            model_part,
+            _model_path_slug(model_part),
+            _model_path_slug(_model_display(model_part)),
+        )
+    )
+    benchmark_candidates = _unique_strings(
+        (
+            benchmark_part,
+            _benchmark_key(benchmark_part),
+            _slugify(benchmark_part),
+        )
+    )
+
+    candidates: list[Path] = []
+    for model_slug in model_candidates:
+        for benchmark_slug in benchmark_candidates:
+            candidate_parts = list(parts)
+            candidate_parts[summary_index + 1] = model_slug
+            candidate_parts[summary_index + 2] = benchmark_slug
+            candidate = Path(*candidate_parts)
+            if candidate != path:
+                candidates.append(candidate)
+    return candidates
+
+
+def _unique_strings(values: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        output.append(value)
+    return output
+
+
 def _with_keys(row: dict[str, object]) -> dict[str, object]:
     updated = dict(row)
+    updated["model"] = _model_display(updated.get("model", ""))
     updated["model_key"] = _model_key(updated.get("model", ""))
     updated["benchmark_key"] = _benchmark_key(updated)
     return updated

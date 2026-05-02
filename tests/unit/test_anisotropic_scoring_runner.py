@@ -518,3 +518,70 @@ def test_format_outputs_writes_main_and_heldout_tables(tmp_path: Path) -> None:
     assert "diag_maha" in (tmp_path / "main.md").read_text(encoding="utf-8")
     assert "linear_probe" in (tmp_path / "heldout.md").read_text(encoding="utf-8")
     assert "Decision Gate" in (tmp_path / "analysis.md").read_text(encoding="utf-8")
+
+
+def test_format_resolves_dotted_model_name_summary_path_to_filesystem_slug(tmp_path: Path) -> None:
+    runner = _load_runner()
+    summary_dir = tmp_path / "summaries" / "internvl3-5-8b" / "popular"
+    summary_dir.mkdir(parents=True)
+    baseline_csv = tmp_path / "baseline.csv"
+    heldout_baseline_csv = tmp_path / "heldout_baseline.csv"
+
+    rows = []
+    for split_strategy, pr_auc in (("image_grouped", 0.45), ("object_heldout", 0.35)):
+        rows.append(
+            {
+                "model": "internvl3.5-8b",
+                "benchmark": "POPE popular",
+                "benchmark_key": "popular",
+                "method": "lowrank_maha",
+                "status": "ok",
+                "split_strategy": split_strategy,
+                "roc_auc": 0.7,
+                "roc_auc_ci_lower": 0.6,
+                "roc_auc_ci_upper": 0.8,
+                "pr_auc": pr_auc,
+                "pr_auc_ci_lower": pr_auc - 0.05,
+                "pr_auc_ci_upper": pr_auc + 0.05,
+            }
+        )
+    pd.DataFrame(rows).to_csv(summary_dir / "metrics.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "model": "internvl3.5-8b",
+                "benchmark": "POPE popular",
+                "benchmark_key": "popular",
+                "method": "linear_probe",
+                "status": "ok",
+                "roc_auc": 0.8,
+                "roc_auc_ci_lower": 0.7,
+                "roc_auc_ci_upper": 0.9,
+                "pr_auc": 0.5,
+                "pr_auc_ci_lower": 0.4,
+                "pr_auc_ci_upper": 0.6,
+            }
+        ]
+    ).to_csv(baseline_csv, index=False)
+    heldout_baseline_csv.write_text("model,benchmark,method,image_grouped,object_heldout\n", encoding="utf-8")
+
+    dotted_summary_path = tmp_path / "summaries" / "internvl3.5-8b" / "popular" / "metrics.csv"
+    output = runner.write_formatted_outputs_from_many(
+        metrics_csvs=(dotted_summary_path,),
+        heldout_csvs=(dotted_summary_path,),
+        baseline_csv=baseline_csv,
+        heldout_baseline_csv=heldout_baseline_csv,
+        heldout_baseline_metrics_csvs=(),
+        markdown_path=tmp_path / "main.md",
+        csv_path=tmp_path / "main.csv",
+        heldout_markdown_path=tmp_path / "heldout.md",
+        heldout_csv_path=tmp_path / "heldout_out.csv",
+        analysis_path=tmp_path / "analysis.md",
+    )
+
+    main_table = pd.read_csv(tmp_path / "main.csv")
+    heldout_table = pd.read_csv(tmp_path / "heldout_out.csv")
+    assert output["main_rows"] == 1
+    assert output["heldout_rows"] == 1
+    assert main_table.loc[0, "model"] == "internvl3.5-8b"
+    assert heldout_table.loc[0, "model"] == "internvl3.5-8b"
