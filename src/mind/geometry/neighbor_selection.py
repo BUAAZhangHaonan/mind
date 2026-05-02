@@ -211,6 +211,10 @@ def _radius_counts_gpu(
     return counts
 
 
+def _round_radius_outward(radius: torch.Tensor) -> torch.Tensor:
+    return torch.nextafter(radius, torch.full_like(radius, float("inf")))
+
+
 def tune_radius_for_target_count_gpu(
     query: torch.Tensor,
     reference: torch.Tensor,
@@ -242,7 +246,7 @@ def tune_radius_for_target_count_gpu(
     ).detach()
     target = float(min(int(target_count), int(reference.shape[0])))
     if target <= 1.0:
-        return low
+        return _round_radius_outward(low)
     for _ in range(int(binary_steps)):
         midpoint = (low + high) / 2.0
         average_count = _radius_counts_gpu(
@@ -256,7 +260,7 @@ def tune_radius_for_target_count_gpu(
             low = midpoint
         else:
             high = midpoint
-    return high
+    return _round_radius_outward(high)
 
 
 def _radius_scores_gpu(

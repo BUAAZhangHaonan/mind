@@ -138,6 +138,77 @@ def test_radius_tuning_gets_target_average_count_without_labels() -> None:
     torch.testing.assert_close(result.values.cpu(), expected, atol=1e-5, rtol=1e-5)
 
 
+def test_radius_tuning_rounds_outward_for_row_by_row_scoring() -> None:
+    device = _cuda_or_skip()
+    query = torch.eye(3, device=device)
+    reference = torch.tensor(
+        [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.1, 0.9, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.1, 0.9],
+        ],
+        device=device,
+    )
+    nearest_boundary = _cpu_angular(query, reference).min(dim=1).values.max().to(device=device)
+
+    radius = tune_radius_for_target_count_gpu(
+        query,
+        reference,
+        target_count=1,
+        query_chunk_size=query.shape[0],
+        reference_chunk_size=2,
+    )
+    expected_radius = torch.nextafter(nearest_boundary, torch.tensor(float("inf"), device=device))
+
+    assert radius > nearest_boundary
+    torch.testing.assert_close(radius, expected_radius, atol=0.0, rtol=0.0)
+
+    result = compute_neighbor_scores_gpu(
+        query,
+        reference,
+        method="radius_ball",
+        target_count=1,
+        radius=radius,
+        query_chunk_size=1,
+        reference_chunk_size=2,
+    )
+
+    assert result.neighbor_counts is not None
+    assert torch.all(result.neighbor_counts >= 1)
+
+
+def test_radius_tuning_rounds_binary_search_radius_outward() -> None:
+    device = _cuda_or_skip()
+    query = torch.eye(3, device=device)
+    reference = torch.tensor(
+        [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.1, 0.9, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.1, 0.9],
+        ],
+        device=device,
+    )
+    maximum_boundary = _cpu_angular(query, reference).max().to(device=device)
+
+    radius = tune_radius_for_target_count_gpu(
+        query,
+        reference,
+        target_count=2,
+        reference_chunk_size=2,
+        binary_steps=0,
+    )
+    expected_radius = torch.nextafter(maximum_boundary, torch.tensor(float("inf"), device=device))
+
+    assert radius > maximum_boundary
+    torch.testing.assert_close(radius, expected_radius, atol=0.0, rtol=0.0)
+
+
 def test_runner_radius_ball_uses_one_shared_radius_per_layer_over_eval_batch() -> None:
     device = _cuda_or_skip()
     script = _load_script()
