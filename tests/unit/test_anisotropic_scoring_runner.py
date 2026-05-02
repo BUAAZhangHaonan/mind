@@ -102,91 +102,6 @@ def test_resolve_random_state_uses_auto_heldout_defaults_and_explicit_wins() -> 
         runner.resolve_random_state("qwen3-vl-8b", "object_heldout", "not-an-int")
 
 
-def test_min_neighbor_radius_lower_bound_uses_max_kth_nearest_distance() -> None:
-    runner = _load_runner()
-    distances = torch.tensor(
-        [
-            [0.40, 0.10, 0.30, 0.20],
-            [0.05, 0.80, 0.70, 0.90],
-            [0.11, 0.12, 0.13, 0.14],
-        ],
-        dtype=torch.float32,
-    )
-
-    lower_bound = runner.min_neighbor_radius_lower_bound_from_distances(distances, min_neighbors=2)
-
-    assert lower_bound.item() == pytest.approx(0.70)
-
-
-def test_min_neighbor_radius_lower_bound_rejects_impossible_request() -> None:
-    runner = _load_runner()
-    distances = torch.ones((3, 2), dtype=torch.float32)
-
-    with pytest.raises(ValueError, match="min_neighbors cannot exceed"):
-        runner.min_neighbor_radius_lower_bound_from_distances(distances, min_neighbors=3)
-
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
-def test_min_neighbor_radius_tuning_does_not_use_subtask1_private_topk(monkeypatch: pytest.MonkeyPatch) -> None:
-    runner = _load_runner()
-
-    class NeighborModuleWithoutPrivateTopk:
-        @staticmethod
-        def _max_angular_distance_gpu(
-            query: torch.Tensor,
-            reference: torch.Tensor,
-            *,
-            query_chunk_size: int,
-            reference_chunk_size: int,
-        ) -> torch.Tensor:
-            distances = runner.batch_angular_distance(
-                query,
-                reference,
-                query_chunk_size=query_chunk_size,
-                reference_chunk_size=reference_chunk_size,
-            )
-            return distances.max()
-
-        @staticmethod
-        def _radius_counts_gpu(
-            query: torch.Tensor,
-            reference: torch.Tensor,
-            radius: torch.Tensor,
-            *,
-            query_chunk_size: int,
-            reference_chunk_size: int,
-        ) -> torch.Tensor:
-            distances = runner.batch_angular_distance(
-                query,
-                reference,
-                query_chunk_size=query_chunk_size,
-                reference_chunk_size=reference_chunk_size,
-            )
-            return (distances <= radius).sum(dim=1).to(dtype=torch.float32)
-
-    monkeypatch.setattr(runner, "_NEIGHBOR", NeighborModuleWithoutPrivateTopk)
-    query = torch.tensor([[1.0, 0.0], [0.0, 1.0]], device="cuda", dtype=torch.float32)
-    reference = torch.tensor(
-        [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
-        device="cuda",
-        dtype=torch.float32,
-    )
-
-    radius = runner.tune_radius_for_target_count_with_min_neighbors_gpu(
-        query,
-        reference,
-        target_count=2,
-        min_neighbors=2,
-        query_chunk_size=1,
-        reference_chunk_size=2,
-        binary_steps=2,
-    )
-
-    distances = runner.batch_angular_distance(query, reference, query_chunk_size=1, reference_chunk_size=2)
-    counts = (distances <= radius).sum(dim=1)
-    assert int(counts.min().item()) >= 2
-
-
 def test_run_parser_exposes_min_neighbors_default_and_override() -> None:
     runner = _load_runner()
     parser = runner.build_parser()
@@ -224,7 +139,7 @@ def test_run_parser_exposes_min_neighbors_default_and_override() -> None:
     assert override_args.min_neighbors == 3
 
 
-def test_save_radii_json_records_min_neighbors(tmp_path: Path) -> None:
+def test_save_radii_json_records_support_floor_and_base_radius(tmp_path: Path) -> None:
     runner = _load_runner()
     path = tmp_path / "radii.json"
 
@@ -243,7 +158,116 @@ def test_save_radii_json_records_min_neighbors(tmp_path: Path) -> None:
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["target_count"] == 30
-    assert payload["min_neighbors"] == 2
+    assert payload["support_floor_min_neighbors"] == 2
+    assert payload["radii_by_layer"] == {"9": pytest.approx(0.25)}
+    assert payload["base_radii_by_layer"] == {"9": pytest.approx(0.25)}
+    assert "min_neighbors" not in payload
+
+
+def test_run_comparison_keeps_locked_radius_and_uses_min_neighbors_as_support_floor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_runner()
+
+    from mind.evaluation import baselines
+
+    entry = {
+        "sample_id": "sample-1",
+        "image_id": "image-1",
+        "label": 0,
+        "parsed_answer": 0,
+        "subset": "popular",
+        "object_name": "cat",
+        "selected_layers": [9],
+        "layer_vectors": torch.tensor([[1.0, 0.0]], dtype=torch.float32),
+    }
+    base_radius = torch.tensor(0.25)
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(baselines, "load_cache_entries", lambda *_args, **_kwargs: [entry])
+    monkeypatch.setattr(
+        runner,
+        "load_pooled_reference_layers",
+        lambda *_args, **_kwargs: {9: torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.float32)},
+    )
+
+    def fake_tune_radius_ball_layer_radii_gpu(**kwargs: object) -> dict[int, torch.Tensor]:
+        seen["tune_kwargs"] = kwargs
+        return {9: base_radius}
+
+    def fake_build_variant_feature_frames(**kwargs: object) -> dict[str, pd.DataFrame]:
+        seen["layer_radii"] = kwargs["layer_radii"]
+        seen["variants"] = kwargs["variants"]
+        return {
+            "radius_ball_isotropic": pd.DataFrame(
+                [
+                    {
+                        "sample_id": "sample-1",
+                        "image_id": "image-1",
+                        "object_name": "cat",
+                        "label": 0,
+                        "raw_drift_0": 0.1,
+                        "cal_mean_drift": 0.1,
+                        "cal_max_drift": 0.1,
+                        "cal_final_drift": 0.1,
+                        "cal_drift_slope": 0.0,
+                        "cal_drift_variance": 0.0,
+                        "mean_neighbor_count": 2.0,
+                        "min_neighbor_count": 2.0,
+                        "max_neighbor_count": 2.0,
+                    }
+                ]
+            )
+        }
+
+    monkeypatch.setattr(runner, "tune_radius_ball_layer_radii_gpu", fake_tune_radius_ball_layer_radii_gpu)
+    monkeypatch.setattr(runner, "build_variant_feature_frames", fake_build_variant_feature_frames)
+    monkeypatch.setattr(
+        runner,
+        "evaluate_frame_gpu",
+        lambda frame, **_kwargs: (
+            {
+                "roc_auc": 0.5,
+                "roc_auc_ci_lower": 0.4,
+                "roc_auc_ci_upper": 0.6,
+                "pr_auc": 0.2,
+                "pr_auc_ci_lower": 0.1,
+                "pr_auc_ci_upper": 0.3,
+            },
+            frame.assign(prediction=0, score=0.0, fold=0),
+        ),
+    )
+
+    rows, _summary_path = runner.run_comparison(
+        cache_path=tmp_path / "cache",
+        pooled_bank_root=tmp_path / "bank",
+        model_name="qwen3-vl-8b",
+        benchmark="popular",
+        variants=("radius_ball_isotropic",),
+        split_strategies=("image_grouped",),
+        output_root=tmp_path,
+        device=torch.device("cpu"),
+        target_count=30,
+        min_neighbors=2,
+        reference_chunk_size=128,
+        radius_margin=2e-5,
+        limit_rows=None,
+        bootstrap_resamples=1,
+        num_folds=1,
+        random_state=13,
+        max_iter=1,
+        expected_curve_length=None,
+        eps=1e-6,
+        rank_cap=8,
+    )
+
+    radii_payload = json.loads((tmp_path / "radii/qwen3-vl-8b/popular/radii.json").read_text(encoding="utf-8"))
+    assert rows[0]["support_floor_min_neighbors"] == 2
+    assert "min_neighbors" not in seen["tune_kwargs"]
+    assert seen["layer_radii"] == {9: base_radius}
+    assert radii_payload["support_floor_min_neighbors"] == 2
+    assert radii_payload["base_radii_by_layer"] == {"9": pytest.approx(0.25)}
 
 
 def test_format_ingests_numeric_heldout_baseline_metrics_csv(tmp_path: Path) -> None:

@@ -160,7 +160,7 @@ def test_anisotropic_variants_reject_single_neighbor_neighborhoods() -> None:
         with pytest.raises(ValueError, match="at least two"):
             scorer(query, neighbors)
 
-    with pytest.raises(RuntimeError, match="fewer than two"):
+    with pytest.raises(ValueError, match="min_neighbors cannot exceed"):
         compute_anisotropic_scores_for_radius_ball_gpu(
             query,
             neighbors.squeeze(0),
@@ -297,6 +297,63 @@ def test_multi_variant_radius_ball_matches_manual_selection_for_all_variants() -
         torch.testing.assert_close(results[variant].values, torch.stack(expected_values[variant]), atol=1e-5, rtol=1e-5)
     assert results["full_maha_shrink"].alpha is not None
     torch.testing.assert_close(results["full_maha_shrink"].alpha, torch.stack(expected_alpha), atol=1e-5, rtol=1e-5)
+
+
+def test_support_floor_adds_nearest_neighbor_without_widening_radius() -> None:
+    device = _cuda_or_skip()
+    query = torch.tensor([[1.0, 0.0, 0.0]], device=device)
+    reference = torch.tensor(
+        [
+            [1.0, 0.0, 0.0],
+            [0.98, 0.20, 0.0],
+            [0.0, 1.0, 0.0],
+        ],
+        device=device,
+    )
+    radius = 0.01
+
+    no_floor = radius_ball_isotropic_scores_gpu(
+        query,
+        reference,
+        radius=radius,
+        min_neighbors=1,
+        reference_chunk_size=2,
+        radius_margin=0.0,
+    )
+    floored = compute_multi_variant_scores_for_radius_ball_gpu(
+        query,
+        reference,
+        radius=radius,
+        min_neighbors=2,
+        variants=("radius_ball_isotropic", "diag_maha"),
+        reference_chunk_size=2,
+        radius_margin=0.0,
+    )
+
+    assert no_floor.neighbor_counts is not None
+    assert floored["radius_ball_isotropic"].neighbor_counts is not None
+    assert floored["diag_maha"].neighbor_counts is not None
+    torch.testing.assert_close(no_floor.neighbor_counts.cpu(), torch.tensor([1.0]), atol=0.0, rtol=0.0)
+    torch.testing.assert_close(
+        floored["radius_ball_isotropic"].neighbor_counts.cpu(),
+        torch.tensor([2.0]),
+        atol=0.0,
+        rtol=0.0,
+    )
+    torch.testing.assert_close(
+        floored["diag_maha"].neighbor_counts.cpu(),
+        torch.tensor([2.0]),
+        atol=0.0,
+        rtol=0.0,
+    )
+    distances = _cpu_angular(query, reference).squeeze(0)
+    expected_isotropic = torch.topk(distances, k=2, largest=False).values.mean()
+    torch.testing.assert_close(
+        floored["radius_ball_isotropic"].values.cpu(),
+        expected_isotropic.unsqueeze(0),
+        atol=1e-6,
+        rtol=1e-6,
+    )
 
 
 def test_feature_row_enforces_raw_plus_full_curve_contract_when_requested() -> None:

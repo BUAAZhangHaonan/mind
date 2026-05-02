@@ -58,7 +58,10 @@ def _validate_cuda_neighbors(query: torch.Tensor, neighbors: torch.Tensor, *, mi
     if query.shape[0] == 0:
         raise ValueError("query must contain at least one row")
     if neighbors.shape[1] < int(min_neighbors):
-        raise ValueError(f"neighbors must contain at least two rows per query; got {neighbors.shape[1]}")
+        expected = "at least two rows" if int(min_neighbors) == 2 else f"at least {int(min_neighbors)} rows"
+        raise ValueError(
+            f"neighbors must contain {expected} per query; got {neighbors.shape[1]}"
+        )
 
 
 def _validate_variant(variant: str) -> None:
@@ -316,6 +319,7 @@ def _select_radius_ball_neighbors_and_distances_gpu(
     reference: torch.Tensor,
     *,
     radius: torch.Tensor | float,
+    min_neighbors: int = 1,
     reference_chunk_size: int,
     radius_margin: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -329,10 +333,16 @@ def _select_radius_ball_neighbors_and_distances_gpu(
         raise ValueError("query and reference must have the same feature dimension")
     if int(reference_chunk_size) < 1:
         raise ValueError("reference_chunk_size must be positive")
+    if int(min_neighbors) < 1:
+        raise ValueError("min_neighbors must be positive")
+    if int(min_neighbors) > int(reference.shape[0]):
+        raise ValueError("min_neighbors cannot exceed the number of reference rows")
 
     radius_tensor = torch.as_tensor(radius, device=query.device, dtype=torch.float32)
-    selected: list[torch.Tensor] = []
+    selected_indices: list[torch.Tensor] = []
     selected_distances: list[torch.Tensor] = []
+    best_distances: torch.Tensor | None = None
+    best_indices: torch.Tensor | None = None
     query_f = query.to(dtype=torch.float32)
     reference_f = reference.to(dtype=torch.float32)
     for start in range(0, reference_f.shape[0], int(reference_chunk_size)):
@@ -346,11 +356,54 @@ def _select_radius_ball_neighbors_and_distances_gpu(
         ).squeeze(0)
         mask = distances <= radius_tensor + float(radius_margin)
         if torch.any(mask):
-            selected.append(reference_chunk[mask])
+            selected_indices.append(torch.arange(start, stop, device=query.device, dtype=torch.long)[mask])
             selected_distances.append(distances[mask])
-    if not selected:
-        raise RuntimeError("radius-ball selection produced an empty neighborhood")
-    return torch.cat(selected, dim=0), torch.cat(selected_distances, dim=0)
+        local_k = min(int(min_neighbors), int(distances.numel()))
+        local_distances, local_indices = torch.topk(distances, k=local_k, largest=False, sorted=True)
+        local_indices = local_indices.to(dtype=torch.long) + int(start)
+        if best_distances is None or best_indices is None:
+            best_distances = local_distances
+            best_indices = local_indices
+        else:
+            merged_distances = torch.cat((best_distances, local_distances), dim=0)
+            merged_indices = torch.cat((best_indices, local_indices), dim=0)
+            keep_distances, keep_order = torch.topk(
+                merged_distances,
+                k=min(int(min_neighbors), int(merged_distances.numel())),
+                largest=False,
+                sorted=True,
+            )
+            best_distances = keep_distances
+            best_indices = merged_indices[keep_order]
+
+    if selected_indices:
+        selected_index_tensor = torch.cat(selected_indices, dim=0)
+        selected_distance_tensor = torch.cat(selected_distances, dim=0)
+    else:
+        selected_index_tensor = torch.empty((0,), device=query.device, dtype=torch.long)
+        selected_distance_tensor = torch.empty((0,), device=query.device, dtype=torch.float32)
+
+    if selected_index_tensor.numel() >= int(min_neighbors):
+        return reference_f[selected_index_tensor], selected_distance_tensor
+    if best_distances is None or best_indices is None:
+        raise RuntimeError("failed to compute support-floor nearest neighbors")
+
+    combined_indices = torch.cat((selected_index_tensor, best_indices), dim=0)
+    combined_distances = torch.cat((selected_distance_tensor, best_distances), dim=0)
+    unique_indices, inverse = torch.unique(combined_indices, sorted=False, return_inverse=True)
+    unique_distances = torch.full(
+        (unique_indices.numel(),),
+        float("inf"),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    unique_distances.scatter_reduce_(0, inverse, combined_distances, reduce="amin", include_self=True)
+    order = torch.argsort(unique_distances)
+    unique_indices = unique_indices[order]
+    unique_distances = unique_distances[order]
+    if unique_indices.numel() < int(min_neighbors):
+        raise RuntimeError("support-floor selection produced too few neighbors")
+    return reference_f[unique_indices], unique_distances
 
 
 def _select_radius_ball_neighbors_gpu(
@@ -358,6 +411,7 @@ def _select_radius_ball_neighbors_gpu(
     reference: torch.Tensor,
     *,
     radius: torch.Tensor | float,
+    min_neighbors: int = 1,
     reference_chunk_size: int,
     radius_margin: float,
 ) -> torch.Tensor:
@@ -365,6 +419,7 @@ def _select_radius_ball_neighbors_gpu(
         query,
         reference,
         radius=radius,
+        min_neighbors=min_neighbors,
         reference_chunk_size=reference_chunk_size,
         radius_margin=radius_margin,
     )
@@ -403,6 +458,7 @@ def compute_multi_variant_scores_for_radius_ball_gpu(
     shrinkage_alpha: float | torch.Tensor | None = None,
     reference_chunk_size: int = DEFAULT_REFERENCE_CHUNK_SIZE,
     radius_margin: float = DEFAULT_RADIUS_MARGIN,
+    min_neighbors: int = 2,
 ) -> dict[str, AnisotropicScoreResult]:
     """Select radius-ball neighbors once per query row and score multiple variants."""
     variant_names = _variant_sequence(variants)
@@ -414,11 +470,17 @@ def compute_multi_variant_scores_for_radius_ball_gpu(
         raise ValueError("query and reference must have the same feature dimension")
     if int(reference_chunk_size) < 1:
         raise ValueError("reference_chunk_size must be positive")
+    if int(min_neighbors) < 1:
+        raise ValueError("min_neighbors must be positive")
+    if int(min_neighbors) > int(reference.shape[0]):
+        raise ValueError("min_neighbors cannot exceed the number of reference rows")
 
     query_f = query.to(dtype=torch.float32)
     reference_f = reference.to(dtype=torch.float32)
     radii = _radius_values(radius, batch_size=query.shape[0], device=query.device)
     needs_covariance = any(variant in ANISOTROPIC_VARIANT_NAMES for variant in variant_names)
+    if needs_covariance and int(min_neighbors) < 2:
+        raise ValueError("anisotropic variants require min_neighbors >= 2")
 
     values: dict[str, list[torch.Tensor]] = {variant: [] for variant in variant_names}
     alphas: dict[str, list[torch.Tensor]] = {variant: [] for variant in variant_names}
@@ -430,6 +492,7 @@ def compute_multi_variant_scores_for_radius_ball_gpu(
             query_row,
             reference_f,
             radius=radii[row_index],
+            min_neighbors=min_neighbors,
             reference_chunk_size=reference_chunk_size,
             radius_margin=radius_margin,
         )
@@ -474,6 +537,7 @@ def radius_ball_isotropic_scores_gpu(
     radius: torch.Tensor | float,
     reference_chunk_size: int = DEFAULT_REFERENCE_CHUNK_SIZE,
     radius_margin: float = DEFAULT_RADIUS_MARGIN,
+    min_neighbors: int = 2,
 ) -> AnisotropicScoreResult:
     """Score each query by mean angular distance to radius-ball neighbors."""
     return compute_multi_variant_scores_for_radius_ball_gpu(
@@ -483,6 +547,7 @@ def radius_ball_isotropic_scores_gpu(
         variants=("radius_ball_isotropic",),
         reference_chunk_size=reference_chunk_size,
         radius_margin=radius_margin,
+        min_neighbors=min_neighbors,
     )["radius_ball_isotropic"]
 
 
@@ -497,6 +562,7 @@ def compute_anisotropic_scores_for_radius_ball_gpu(
     shrinkage_alpha: float | torch.Tensor | None = None,
     reference_chunk_size: int = DEFAULT_REFERENCE_CHUNK_SIZE,
     radius_margin: float = DEFAULT_RADIUS_MARGIN,
+    min_neighbors: int = 2,
 ) -> AnisotropicScoreResult:
     """Select radius-ball neighborhoods and score each query row."""
     return compute_multi_variant_scores_for_radius_ball_gpu(
@@ -509,6 +575,7 @@ def compute_anisotropic_scores_for_radius_ball_gpu(
         shrinkage_alpha=shrinkage_alpha,
         reference_chunk_size=reference_chunk_size,
         radius_margin=radius_margin,
+        min_neighbors=min_neighbors,
     )[variant]
 
 
@@ -534,6 +601,7 @@ def compute_anisotropic_feature_row_gpu(
     reference_chunk_size: int = DEFAULT_REFERENCE_CHUNK_SIZE,
     radius_margin: float = DEFAULT_RADIUS_MARGIN,
     expected_curve_length: int | None = None,
+    min_neighbors: int = 2,
 ) -> dict[str, float]:
     """Build the raw-plus-full-curve feature row for one cache entry."""
     _validate_variant(variant)
@@ -563,6 +631,7 @@ def compute_anisotropic_feature_row_gpu(
             shrinkage_alpha=shrinkage_alpha,
             reference_chunk_size=reference_chunk_size,
             radius_margin=radius_margin,
+            min_neighbors=min_neighbors,
         )
         curve_values.append(result.values.squeeze(0))
 

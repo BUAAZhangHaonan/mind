@@ -30,7 +30,6 @@ from mind.geometry.gpu_anisotropic import (  # noqa: E402
     VARIANT_NAMES,
     compute_multi_variant_scores_for_radius_ball_gpu,
 )
-from mind.geometry.gpu_distances import batch_angular_distance  # noqa: E402
 from mind.geometry.neighbor_selection import DEFAULT_RADIUS_MARGIN  # noqa: E402
 from mind.utils import output_root_lock  # noqa: E402
 
@@ -116,238 +115,6 @@ feature_columns = _NEIGHBOR.feature_columns
 def _validate_positive_int(name: str, value: int) -> None:
     if int(value) < 1:
         raise ValueError(f"{name} must be positive.")
-
-
-def min_neighbor_radius_lower_bound_from_distances(
-    distances: torch.Tensor,
-    *,
-    min_neighbors: int,
-) -> torch.Tensor:
-    """Return the max kth-nearest distance needed to guarantee min_neighbors."""
-    _validate_positive_int("min_neighbors", min_neighbors)
-    if distances.ndim != 2:
-        raise ValueError("distances must be a rank-2 tensor.")
-    if distances.shape[0] == 0:
-        raise ValueError("distances must contain at least one query row.")
-    if int(min_neighbors) > int(distances.shape[1]):
-        raise ValueError("min_neighbors cannot exceed the number of reference rows.")
-    kth_distances = torch.topk(
-        distances.to(dtype=torch.float32),
-        k=int(min_neighbors),
-        dim=1,
-        largest=False,
-    ).values[:, int(min_neighbors) - 1]
-    return kth_distances.max().detach()
-
-
-def _row_ranges(size: int, chunk_size: int) -> range:
-    return range(0, int(size), int(chunk_size))
-
-
-def _merge_smallest_distances(
-    best_distances: torch.Tensor | None,
-    local_distances: torch.Tensor,
-    *,
-    k: int,
-) -> torch.Tensor:
-    if best_distances is None:
-        return local_distances
-    merged = torch.cat((best_distances, local_distances), dim=1)
-    return torch.topk(
-        merged,
-        k=min(int(k), int(merged.shape[1])),
-        dim=1,
-        largest=False,
-        sorted=True,
-    ).values
-
-
-def _smallest_angular_distances_gpu(
-    query: torch.Tensor,
-    reference: torch.Tensor,
-    *,
-    k: int,
-    query_chunk_size: int,
-    reference_chunk_size: int,
-) -> torch.Tensor:
-    """Return each query row's k smallest angular distances using public distance helpers."""
-    _validate_positive_int("k", k)
-    _validate_positive_int("query_chunk_size", query_chunk_size)
-    _validate_positive_int("reference_chunk_size", reference_chunk_size)
-    if int(k) > int(reference.shape[0]):
-        raise ValueError("k cannot exceed the number of reference rows.")
-    chunks: list[torch.Tensor] = []
-    reference = reference.to(dtype=torch.float32)
-    for query_start in _row_ranges(query.shape[0], query_chunk_size):
-        query_stop = min(query_start + int(query_chunk_size), int(query.shape[0]))
-        query_chunk = query[query_start:query_stop].to(dtype=torch.float32)
-        best_distances: torch.Tensor | None = None
-        for reference_start in _row_ranges(reference.shape[0], reference_chunk_size):
-            reference_stop = min(reference_start + int(reference_chunk_size), int(reference.shape[0]))
-            distances = batch_angular_distance(
-                query_chunk,
-                reference[reference_start:reference_stop],
-                query_chunk_size=query_chunk.shape[0],
-                reference_chunk_size=reference_stop - reference_start,
-            )
-            local = torch.topk(
-                distances,
-                k=min(int(k), int(distances.shape[1])),
-                dim=1,
-                largest=False,
-                sorted=True,
-            ).values
-            best_distances = _merge_smallest_distances(best_distances, local, k=int(k))
-        if best_distances is None or int(best_distances.shape[1]) != int(k):
-            raise RuntimeError("failed to compute complete smallest angular distances")
-        chunks.append(best_distances)
-    return torch.cat(chunks, dim=0)
-
-
-def _max_angular_distance_gpu(
-    query: torch.Tensor,
-    reference: torch.Tensor,
-    *,
-    query_chunk_size: int,
-    reference_chunk_size: int,
-) -> torch.Tensor:
-    _validate_positive_int("query_chunk_size", query_chunk_size)
-    _validate_positive_int("reference_chunk_size", reference_chunk_size)
-    maximum = torch.zeros((), device=query.device, dtype=torch.float32)
-    reference = reference.to(dtype=torch.float32)
-    for query_start in _row_ranges(query.shape[0], query_chunk_size):
-        query_stop = min(query_start + int(query_chunk_size), int(query.shape[0]))
-        query_chunk = query[query_start:query_stop].to(dtype=torch.float32)
-        for reference_start in _row_ranges(reference.shape[0], reference_chunk_size):
-            reference_stop = min(reference_start + int(reference_chunk_size), int(reference.shape[0]))
-            distances = batch_angular_distance(
-                query_chunk,
-                reference[reference_start:reference_stop],
-                query_chunk_size=query_chunk.shape[0],
-                reference_chunk_size=reference_stop - reference_start,
-            )
-            maximum = torch.maximum(maximum, distances.max())
-    return maximum
-
-
-def _radius_counts_gpu(
-    query: torch.Tensor,
-    reference: torch.Tensor,
-    radius: torch.Tensor,
-    *,
-    query_chunk_size: int,
-    reference_chunk_size: int,
-) -> torch.Tensor:
-    _validate_positive_int("query_chunk_size", query_chunk_size)
-    _validate_positive_int("reference_chunk_size", reference_chunk_size)
-    counts = torch.zeros((query.shape[0],), device=query.device, dtype=torch.float32)
-    radius_value = radius.to(device=query.device, dtype=torch.float32)
-    reference = reference.to(dtype=torch.float32)
-    for query_start in _row_ranges(query.shape[0], query_chunk_size):
-        query_stop = min(query_start + int(query_chunk_size), int(query.shape[0]))
-        query_chunk = query[query_start:query_stop].to(dtype=torch.float32)
-        chunk_counts = torch.zeros((query_chunk.shape[0],), device=query.device, dtype=torch.float32)
-        for reference_start in _row_ranges(reference.shape[0], reference_chunk_size):
-            reference_stop = min(reference_start + int(reference_chunk_size), int(reference.shape[0]))
-            distances = batch_angular_distance(
-                query_chunk,
-                reference[reference_start:reference_stop],
-                query_chunk_size=query_chunk.shape[0],
-                reference_chunk_size=reference_stop - reference_start,
-            )
-            chunk_counts += (distances <= radius_value).sum(dim=1).to(dtype=torch.float32)
-        counts[query_start:query_stop] = chunk_counts
-    return counts
-
-
-def _round_radius_outward(radius: torch.Tensor) -> torch.Tensor:
-    return torch.nextafter(radius, torch.full_like(radius, float("inf")))
-
-
-def tune_radius_for_target_count_with_min_neighbors_gpu(
-    query: torch.Tensor,
-    reference: torch.Tensor,
-    *,
-    target_count: int,
-    min_neighbors: int = 2,
-    query_chunk_size: int = 512,
-    reference_chunk_size: int = DEFAULT_REFERENCE_CHUNK_SIZE,
-    binary_steps: int = 32,
-) -> torch.Tensor:
-    """Tune a radius for target mean count while guaranteeing min_neighbors rows."""
-    _validate_positive_int("target_count", target_count)
-    _validate_positive_int("min_neighbors", min_neighbors)
-    _validate_positive_int("query_chunk_size", query_chunk_size)
-    _validate_positive_int("reference_chunk_size", reference_chunk_size)
-    if int(min_neighbors) > int(reference.shape[0]):
-        raise ValueError("min_neighbors cannot exceed the number of reference rows.")
-    nearest_distances = _smallest_angular_distances_gpu(
-        query,
-        reference,
-        k=int(min_neighbors),
-        query_chunk_size=query_chunk_size,
-        reference_chunk_size=reference_chunk_size,
-    )
-    low = min_neighbor_radius_lower_bound_from_distances(
-        nearest_distances,
-        min_neighbors=int(min_neighbors),
-    )
-    high = _max_angular_distance_gpu(
-        query,
-        reference,
-        query_chunk_size=query_chunk_size,
-        reference_chunk_size=reference_chunk_size,
-    ).detach()
-    target = float(min(max(int(target_count), int(min_neighbors)), int(reference.shape[0])))
-    if target <= float(min_neighbors):
-        return _round_radius_outward(low)
-    for _ in range(int(binary_steps)):
-        midpoint = (low + high) / 2.0
-        average_count = _radius_counts_gpu(
-            query,
-            reference,
-            midpoint,
-            query_chunk_size=query_chunk_size,
-            reference_chunk_size=reference_chunk_size,
-        ).mean()
-        if float(average_count.detach().cpu()) < target:
-            low = midpoint
-        else:
-            high = midpoint
-    return _round_radius_outward(high)
-
-
-def tune_covariance_valid_radius_ball_layer_radii_gpu(
-    *,
-    cache_entries: Sequence[dict[str, object]],
-    reference_layers: dict[int, torch.Tensor],
-    device: torch.device,
-    target_count: int,
-    min_neighbors: int,
-    reference_chunk_size: int,
-) -> dict[int, torch.Tensor]:
-    """Tune radius-ball radii per layer with covariance-valid neighborhoods."""
-    _validate_positive_int("min_neighbors", min_neighbors)
-    queries_by_layer: dict[int, list[torch.Tensor]] = {}
-    for entry in cache_entries:
-        selected_layers = [int(layer) for layer in entry["selected_layers"]]
-        layer_vectors = torch.as_tensor(entry["layer_vectors"], dtype=torch.float32, device=device)
-        if len(selected_layers) != int(layer_vectors.shape[0]):
-            raise ValueError("selected_layers must align with layer_vectors rows")
-        for offset, layer in enumerate(selected_layers):
-            queries_by_layer.setdefault(layer, []).append(layer_vectors[offset : offset + 1])
-    radii: dict[int, torch.Tensor] = {}
-    for layer, queries in queries_by_layer.items():
-        if layer not in reference_layers:
-            raise KeyError(f"Missing reference layer: {layer}")
-        radii[layer] = tune_radius_for_target_count_with_min_neighbors_gpu(
-            torch.cat(queries, dim=0),
-            reference_layers[layer].to(device=device, dtype=torch.float32),
-            target_count=target_count,
-            min_neighbors=min_neighbors,
-            reference_chunk_size=reference_chunk_size,
-        ).detach()
-    return radii
 
 
 def validate_cuda_visible_devices() -> None:
@@ -630,6 +397,7 @@ def build_variant_feature_frames(
     rank_cap: int,
     reference_chunk_size: int,
     radius_margin: float,
+    min_neighbors: int,
     expected_curve_length: int | None,
 ) -> dict[str, pd.DataFrame]:
     rows_by_variant: dict[str, list[dict[str, object]]] = {variant: [] for variant in variants}
@@ -655,6 +423,7 @@ def build_variant_feature_frames(
                     rank_cap=rank_cap,
                     reference_chunk_size=reference_chunk_size,
                     radius_margin=radius_margin,
+                    min_neighbors=min_neighbors,
                 )
                 first_result = results[variants[0]]
                 if first_result.neighbor_counts is not None:
@@ -694,11 +463,14 @@ def save_radii_json(
         "benchmark": benchmark,
         "benchmark_key": _benchmark_key(benchmark),
         "target_count": int(target_count),
-        "min_neighbors": int(min_neighbors),
+        "support_floor_min_neighbors": int(min_neighbors),
         "reference_chunk_size": int(reference_chunk_size),
         "radius_margin": float(radius_margin),
         "n_tuning_rows": int(n_rows),
         "limit_rows": None if limit_rows is None else int(limit_rows),
+        "base_radii_by_layer": {
+            str(int(layer)): float(radius.detach().cpu()) for layer, radius in sorted(layer_radii.items())
+        },
         "radii_by_layer": {
             str(int(layer)): float(radius.detach().cpu()) for layer, radius in sorted(layer_radii.items())
         },
@@ -781,12 +553,11 @@ def run_comparison(
         raise ValueError("--limit-rows selected zero rows.")
     selected_layers = sorted({int(layer) for entry in working_entries for layer in entry["selected_layers"]})
     reference_layers = load_pooled_reference_layers(pooled_bank_root, model_name, selected_layers, device=device)
-    layer_radii = tune_covariance_valid_radius_ball_layer_radii_gpu(
+    layer_radii = tune_radius_ball_layer_radii_gpu(
         cache_entries=working_entries,
         reference_layers=reference_layers,
         device=device,
         target_count=target_count,
-        min_neighbors=min_neighbors,
         reference_chunk_size=reference_chunk_size,
     )
     radii_path = build_radii_path(output_root=output_root, model_name=model_name, benchmark=benchmark)
@@ -813,6 +584,7 @@ def run_comparison(
         rank_cap=rank_cap,
         reference_chunk_size=reference_chunk_size,
         radius_margin=radius_margin,
+        min_neighbors=min_neighbors,
         expected_curve_length=expected_curve_length,
     )
 
@@ -851,7 +623,7 @@ def run_comparison(
                 "predictions_path": str(paths.predictions_path),
                 "radii_path": str(radii_path),
                 "target_count": int(target_count),
-                "min_neighbors": int(min_neighbors),
+                "support_floor_min_neighbors": int(min_neighbors),
                 "radius_margin": float(radius_margin),
                 "expected_curve_length": expected_curve_length,
             }
