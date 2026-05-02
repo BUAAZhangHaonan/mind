@@ -151,6 +151,30 @@ def build_prefill_cache_entry(
     return payload
 
 
+def _require_finite_first_token_logits(
+    logits: torch.Tensor,
+    *,
+    record: HallucinationRecord,
+    answer_text: str,
+) -> torch.Tensor:
+    finite_mask = torch.isfinite(logits)
+    finite_count = int(finite_mask.sum().item())
+    total_count = int(logits.numel())
+    if finite_count != total_count:
+        context = [
+            f"sample_id={record.sample_id}",
+            f"answer_text={answer_text!r}",
+            f"finite_logits={finite_count}/{total_count}",
+        ]
+        if record.image_path:
+            context.insert(1, f"image_path={record.image_path}")
+        raise RuntimeError(
+            "Generation first_token_logits contain non-finite values; "
+            + ", ".join(context)
+        )
+    return logits
+
+
 def _prepare_cache_value(
     value: object,
     *,
@@ -419,6 +443,11 @@ def extract_prefill_entries(
             generated_ids=generation_output.sequences[batch_index : batch_index + 1],
             prompt_input_ids=model_inputs["input_ids"][batch_index : batch_index + 1],
         )
+        first_token_logits = _require_finite_first_token_logits(
+            generation_output.scores[0][batch_index],
+            record=record,
+            answer_text=answer_text,
+        )
         entries.append(
             build_prefill_cache_entry(
                 record=record,
@@ -426,7 +455,7 @@ def extract_prefill_entries(
                 parsed_answer=parse_yes_no_answer(answer_text),
                 selected_layers=selected_layers,
                 layer_vectors=layer_vectors,
-                first_token_logits=generation_output.scores[0][batch_index],
+                first_token_logits=first_token_logits,
             )
         )
     return entries

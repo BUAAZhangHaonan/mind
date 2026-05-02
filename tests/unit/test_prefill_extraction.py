@@ -844,6 +844,74 @@ def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
     assert torch.equal(entry["first_token_logits"], torch.tensor([0.3, 0.7]))
 
 
+def test_extract_prefill_entry_rejects_non_finite_first_token_logits() -> None:
+    class FakeBatch(dict):
+        def to(self, device: str):
+            self["device"] = device
+            return self
+
+    class FakeWrapper:
+        def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
+            assert questions == ["Is there a dog in the image?"]
+            assert image_paths == ["COCO_val2014_000000000101.jpg"]
+            return FakeBatch(
+                {
+                    "input_ids": torch.tensor([[10, 11, 12]]),
+                    "attention_mask": torch.tensor([[1, 1, 1]]),
+                }
+            ).to(device)
+
+        def decode_generation(self, processor, *, generated_ids: torch.Tensor, prompt_input_ids: torch.Tensor) -> str:
+            assert torch.equal(generated_ids, torch.tensor([[10, 11, 12, 42]]))
+            assert torch.equal(prompt_input_ids, torch.tensor([[10, 11, 12]]))
+            return "Yes"
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            return type(
+                "FakeGenerationOutput",
+                (),
+                {
+                    "sequences": torch.tensor([[10, 11, 12, 42]]),
+                    "scores": [torch.tensor([[float("nan"), 0.7]], dtype=torch.float32)],
+                    "hidden_states": [
+                        tuple(
+                            torch.full((1, 3, 2), fill_value=float(index))
+                            for index in range(5)
+                        )
+                    ],
+                },
+            )()
+
+    record = HallucinationRecord(
+        sample_id="popular-1",
+        image_id=101,
+        image_path="COCO_val2014_000000000101.jpg",
+        question="Is there a dog in the image?",
+        label=1,
+        object_name="dog",
+        split="val",
+        subset="popular",
+        source_dataset="pope",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        extract_prefill_entry(
+            model=FakeModel(),
+            processor="processor",
+            wrapper=FakeWrapper(),
+            record=record,
+            selected_layers=[0, 2],
+            device="cuda:0",
+        )
+
+    message = str(exc_info.value)
+    assert "popular-1" in message
+    assert "COCO_val2014_000000000101.jpg" in message
+    assert "Yes" in message
+    assert "finite_logits=1/2" in message
+
+
 def test_extract_prefill_entries_decode_each_sample_from_true_prompt_length() -> None:
     class FakeBatch(dict):
         def to(self, device: str):
