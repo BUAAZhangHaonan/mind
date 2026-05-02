@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pandas as pd
 import pytest
+import torch
 
 
 RUNNER_PATH = Path(__file__).resolve().parents[2] / "scripts" / "experiments" / "anisotropic_scoring_comparison.py"
@@ -98,6 +100,150 @@ def test_resolve_random_state_uses_auto_heldout_defaults_and_explicit_wins() -> 
 
     with pytest.raises(ValueError, match="Unsupported --random-state"):
         runner.resolve_random_state("qwen3-vl-8b", "object_heldout", "not-an-int")
+
+
+def test_min_neighbor_radius_lower_bound_uses_max_kth_nearest_distance() -> None:
+    runner = _load_runner()
+    distances = torch.tensor(
+        [
+            [0.40, 0.10, 0.30, 0.20],
+            [0.05, 0.80, 0.70, 0.90],
+            [0.11, 0.12, 0.13, 0.14],
+        ],
+        dtype=torch.float32,
+    )
+
+    lower_bound = runner.min_neighbor_radius_lower_bound_from_distances(distances, min_neighbors=2)
+
+    assert lower_bound.item() == pytest.approx(0.70)
+
+
+def test_min_neighbor_radius_lower_bound_rejects_impossible_request() -> None:
+    runner = _load_runner()
+    distances = torch.ones((3, 2), dtype=torch.float32)
+
+    with pytest.raises(ValueError, match="min_neighbors cannot exceed"):
+        runner.min_neighbor_radius_lower_bound_from_distances(distances, min_neighbors=3)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_min_neighbor_radius_tuning_does_not_use_subtask1_private_topk(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = _load_runner()
+
+    class NeighborModuleWithoutPrivateTopk:
+        @staticmethod
+        def _max_angular_distance_gpu(
+            query: torch.Tensor,
+            reference: torch.Tensor,
+            *,
+            query_chunk_size: int,
+            reference_chunk_size: int,
+        ) -> torch.Tensor:
+            distances = runner.batch_angular_distance(
+                query,
+                reference,
+                query_chunk_size=query_chunk_size,
+                reference_chunk_size=reference_chunk_size,
+            )
+            return distances.max()
+
+        @staticmethod
+        def _radius_counts_gpu(
+            query: torch.Tensor,
+            reference: torch.Tensor,
+            radius: torch.Tensor,
+            *,
+            query_chunk_size: int,
+            reference_chunk_size: int,
+        ) -> torch.Tensor:
+            distances = runner.batch_angular_distance(
+                query,
+                reference,
+                query_chunk_size=query_chunk_size,
+                reference_chunk_size=reference_chunk_size,
+            )
+            return (distances <= radius).sum(dim=1).to(dtype=torch.float32)
+
+    monkeypatch.setattr(runner, "_NEIGHBOR", NeighborModuleWithoutPrivateTopk)
+    query = torch.tensor([[1.0, 0.0], [0.0, 1.0]], device="cuda", dtype=torch.float32)
+    reference = torch.tensor(
+        [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+        device="cuda",
+        dtype=torch.float32,
+    )
+
+    radius = runner.tune_radius_for_target_count_with_min_neighbors_gpu(
+        query,
+        reference,
+        target_count=2,
+        min_neighbors=2,
+        query_chunk_size=1,
+        reference_chunk_size=2,
+        binary_steps=2,
+    )
+
+    distances = runner.batch_angular_distance(query, reference, query_chunk_size=1, reference_chunk_size=2)
+    counts = (distances <= radius).sum(dim=1)
+    assert int(counts.min().item()) >= 2
+
+
+def test_run_parser_exposes_min_neighbors_default_and_override() -> None:
+    runner = _load_runner()
+    parser = runner.build_parser()
+
+    default_args = parser.parse_args(
+        [
+            "run",
+            "--cache-path",
+            "cache",
+            "--pooled-bank-root",
+            "bank",
+            "--model-name",
+            "qwen3-vl-8b",
+            "--benchmark",
+            "popular",
+        ]
+    )
+    override_args = parser.parse_args(
+        [
+            "run",
+            "--cache-path",
+            "cache",
+            "--pooled-bank-root",
+            "bank",
+            "--model-name",
+            "qwen3-vl-8b",
+            "--benchmark",
+            "popular",
+            "--min-neighbors",
+            "3",
+        ]
+    )
+
+    assert default_args.min_neighbors == 2
+    assert override_args.min_neighbors == 3
+
+
+def test_save_radii_json_records_min_neighbors(tmp_path: Path) -> None:
+    runner = _load_runner()
+    path = tmp_path / "radii.json"
+
+    runner.save_radii_json(
+        path=path,
+        model_name="qwen3-vl-8b",
+        benchmark="popular",
+        layer_radii={9: torch.tensor(0.25)},
+        target_count=30,
+        min_neighbors=2,
+        reference_chunk_size=128,
+        radius_margin=2e-5,
+        n_rows=4,
+        limit_rows=None,
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["target_count"] == 30
+    assert payload["min_neighbors"] == 2
 
 
 def test_format_ingests_numeric_heldout_baseline_metrics_csv(tmp_path: Path) -> None:
