@@ -30,6 +30,7 @@ from mind.geometry.gpu_anisotropic import (  # noqa: E402
     VARIANT_NAMES,
     compute_multi_variant_scores_for_radius_ball_gpu,
 )
+from mind.geometry.gpu_distances import batch_angular_distance  # noqa: E402
 from mind.geometry.neighbor_selection import DEFAULT_RADIUS_MARGIN  # noqa: E402
 from mind.utils import output_root_lock  # noqa: E402
 
@@ -85,6 +86,12 @@ class ArtifactPaths(NamedTuple):
     predictions_path: Path
 
 
+class FeatureBuildResult(NamedTuple):
+    frames: dict[str, pd.DataFrame]
+    support_floor_trigger_count: int
+    total_query_layer_count: int
+
+
 def _load_neighbor_selection_module():
     path = Path(__file__).resolve().parent / "neighbor_selection_comparison.py"
     spec = importlib.util.spec_from_file_location("neighbor_selection_comparison", path)
@@ -108,7 +115,6 @@ def _load_gpu_detector_module():
 _NEIGHBOR = _load_neighbor_selection_module()
 metadata_row_from_entry = _NEIGHBOR.metadata_row_from_entry
 load_pooled_reference_layers = _NEIGHBOR.load_pooled_reference_layers
-tune_radius_ball_layer_radii_gpu = _NEIGHBOR.tune_radius_ball_layer_radii_gpu
 feature_columns = _NEIGHBOR.feature_columns
 
 
@@ -386,6 +392,116 @@ def _curve_to_feature_row(curve: torch.Tensor, *, expected_curve_length: int | N
     return row
 
 
+def _round_radius_outward(radius: torch.Tensor) -> torch.Tensor:
+    radius_f = radius.detach().to(dtype=torch.float32)
+    return torch.nextafter(
+        radius_f,
+        torch.tensor(float("inf"), dtype=radius_f.dtype, device=radius_f.device),
+    )
+
+
+def _layer_query_vectors(
+    *,
+    cache_entries: Sequence[dict[str, object]],
+    layer: int,
+    device: torch.device,
+) -> torch.Tensor:
+    vectors: list[torch.Tensor] = []
+    for entry in cache_entries:
+        selected_layers = [int(value) for value in entry["selected_layers"]]
+        if int(layer) not in selected_layers:
+            continue
+        offset = selected_layers.index(int(layer))
+        layer_vectors = torch.as_tensor(entry["layer_vectors"], dtype=torch.float32, device=device)
+        vectors.append(layer_vectors[offset])
+    if not vectors:
+        raise ValueError(f"No query vectors found for layer {layer}.")
+    return torch.stack(vectors, dim=0)
+
+
+def tune_radius_for_target_mean_count_gpu(
+    query: torch.Tensor,
+    reference: torch.Tensor,
+    *,
+    target_count: int,
+    query_chunk_size: int = 512,
+    reference_chunk_size: int = DEFAULT_REFERENCE_CHUNK_SIZE,
+    binary_steps: int = 32,
+) -> torch.Tensor:
+    """Tune radius from zero so the mean radius-ball count targets ``target_count``."""
+    _validate_positive_int("target_count", target_count)
+    _validate_positive_int("query_chunk_size", query_chunk_size)
+    _validate_positive_int("reference_chunk_size", reference_chunk_size)
+    _validate_positive_int("binary_steps", binary_steps)
+    if query.ndim != 2 or reference.ndim != 2:
+        raise ValueError("query and reference must be 2D matrices.")
+    if query.shape[0] == 0:
+        raise ValueError("query must contain at least one row.")
+    if reference.shape[0] == 0:
+        raise ValueError("reference must contain at least one row.")
+    if query.shape[1] != reference.shape[1]:
+        raise ValueError("query and reference must have the same feature dimension.")
+    distances = batch_angular_distance(
+        query.to(dtype=torch.float32),
+        reference.to(dtype=torch.float32),
+        query_chunk_size=query_chunk_size,
+        reference_chunk_size=reference_chunk_size,
+    ).detach()
+    low = torch.zeros((), device=distances.device, dtype=torch.float32)
+    high = distances.max().to(dtype=torch.float32)
+    target = float(min(int(target_count), int(reference.shape[0])))
+    for _step in range(int(binary_steps)):
+        midpoint = (low + high) / 2.0
+        mean_count = (distances <= midpoint).sum(dim=1).to(dtype=torch.float32).mean()
+        if float(mean_count.detach().cpu()) < target:
+            low = midpoint
+        else:
+            high = midpoint
+    return _round_radius_outward(high)
+
+
+def tune_subtask2_radius_ball_layer_radii_gpu(
+    *,
+    cache_entries: Sequence[dict[str, object]],
+    reference_layers: dict[int, torch.Tensor],
+    device: torch.device,
+    target_count: int,
+    reference_chunk_size: int,
+) -> dict[int, torch.Tensor]:
+    """Tune Sub-task 2 layer radii by true target mean count, allowing empty balls."""
+    selected_layers = sorted({int(layer) for entry in cache_entries for layer in entry["selected_layers"]})
+    radii: dict[int, torch.Tensor] = {}
+    for layer in selected_layers:
+        if layer not in reference_layers:
+            raise KeyError(f"Missing reference layer: {layer}")
+        query = _layer_query_vectors(cache_entries=cache_entries, layer=layer, device=device)
+        radii[layer] = tune_radius_for_target_mean_count_gpu(
+            query,
+            reference_layers[layer],
+            target_count=target_count,
+            reference_chunk_size=reference_chunk_size,
+        )
+    return radii
+
+
+def _raw_radius_neighbor_count_gpu(
+    query: torch.Tensor,
+    reference: torch.Tensor,
+    *,
+    radius: torch.Tensor,
+    reference_chunk_size: int,
+    radius_margin: float,
+) -> torch.Tensor:
+    distances = batch_angular_distance(
+        query.to(dtype=torch.float32),
+        reference.to(dtype=torch.float32),
+        query_chunk_size=1,
+        reference_chunk_size=reference_chunk_size,
+    )
+    radius_value = radius.to(device=query.device, dtype=torch.float32) + float(radius_margin)
+    return (distances <= radius_value).sum(dim=1).to(dtype=torch.float32)
+
+
 def build_variant_feature_frames(
     *,
     cache_entries: Sequence[dict[str, object]],
@@ -399,8 +515,10 @@ def build_variant_feature_frames(
     radius_margin: float,
     min_neighbors: int,
     expected_curve_length: int | None,
-) -> dict[str, pd.DataFrame]:
+) -> FeatureBuildResult:
     rows_by_variant: dict[str, list[dict[str, object]]] = {variant: [] for variant in variants}
+    support_floor_trigger_count = 0
+    total_query_layer_count = 0
     with torch.inference_mode():
         for entry in cache_entries:
             selected_layers = [int(layer) for layer in entry["selected_layers"]]
@@ -414,6 +532,16 @@ def build_variant_feature_frames(
                     raise KeyError(f"Missing reference layer: {layer}")
                 if layer not in layer_radii:
                     raise KeyError(f"Missing tuned radius for layer: {layer}")
+                raw_count = _raw_radius_neighbor_count_gpu(
+                    layer_vectors[offset : offset + 1],
+                    reference_layers[layer],
+                    radius=layer_radii[layer],
+                    reference_chunk_size=reference_chunk_size,
+                    radius_margin=radius_margin,
+                ).squeeze(0)
+                total_query_layer_count += 1
+                if float(raw_count.detach().cpu()) < float(min_neighbors):
+                    support_floor_trigger_count += 1
                 results = compute_multi_variant_scores_for_radius_ball_gpu(
                     layer_vectors[offset : offset + 1],
                     reference_layers[layer],
@@ -442,7 +570,11 @@ def build_variant_feature_frames(
                     row["min_neighbor_count"] = float(count_tensor.min().detach().cpu())
                     row["max_neighbor_count"] = float(count_tensor.max().detach().cpu())
                 rows_by_variant[variant].append(row)
-    return {variant: pd.DataFrame(rows) for variant, rows in rows_by_variant.items()}
+    return FeatureBuildResult(
+        frames={variant: pd.DataFrame(rows) for variant, rows in rows_by_variant.items()},
+        support_floor_trigger_count=support_floor_trigger_count,
+        total_query_layer_count=total_query_layer_count,
+    )
 
 
 def save_radii_json(
@@ -457,24 +589,28 @@ def save_radii_json(
     radius_margin: float,
     n_rows: int,
     limit_rows: int | None,
+    support_floor_trigger_count: int | None = None,
+    total_query_layer_count: int | None = None,
 ) -> None:
     payload = {
         "model": model_name,
         "benchmark": benchmark,
         "benchmark_key": _benchmark_key(benchmark),
+        "radius_source": "subtask2_mean_count_radius_ball",
         "target_count": int(target_count),
         "support_floor_min_neighbors": int(min_neighbors),
         "reference_chunk_size": int(reference_chunk_size),
         "radius_margin": float(radius_margin),
         "n_tuning_rows": int(n_rows),
         "limit_rows": None if limit_rows is None else int(limit_rows),
-        "base_radii_by_layer": {
-            str(int(layer)): float(radius.detach().cpu()) for layer, radius in sorted(layer_radii.items())
-        },
         "radii_by_layer": {
             str(int(layer)): float(radius.detach().cpu()) for layer, radius in sorted(layer_radii.items())
         },
     }
+    if support_floor_trigger_count is not None:
+        payload["support_floor_trigger_count"] = int(support_floor_trigger_count)
+    if total_query_layer_count is not None:
+        payload["total_query_layer_count"] = int(total_query_layer_count)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -553,13 +689,28 @@ def run_comparison(
         raise ValueError("--limit-rows selected zero rows.")
     selected_layers = sorted({int(layer) for entry in working_entries for layer in entry["selected_layers"]})
     reference_layers = load_pooled_reference_layers(pooled_bank_root, model_name, selected_layers, device=device)
-    layer_radii = tune_radius_ball_layer_radii_gpu(
+    layer_radii = tune_subtask2_radius_ball_layer_radii_gpu(
         cache_entries=working_entries,
         reference_layers=reference_layers,
         device=device,
         target_count=target_count,
         reference_chunk_size=reference_chunk_size,
     )
+
+    feature_result = build_variant_feature_frames(
+        cache_entries=working_entries,
+        reference_layers=reference_layers,
+        layer_radii=layer_radii,
+        variants=variants,
+        device=device,
+        eps=eps,
+        rank_cap=rank_cap,
+        reference_chunk_size=reference_chunk_size,
+        radius_margin=radius_margin,
+        min_neighbors=min_neighbors,
+        expected_curve_length=expected_curve_length,
+    )
+    frames = feature_result.frames
     radii_path = build_radii_path(output_root=output_root, model_name=model_name, benchmark=benchmark)
     save_radii_json(
         path=radii_path,
@@ -572,20 +723,8 @@ def run_comparison(
         radius_margin=radius_margin,
         n_rows=len(working_entries),
         limit_rows=limit_rows,
-    )
-
-    frames = build_variant_feature_frames(
-        cache_entries=working_entries,
-        reference_layers=reference_layers,
-        layer_radii=layer_radii,
-        variants=variants,
-        device=device,
-        eps=eps,
-        rank_cap=rank_cap,
-        reference_chunk_size=reference_chunk_size,
-        radius_margin=radius_margin,
-        min_neighbors=min_neighbors,
-        expected_curve_length=expected_curve_length,
+        support_floor_trigger_count=feature_result.support_floor_trigger_count,
+        total_query_layer_count=feature_result.total_query_layer_count,
     )
 
     rows: list[dict[str, object]] = []
@@ -624,6 +763,8 @@ def run_comparison(
                 "radii_path": str(radii_path),
                 "target_count": int(target_count),
                 "support_floor_min_neighbors": int(min_neighbors),
+                "support_floor_trigger_count": int(feature_result.support_floor_trigger_count),
+                "total_query_layer_count": int(feature_result.total_query_layer_count),
                 "radius_margin": float(radius_margin),
                 "expected_curve_length": expected_curve_length,
             }

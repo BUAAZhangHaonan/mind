@@ -154,17 +154,48 @@ def test_save_radii_json_records_support_floor_and_base_radius(tmp_path: Path) -
         radius_margin=2e-5,
         n_rows=4,
         limit_rows=None,
+        support_floor_trigger_count=3,
+        total_query_layer_count=12,
     )
 
     payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["radius_source"] == "subtask2_mean_count_radius_ball"
     assert payload["target_count"] == 30
     assert payload["support_floor_min_neighbors"] == 2
+    assert payload["support_floor_trigger_count"] == 3
+    assert payload["total_query_layer_count"] == 12
     assert payload["radii_by_layer"] == {"9": pytest.approx(0.25)}
-    assert payload["base_radii_by_layer"] == {"9": pytest.approx(0.25)}
     assert "min_neighbors" not in payload
 
 
-def test_run_comparison_keeps_locked_radius_and_uses_min_neighbors_as_support_floor(
+def test_true_mean_count_radius_can_go_below_old_max_nearest_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = _load_runner()
+    distances = torch.tensor(
+        [
+            [0.10, 0.20, 0.30, 0.40, 0.50],
+            [2.00, 2.10, 2.20, 2.30, 2.40],
+        ],
+        dtype=torch.float32,
+    )
+
+    monkeypatch.setattr(runner, "batch_angular_distance", lambda *_args, **_kwargs: distances)
+
+    radius = runner.tune_radius_for_target_mean_count_gpu(
+        torch.zeros((2, 2), dtype=torch.float32),
+        torch.zeros((5, 2), dtype=torch.float32),
+        target_count=2,
+        query_chunk_size=2,
+        reference_chunk_size=5,
+        binary_steps=32,
+    )
+
+    old_lower_bound = distances.min(dim=1).values.max()
+    counts = (distances <= radius).sum(dim=1).to(dtype=torch.float32)
+    assert float(radius) < float(old_lower_bound)
+    assert float(counts.mean()) == pytest.approx(2.0, abs=0.01)
+
+
+def test_run_comparison_uses_subtask2_mean_count_radius_and_records_support_stats(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -192,14 +223,14 @@ def test_run_comparison_keeps_locked_radius_and_uses_min_neighbors_as_support_fl
         lambda *_args, **_kwargs: {9: torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.float32)},
     )
 
-    def fake_tune_radius_ball_layer_radii_gpu(**kwargs: object) -> dict[int, torch.Tensor]:
+    def fake_tune_subtask2_radius_ball_layer_radii_gpu(**kwargs: object) -> dict[int, torch.Tensor]:
         seen["tune_kwargs"] = kwargs
         return {9: base_radius}
 
-    def fake_build_variant_feature_frames(**kwargs: object) -> dict[str, pd.DataFrame]:
+    def fake_build_variant_feature_frames(**kwargs: object) -> object:
         seen["layer_radii"] = kwargs["layer_radii"]
         seen["variants"] = kwargs["variants"]
-        return {
+        frames = {
             "radius_ball_isotropic": pd.DataFrame(
                 [
                     {
@@ -220,8 +251,18 @@ def test_run_comparison_keeps_locked_radius_and_uses_min_neighbors_as_support_fl
                 ]
             )
         }
+        return runner.FeatureBuildResult(
+            frames=frames,
+            support_floor_trigger_count=1,
+            total_query_layer_count=1,
+        )
 
-    monkeypatch.setattr(runner, "tune_radius_ball_layer_radii_gpu", fake_tune_radius_ball_layer_radii_gpu)
+    assert not hasattr(runner, "tune_radius_ball_layer_radii_gpu")
+    monkeypatch.setattr(
+        runner,
+        "tune_subtask2_radius_ball_layer_radii_gpu",
+        fake_tune_subtask2_radius_ball_layer_radii_gpu,
+    )
     monkeypatch.setattr(runner, "build_variant_feature_frames", fake_build_variant_feature_frames)
     monkeypatch.setattr(
         runner,
@@ -264,10 +305,12 @@ def test_run_comparison_keeps_locked_radius_and_uses_min_neighbors_as_support_fl
 
     radii_payload = json.loads((tmp_path / "radii/qwen3-vl-8b/popular/radii.json").read_text(encoding="utf-8"))
     assert rows[0]["support_floor_min_neighbors"] == 2
-    assert "min_neighbors" not in seen["tune_kwargs"]
+    assert seen["tune_kwargs"]["target_count"] == 30
     assert seen["layer_radii"] == {9: base_radius}
+    assert radii_payload["radius_source"] == "subtask2_mean_count_radius_ball"
     assert radii_payload["support_floor_min_neighbors"] == 2
-    assert radii_payload["base_radii_by_layer"] == {"9": pytest.approx(0.25)}
+    assert radii_payload["support_floor_trigger_count"] == 1
+    assert radii_payload["total_query_layer_count"] == 1
 
 
 def test_format_ingests_numeric_heldout_baseline_metrics_csv(tmp_path: Path) -> None:
