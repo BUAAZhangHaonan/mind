@@ -14,11 +14,13 @@ from mind.extractors import (
     extract_prefill_entries,
     extract_prefill_readout_entries,
     extract_prefill_vectors,
+    prefill_cache_sidecar_path,
     save_prefill_cache_shard,
     select_layer_range,
     select_middle_layers,
     stack_prefill_hidden_states,
 )
+from mind.cache.disk_budget import BudgetExceededError
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "extract_eval_states.py"
@@ -32,6 +34,17 @@ READOUT_SPEC = importlib.util.spec_from_file_location("extract_readout_states", 
 extract_readout_states = importlib.util.module_from_spec(READOUT_SPEC)
 assert READOUT_SPEC is not None and READOUT_SPEC.loader is not None
 READOUT_SPEC.loader.exec_module(extract_readout_states)
+
+VERIFY_CACHE_INTEGRITY_PATH = (
+    Path(__file__).resolve().parents[2] / "scripts" / "experiments" / "verify_cache_integrity.py"
+)
+VERIFY_CACHE_INTEGRITY_SPEC = importlib.util.spec_from_file_location(
+    "verify_cache_integrity",
+    VERIFY_CACHE_INTEGRITY_PATH,
+)
+verify_cache_integrity = importlib.util.module_from_spec(VERIFY_CACHE_INTEGRITY_SPEC)
+assert VERIFY_CACHE_INTEGRITY_SPEC is not None and VERIFY_CACHE_INTEGRITY_SPEC.loader is not None
+VERIFY_CACHE_INTEGRITY_SPEC.loader.exec_module(verify_cache_integrity)
 
 
 def _fake_readout_entry(sample_id: str) -> dict[str, object]:
@@ -157,6 +170,111 @@ def test_save_prefill_cache_shard_writes_torch_payload(tmp_path: Path) -> None:
 
     restored = torch.load(output_path)
     assert restored[0]["sample_id"] == "sample-1"
+
+
+def test_save_prefill_cache_shard_casts_layer_vectors_but_preserves_logits_dtype(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "shard-00000.pt"
+    payload = [
+        {
+            "sample_id": "sample-1",
+            "selected_layers": [1],
+            "layer_vectors": torch.ones((1, 2), dtype=torch.float32),
+            "first_token_logits": torch.tensor([0.2, 0.8], dtype=torch.float32),
+        }
+    ]
+
+    save_prefill_cache_shard(payload, output_path)
+
+    restored = torch.load(output_path, weights_only=False)
+    assert restored[0]["layer_vectors"].dtype == torch.float16
+    assert restored[0]["first_token_logits"].dtype == torch.float32
+
+
+def test_extract_eval_cleans_shard_files_when_actual_size_exceeds_budget(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    records = [
+        HallucinationRecord(
+            sample_id="sample-1",
+            image_id=1,
+            image_path="a.jpg",
+            question="Q?",
+            label=1,
+            object_name="dog",
+            split="val",
+            subset="popular",
+            source_dataset="pope",
+        )
+    ]
+
+    class FakeWrapper:
+        def load_processor(self):
+            return "processor"
+
+        def load_model(self, device: str):
+            return type("FakeModel", (), {"config": type("Config", (), {"num_hidden_layers": 2})()})()
+
+    monkeypatch.setattr(
+        extract_eval_states,
+        "load_yaml_config",
+        lambda path, config_cls: type("Config", (), {"name": "qwen3-vl-8b"})(),
+    )
+    monkeypatch.setattr(extract_eval_states, "create_model_wrapper", lambda config: FakeWrapper())
+    monkeypatch.setattr(extract_eval_states, "load_normalized_records", lambda path: list(records))
+    monkeypatch.setattr(
+        extract_eval_states,
+        "extract_prefill_entries",
+        lambda **kwargs: [
+            {
+                "sample_id": "sample-1",
+                "selected_layers": [0],
+                "layer_vectors": torch.ones((1, 2), dtype=torch.float32),
+                "first_token_logits": torch.ones(64, dtype=torch.float32),
+            }
+        ],
+    )
+
+    with pytest.raises(BudgetExceededError, match="actual usage .* exceeds halt threshold"):
+        extract_eval_states.run_extraction(
+            records_path=tmp_path / "records.jsonl",
+            model_config_path=tmp_path / "model.yaml",
+            output_root=tmp_path / "cache",
+            dataset_name="pope",
+            split="popular",
+            image_root=None,
+            device="cpu",
+            shard_size=1,
+            batch_size=1,
+            selected_layer_count=1,
+            layer_range="middle",
+            max_new_tokens=1,
+            disk_budget="1000",
+        )
+
+    output_path = (
+        tmp_path / "cache" / "qwen3-vl-8b" / "pope" / "popular" / "shard-00000.pt"
+    )
+    assert not output_path.exists()
+    assert not prefill_cache_sidecar_path(output_path).exists()
+
+
+def test_verify_sidecar_reports_malformed_numeric_fields(tmp_path: Path) -> None:
+    output_path = tmp_path / "shard-00000.pt"
+    torch.save([{"sample_id": "sample-1"}], output_path)
+    prefill_cache_sidecar_path(output_path).write_text(
+        '{"num_entries": "not-an-int", "actual_file_bytes": "also-not-an-int"}\n',
+        encoding="utf-8",
+    )
+    errors: list[str] = []
+
+    verify_cache_integrity.verify_sidecar(output_path, record_count=1, errors=errors)
+
+    assert len(errors) == 2
+    assert "num_entries is not an integer" in errors[0]
+    assert "actual_file_bytes is not an integer" in errors[1]
 
 
 def test_build_cache_output_path_uses_expected_layout(tmp_path: Path) -> None:

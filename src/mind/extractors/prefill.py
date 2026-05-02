@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Sequence
 
 import torch
 
 from mind.data import HallucinationRecord
-from mind.models import parse_yes_no_answer
+from mind.models.types import parse_yes_no_answer
 
 
 CHUNKED_CACHE_SHARD_FORMAT = "chunked_cache_shard_v1"
+PREFILL_CACHE_METADATA_VERSION = 1
+
+
+def _dtype_name(dtype: torch.dtype) -> str:
+    return str(dtype).removeprefix("torch.")
 
 
 def run_generation_with_prefill_request(
@@ -144,6 +151,205 @@ def build_prefill_cache_entry(
     return payload
 
 
+def _prepare_cache_value(
+    value: object,
+    *,
+    dtype: torch.dtype,
+    cast_floating_tensors: bool,
+) -> object:
+    if isinstance(value, torch.Tensor):
+        tensor = value.detach().cpu()
+        if cast_floating_tensors and tensor.is_floating_point():
+            return tensor.to(dtype=dtype)
+        return tensor
+    if isinstance(value, dict):
+        return {
+            key: _prepare_cache_value(
+                item,
+                dtype=dtype,
+                cast_floating_tensors=cast_floating_tensors,
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _prepare_cache_value(
+                item,
+                dtype=dtype,
+                cast_floating_tensors=cast_floating_tensors,
+            )
+            for item in value
+        ]
+    if isinstance(value, tuple):
+        return tuple(
+            _prepare_cache_value(
+                item,
+                dtype=dtype,
+                cast_floating_tensors=cast_floating_tensors,
+            )
+            for item in value
+        )
+    return value
+
+
+def cast_prefill_cache_entries(
+    entries: Sequence[dict[str, object]],
+    *,
+    dtype: torch.dtype = torch.float16,
+    cast_all_floating_tensors: bool = False,
+) -> list[dict[str, object]]:
+    cast_entries: list[dict[str, object]] = []
+    for entry in entries:
+        cast_entry: dict[str, object] = {}
+        for key, value in dict(entry).items():
+            cast_entry[key] = _prepare_cache_value(
+                value,
+                dtype=dtype,
+                cast_floating_tensors=cast_all_floating_tensors or key == "layer_vectors",
+            )
+        cast_entries.append(cast_entry)
+    return cast_entries
+
+
+def _tensor_payload_bytes(
+    value: object,
+    *,
+    dtype: torch.dtype,
+    cast_floating_tensors: bool,
+) -> int:
+    if isinstance(value, torch.Tensor):
+        if cast_floating_tensors and value.is_floating_point():
+            return int(value.numel() * torch.empty((), dtype=dtype).element_size())
+        return int(value.numel() * value.element_size())
+    if isinstance(value, dict):
+        return sum(
+            _tensor_payload_bytes(
+                item,
+                dtype=dtype,
+                cast_floating_tensors=cast_floating_tensors,
+            )
+            for item in value.values()
+        )
+    if isinstance(value, (list, tuple)):
+        return sum(
+            _tensor_payload_bytes(
+                item,
+                dtype=dtype,
+                cast_floating_tensors=cast_floating_tensors,
+            )
+            for item in value
+        )
+    return 0
+
+
+def estimate_prefill_cache_tensor_bytes(
+    entries: Sequence[dict[str, object]],
+    *,
+    dtype: torch.dtype = torch.float16,
+    cast_all_floating_tensors: bool = False,
+) -> int:
+    total = 0
+    for entry in entries:
+        for key, value in dict(entry).items():
+            total += _tensor_payload_bytes(
+                value,
+                dtype=dtype,
+                cast_floating_tensors=cast_all_floating_tensors or key == "layer_vectors",
+            )
+    return total
+
+
+def _collect_tensor_metadata(value: object, *, prefix: str = "") -> list[dict[str, object]]:
+    if isinstance(value, torch.Tensor):
+        return [
+            {
+                "field": prefix,
+                "shape": list(value.shape),
+                "dtype": _dtype_name(value.dtype),
+                "numel": int(value.numel()),
+            }
+        ]
+    if isinstance(value, dict):
+        collected: list[dict[str, object]] = []
+        for key, item in sorted(value.items(), key=lambda pair: str(pair[0])):
+            field = str(key) if not prefix else f"{prefix}.{key}"
+            collected.extend(_collect_tensor_metadata(item, prefix=field))
+        return collected
+    if isinstance(value, (list, tuple)):
+        collected = []
+        for index, item in enumerate(value):
+            field = f"{prefix}[{index}]"
+            collected.extend(_collect_tensor_metadata(item, prefix=field))
+        return collected
+    return []
+
+
+def prefill_cache_sidecar_path(path: str | Path) -> Path:
+    shard_path = Path(path)
+    return shard_path.with_suffix(shard_path.suffix + ".json")
+
+
+def _content_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _config_hash(config: dict[str, object]) -> str:
+    payload = json.dumps(config, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _build_prefill_cache_sidecar(
+    *,
+    path: Path,
+    entries: Sequence[dict[str, object]],
+    dtype: torch.dtype,
+    estimated_tensor_bytes: int,
+    actual_file_bytes: int,
+    metadata: dict[str, object] | None,
+) -> dict[str, object]:
+    selected_layers: list[int] = []
+    if entries:
+        selected_layers = [int(layer) for layer in entries[0].get("selected_layers", [])]
+    config = {
+        "dtype": _dtype_name(dtype),
+        "selected_layers": selected_layers,
+        **(metadata or {}),
+    }
+    return {
+        "metadata_version": PREFILL_CACHE_METADATA_VERSION,
+        "format": "prefill_cache_shard_v1",
+        "path": str(path),
+        "num_entries": len(entries),
+        "dtype": _dtype_name(dtype),
+        "selected_layers": selected_layers,
+        "estimated_tensor_bytes": int(estimated_tensor_bytes),
+        "actual_file_bytes": int(actual_file_bytes),
+        "content_sha256": _content_sha256(path),
+        "config": config,
+        "config_hash": _config_hash(config),
+        "tensor_fields": _collect_tensor_metadata(entries[0]) if entries else [],
+    }
+
+
+def write_prefill_cache_sidecar(path: str | Path, sidecar: dict[str, object]) -> Path:
+    sidecar_path = prefill_cache_sidecar_path(path)
+    sidecar_path.write_text(
+        json.dumps(sidecar, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return sidecar_path
+
+
+def cleanup_prefill_cache_shard(path: str | Path) -> None:
+    shard_path = Path(path)
+    prefill_cache_sidecar_path(shard_path).unlink(missing_ok=True)
+    shard_path.unlink(missing_ok=True)
+
+
 def extract_prefill_entry(
     *,
     model: Any,
@@ -226,7 +432,60 @@ def extract_prefill_entries(
     return entries
 
 
-def save_prefill_cache_shard(entries: Sequence[dict[str, object]], output_path: str | Path) -> None:
+def save_prefill_cache_shard(
+    entries: Sequence[dict[str, object]],
+    output_path: str | Path,
+    *,
+    dtype: torch.dtype = torch.float16,
+    cast_all_floating_tensors: bool = False,
+    estimated_tensor_bytes: int | None = None,
+    metadata: dict[str, object] | None = None,
+    verify_readback: bool = True,
+) -> dict[str, object]:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(list(entries), path)
+    cast_entries = cast_prefill_cache_entries(
+        entries,
+        dtype=dtype,
+        cast_all_floating_tensors=cast_all_floating_tensors,
+    )
+    estimated = (
+        estimate_prefill_cache_tensor_bytes(
+            entries,
+            dtype=dtype,
+            cast_all_floating_tensors=cast_all_floating_tensors,
+        )
+        if estimated_tensor_bytes is None
+        else int(estimated_tensor_bytes)
+    )
+    torch.save(cast_entries, path)
+    if verify_readback:
+        restored = torch.load(path, weights_only=False)
+        if not isinstance(restored, list):
+            cleanup_prefill_cache_shard(path)
+            raise ValueError(f"Read-back payload for {path} is not a list")
+        if len(restored) != len(cast_entries):
+            cleanup_prefill_cache_shard(path)
+            raise ValueError(f"Read-back record count mismatch for {path}")
+        if not all(isinstance(entry, dict) for entry in restored):
+            cleanup_prefill_cache_shard(path)
+            raise ValueError(f"Read-back payload for {path} contains non-dict records")
+    sidecar = _build_prefill_cache_sidecar(
+        path=path,
+        entries=cast_entries,
+        dtype=dtype,
+        estimated_tensor_bytes=estimated,
+        actual_file_bytes=path.stat().st_size,
+        metadata=metadata,
+    )
+    sidecar_path = write_prefill_cache_sidecar(path, sidecar)
+    if verify_readback:
+        try:
+            restored_sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            cleanup_prefill_cache_shard(path)
+            raise ValueError(f"Read-back sidecar for {path} is not readable: {exc}") from exc
+        if restored_sidecar.get("content_sha256") != _content_sha256(path):
+            cleanup_prefill_cache_shard(path)
+            raise ValueError(f"Read-back sidecar content hash mismatch for {path}")
+    return sidecar

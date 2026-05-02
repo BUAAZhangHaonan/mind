@@ -8,7 +8,7 @@ from typing import Any, Sequence
 import torch
 
 from mind.data import HallucinationRecord
-from mind.models import parse_yes_no_answer
+from mind.models.types import parse_yes_no_answer
 
 from .prefill import resolve_prefill_hidden_states, run_generation_with_prefill_request
 

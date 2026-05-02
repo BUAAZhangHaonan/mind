@@ -17,8 +17,10 @@ if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
 sys.path.insert(0, repo_src_path)
 
+from mind.cache import BudgetExceededError, DiskBudget
 from mind.config import ModelConfig, load_yaml_config
 from mind.data import HallucinationRecord
+from mind.utils.dtypes import resolve_torch_dtype
 
 
 DEFAULT_PROMPT_TEMPLATE = "Is there a {object_name} in the image? Answer yes or no."
@@ -118,14 +120,18 @@ def run_reference_caching(
     max_new_tokens: int,
     prompt_template: str,
     limit: int = 0,
+    dtype: torch.dtype = torch.float16,
+    disk_budget: str | None = None,
 ) -> list[Path]:
     model_config = load_yaml_config(model_config_path, ModelConfig)
     from mind.extractors import (
+        cleanup_prefill_cache_shard,
+        estimate_prefill_cache_tensor_bytes,
         extract_prefill_entries,
         save_prefill_cache_shard,
         select_layer_range,
     )
-    from mind.models import create_model_wrapper
+    from mind.models.factory import create_model_wrapper
 
     wrapper = create_model_wrapper(model_config)
     processor = wrapper.load_processor()
@@ -145,6 +151,7 @@ def run_reference_caching(
     if limit > 0:
         records = records[:limit]
 
+    budget = None if disk_budget is None else DiskBudget(output_root, disk_budget)
     output_paths: list[Path] = []
     with torch.inference_mode():
         for shard_index, shard_records in enumerate(
@@ -170,7 +177,38 @@ def run_reference_caching(
                 split=split,
                 shard_index=shard_index,
             )
-            save_prefill_cache_shard(entries, output_path)
+            estimated_bytes = estimate_prefill_cache_tensor_bytes(entries, dtype=dtype)
+            if budget is not None:
+                budget.allocate(estimated_bytes, label=str(output_path))
+            sidecar = save_prefill_cache_shard(
+                entries,
+                output_path,
+                dtype=dtype,
+                estimated_tensor_bytes=estimated_bytes,
+                metadata={
+                    "model_name": model_config.name,
+                    "dataset_name": dataset_name,
+                    "split": split,
+                    "shard_index": shard_index,
+                    "selected_layers": selected_layers,
+                },
+            )
+            actual_bytes = int(sidecar["actual_file_bytes"])
+            if budget is not None:
+                try:
+                    budget.record_actual(
+                        estimated_bytes=estimated_bytes,
+                        actual_bytes=actual_bytes,
+                        label=str(output_path),
+                    )
+                except BudgetExceededError:
+                    cleanup_prefill_cache_shard(output_path)
+                    raise
+            print(
+                f"{output_path}: wrote {actual_bytes} bytes "
+                f"(estimated tensor payload {estimated_bytes} bytes)",
+                file=sys.stderr,
+            )
             output_paths.append(output_path)
     return output_paths
 
@@ -193,6 +231,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-new-tokens", type=int, default=1)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--prompt-template", default=DEFAULT_PROMPT_TEMPLATE)
+    parser.add_argument(
+        "--dtype",
+        default="float16",
+        help="Floating tensor dtype to store in cache shards. Default: float16.",
+    )
+    parser.add_argument(
+        "--disk-budget",
+        default=None,
+        help=(
+            "Maximum total bytes allowed under --output-root, including existing files. "
+            "Accepts values like 500MB, 20GiB, or raw bytes. Omit for no limit."
+        ),
+    )
     return parser
 
 
@@ -227,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
         max_new_tokens=args.max_new_tokens,
         prompt_template=args.prompt_template,
         limit=args.limit,
+        dtype=resolve_torch_dtype(args.dtype),
+        disk_budget=args.disk_budget,
     )
     for output_path in output_paths:
         print(output_path)
