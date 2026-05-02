@@ -21,6 +21,10 @@ DEFAULT_K = 30
 DEFAULT_REFERENCE_CHUNK_SIZE = 16_384
 DEFAULT_QUERY_CHUNK_SIZE = 512
 DEFAULT_ACOS_EPS = 1e-7
+# Fixed absolute angular tolerance for applying a tuned closed radius ball.
+# Row-by-row CUDA scoring can differ slightly from batch radius tuning, so the
+# returned shared radius stays unchanged while the membership mask gets margin.
+DEFAULT_RADIUS_MARGIN = 2e-5
 
 
 @dataclass(frozen=True)
@@ -270,10 +274,12 @@ def _radius_scores_gpu(
     radius: torch.Tensor,
     query_chunk_size: int,
     reference_chunk_size: int,
+    radius_margin: float = DEFAULT_RADIUS_MARGIN,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     values = torch.empty((query.shape[0],), device=query.device, dtype=torch.float32)
     counts = torch.empty((query.shape[0],), device=query.device, dtype=torch.float32)
     radius_value = radius.to(device=query.device, dtype=torch.float32)
+    radius_limit = radius_value + float(radius_margin)
     for query_start in _ranges(query.shape[0], query_chunk_size):
         query_stop = min(query_start + int(query_chunk_size), query.shape[0])
         query_chunk = query[query_start:query_stop].to(dtype=torch.float32)
@@ -282,7 +288,7 @@ def _radius_scores_gpu(
         for reference_start in _ranges(reference.shape[0], reference_chunk_size):
             reference_stop = min(reference_start + int(reference_chunk_size), reference.shape[0])
             distances = _angular_distance(query_chunk, reference[reference_start:reference_stop].to(dtype=torch.float32))
-            mask = distances <= radius_value
+            mask = distances <= radius_limit
             sums += torch.where(mask, distances, torch.zeros_like(distances)).sum(dim=1)
             chunk_counts += mask.sum(dim=1).to(dtype=torch.float32)
         if torch.any(chunk_counts == 0):

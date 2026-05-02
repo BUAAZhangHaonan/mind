@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 
 from mind.geometry.neighbor_selection import (
+    DEFAULT_RADIUS_MARGIN,
     METHOD_NAMES,
     compute_neighbor_feature_row_gpu,
     compute_neighbor_scores_gpu,
@@ -207,6 +208,66 @@ def test_radius_tuning_rounds_binary_search_radius_outward() -> None:
 
     assert radius > maximum_boundary
     torch.testing.assert_close(radius, expected_radius, atol=0.0, rtol=0.0)
+
+
+def test_radius_ball_scoring_includes_fixed_absolute_margin_only() -> None:
+    device = _cuda_or_skip()
+    radius = 0.1
+    within_margin = radius + DEFAULT_RADIUS_MARGIN / 2.0
+    beyond_margin = radius + DEFAULT_RADIUS_MARGIN * 2.0
+    query = torch.tensor([[1.0, 0.0]], device=device)
+    reference = torch.tensor(
+        [
+            [torch.cos(torch.tensor(within_margin)), torch.sin(torch.tensor(within_margin))],
+            [torch.cos(torch.tensor(beyond_margin)), torch.sin(torch.tensor(beyond_margin))],
+        ],
+        device=device,
+    )
+
+    result = compute_neighbor_scores_gpu(
+        query,
+        reference,
+        method="radius_ball",
+        radius=torch.tensor(radius, device=device),
+        query_chunk_size=1,
+        reference_chunk_size=1,
+    )
+
+    assert result.radius is not None
+    assert result.neighbor_counts is not None
+    torch.testing.assert_close(result.radius.cpu(), torch.tensor(radius), atol=0.0, rtol=0.0)
+    torch.testing.assert_close(result.neighbor_counts.cpu(), torch.tensor([1.0]), atol=0.0, rtol=0.0)
+    assert result.values.item() == pytest.approx(within_margin, abs=1e-6)
+
+
+def test_qwen_popular_layer21_entry163_radius_ball_margin_regression() -> None:
+    device = _cuda_or_skip()
+    cache_path = Path("outputs/round2_2026_04/cache/qwen3-vl-8b/pope/popular/shard-00001.pt")
+    bank_path = Path("outputs/gpu_round_2026_04/query_local_bank/pooled_banks/popular/qwen3-vl-8b/layer-21.pt")
+    if not cache_path.exists() or not bank_path.exists():
+        pytest.skip("qwen popular cache or pooled layer-21 bank is absent")
+
+    shard = torch.load(cache_path, map_location="cpu", weights_only=True)
+    entry = shard[35]
+    assert entry["sample_id"] == "164"
+    selected_layers = [int(layer) for layer in entry["selected_layers"]]
+    layer_offset = selected_layers.index(21)
+    query = entry["layer_vectors"][layer_offset : layer_offset + 1].to(device=device, dtype=torch.float32)
+    reference = torch.load(bank_path, map_location="cpu", weights_only=True).to(device=device, dtype=torch.float32)
+    nearest = _cpu_angular(query, reference).min().to(device=device)
+    fixed_radius = nearest - DEFAULT_RADIUS_MARGIN / 2.0
+
+    result = compute_neighbor_scores_gpu(
+        query,
+        reference,
+        method="radius_ball",
+        radius=fixed_radius,
+        query_chunk_size=1,
+        reference_chunk_size=16_384,
+    )
+
+    assert result.neighbor_counts is not None
+    assert result.neighbor_counts.item() >= 1
 
 
 def test_runner_radius_ball_uses_one_shared_radius_per_layer_over_eval_batch() -> None:
