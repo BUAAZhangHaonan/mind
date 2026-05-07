@@ -7,6 +7,7 @@ import subprocess
 from types import ModuleType, SimpleNamespace
 
 import pytest
+import torch
 
 
 def _load_script(path: str, name: str) -> ModuleType:
@@ -39,6 +40,72 @@ def _record(sample_id: str = "sample-001", image_id: int = 1) -> dict[str, objec
         "subset": "popular",
         "source_dataset": "pope",
     }
+
+
+def _closure_record(dataset_name: str, subset: str, sample_id: str, image_id: int) -> dict[str, object]:
+    row = _record(sample_id, image_id)
+    row["source_dataset"] = dataset_name
+    row["subset"] = subset
+    row["split"] = subset
+    return row
+
+
+def _write_complete_stage0_config(path: Path, *, output_root: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "mode: full",
+                f"output_root: {output_root}",
+                "device: cpu",
+                "dtype: float16",
+                "models:",
+                "  - qwen3-vl-8b",
+                "  - internvl3.5-8b",
+                "datasets:",
+                "  - family: pope",
+                "    subsets: [popular, random, adversarial]",
+                "  - family: repope",
+                "    subsets: [popular, random, adversarial]",
+                "  - family: dash-b",
+                "    subset: all",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_normalized_closure_record(
+    repo_root: Path,
+    *,
+    dataset_name: str,
+    subset: str,
+    sample_id: str,
+    image_id: int,
+) -> None:
+    _write_jsonl(
+        repo_root
+        / "outputs"
+        / "round2_2026_04"
+        / "normalized"
+        / dataset_name
+        / f"{subset}.jsonl",
+        [_closure_record(dataset_name, subset, sample_id, image_id)],
+    )
+
+
+def _write_raw_pope_style_record(repo_root: Path, *, dataset_name: str, subset: str) -> None:
+    _write_jsonl(
+        repo_root / "data" / dataset_name / f"{subset}.jsonl",
+        [
+            {
+                "question_id": 1,
+                "image": "COCO_val2014_000000310196.jpg",
+                "text": "Is there a snowboard in the image?",
+                "label": "yes",
+            }
+        ],
+    )
 
 
 def test_extractor_uses_full_layer_range_from_loaded_model_config(
@@ -75,16 +142,17 @@ def test_extractor_uses_full_layer_range_from_loaded_model_config(
     def fake_extract_prefill_entries(**kwargs: object) -> list[dict[str, object]]:
         captured["selected_layers"] = list(kwargs["selected_layers"])  # type: ignore[index]
         captured["max_new_tokens"] = kwargs["max_new_tokens"]
-        captured["record_batches"].append(kwargs["records"])  # type: ignore[index, union-attr]
+        records = kwargs["records"]  # type: ignore[index]
+        captured["record_batches"].append(records)  # type: ignore[union-attr]
         return [
             {
-                "sample_id": "sample-001",
+                "sample_id": record.sample_id,
+                "source_dataset": record.source_dataset,
+                "subset": record.subset,
+                "split": record.split,
                 "selected_layers": list(kwargs["selected_layers"]),  # type: ignore[index]
-            },
-            {
-                "sample_id": "sample-002",
-                "selected_layers": list(kwargs["selected_layers"]),  # type: ignore[index]
-            },
+            }
+            for record in records  # type: ignore[union-attr]
         ]
 
     def fake_save_prefill_cache_shard(
@@ -125,6 +193,9 @@ def test_extractor_uses_full_layer_range_from_loaded_model_config(
     assert captured["selected_layers"] == [0, 1, 2, 3]
     assert captured["max_new_tokens"] == 1
     assert sum(len(batch) for batch in captured["record_batches"]) == 2  # type: ignore[arg-type]
+    entries = captured["entries"]  # type: ignore[assignment]
+    assert [entry.get("model_name") for entry in entries] == ["tiny-model", "tiny-model"]  # type: ignore[union-attr]
+    assert [entry.get("dataset_name") for entry in entries] == ["pope", "pope"]  # type: ignore[union-attr]
     assert paths == [tmp_path / "cache" / "tiny-model" / "pope" / "popular" / "shard-00000.pt"]
     save_kwargs = captured["save_kwargs"]  # type: ignore[assignment]
     assert save_kwargs["cast_all_floating_tensors"] is False  # type: ignore[index]
@@ -135,6 +206,7 @@ def test_extractor_uses_full_layer_range_from_loaded_model_config(
     assert metadata["selected_layers"] == [0, 1, 2, 3]
     assert metadata["num_selected_layers"] == 4
     assert metadata["records_path"] == str(records_path)
+    assert metadata["source_dataset"] == "pope"
 
 
 def test_extractor_dry_run_resolves_layers_without_loading_model(
@@ -265,7 +337,19 @@ def test_orchestrator_writes_passed_smoke_summary(
         "validate_stage0_cache",
         lambda *_args, **_kwargs: {
             "status": "passed",
-            "shards": [{"path": str(smoke_path)}],
+            "shards": [
+                {
+                    "path": str(smoke_path),
+                    "model_name": "qwen3-vl-8b",
+                    "dataset_name": "pope",
+                    "source_dataset": "pope",
+                    "subset": "popular",
+                    "split": "popular",
+                    "status": "passed",
+                    "errors": [],
+                    "num_entries": 2,
+                }
+            ],
             "total_entries": 2,
             "errors": [],
         },
@@ -298,11 +382,7 @@ def test_orchestrator_writes_passed_smoke_summary(
     captured = capsys.readouterr()
     expected_full_run_command = (
         "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
-        f"--output-root {output_root} "
-        "--models qwen3-vl-8b internvl3.5-8b "
-        "--datasets pope "
-        "--subsets popular random adversarial "
-        "--device cpu --dtype float16 --full-run"
+        "--config configs/v2/stage0/stage0_complete.yaml"
     )
     assert captured.out == (
         "Smoke Stage 0 passed. Full-run command:\n"
@@ -310,7 +390,7 @@ def test_orchestrator_writes_passed_smoke_summary(
     )
     summary_path = output_root / "manifests" / "stage0_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    assert set(summary) == {
+    old_required_fields = {
         "stage",
         "status",
         "git_commit",
@@ -323,17 +403,113 @@ def test_orchestrator_writes_passed_smoke_summary(
         "blocking_issues",
         "next_recommended_commands",
     }
+    closure_required_fields = {
+        "split_manifests",
+        "required_cache_matrix",
+        "completed_cache_matrix",
+        "missing_cache_matrix",
+        "cache_label_balance",
+    }
+    assert old_required_fields <= set(summary)
+    assert closure_required_fields <= set(summary)
     assert summary["stage"] == "stage0"
     assert summary["status"] == "passed"
     assert summary["git_commit"] == "deadbeef"
     assert summary["models_checked"] == ["qwen3-vl-8b"]
     assert summary["datasets_checked"] == ["pope/popular"]
     assert summary["smoke_cache_paths"] == [str(smoke_path)]
+    assert summary["audit_outputs"] == [
+        str(output_root / "audit" / "dataset_audit.csv"),
+        str(output_root / "audit" / "label_balance.csv"),
+        str(output_root / "audit" / "object_name_audit.csv"),
+        str(output_root / "audit" / "sample_overlap_audit.csv"),
+    ]
     assert summary["blocking_issues"] == []
     assert summary["split_manifest"] == str(output_root / "manifests" / "split_manifest.json")
+    assert summary["split_manifests"] == [
+        str(output_root / "manifests" / "split_manifest_pope_popular.json"),
+        str(output_root / "manifests" / "split_manifest.json"),
+    ]
     assert summary["cache_manifest"] == str(output_root / "manifests" / "cache_manifest.json")
+    expected_cache_matrix = [
+        {
+            "model_name": "qwen3-vl-8b",
+            "dataset_name": "pope",
+            "source_dataset": "pope",
+            "subset": "popular",
+            "expected_num_records": 2,
+        }
+    ]
+    assert summary["required_cache_matrix"] == expected_cache_matrix
+    assert summary["completed_cache_matrix"] == [
+        {**expected_cache_matrix[0], "cache_num_entries": 2}
+    ]
+    assert summary["missing_cache_matrix"] == []
+    assert summary["cache_label_balance"] == []
     assert summary["next_recommended_commands"] == [expected_full_run_command]
     assert (output_root / "logs" / "stage0_run.log").exists()
+
+
+def test_cache_label_balance_summary_uses_cache_schema_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_cache_label_schema")
+    dataset_path = tmp_path / "pope" / "popular.jsonl"
+    cache_root = tmp_path / "cache"
+    _write_jsonl(
+        dataset_path,
+        [
+            {**_record("gt-yes", 1), "label": 1},
+            {**_record("gt-no", 2), "label": 0},
+        ],
+    )
+    shard_path = cache_root / "model-a" / "pope" / "popular" / "shard-00000.pt"
+    shard_path.parent.mkdir(parents=True)
+    torch.save(
+        [
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "gt-yes",
+                "parsed_answer": 0,
+            },
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "gt-no",
+                "parsed_answer": 1,
+            },
+        ],
+        shard_path,
+    )
+
+    rows = module.cache_label_balance_summary(
+        [module.DatasetSpec("pope", "popular", dataset_path)],
+        cache_root=cache_root,
+        model_specs=[{"model_name": "model-a"}],
+    )
+
+    assert rows == [
+        {
+            "model_name": "model-a",
+            "dataset_name": "pope",
+            "subset": "popular",
+            "num_entries": 2,
+            "num_gt_yes": 1,
+            "num_gt_no": 1,
+            "num_parsed_yes": 1,
+            "num_parsed_no": 1,
+            "num_parsed_none": 0,
+            "num_correct": 0,
+            "num_hard_hallucination": 1,
+            "num_false_negative_error": 1,
+            "num_primary_population": 1,
+            "hallucination_rate_in_primary_population": "1",
+        }
+    ]
 
 
 def test_orchestrator_audits_discovered_specs_but_extracts_requested_specs(
@@ -374,7 +550,19 @@ def test_orchestrator_audits_discovered_specs_but_extracts_requested_specs(
         "validate_stage0_cache",
         lambda *_args, **_kwargs: {
             "status": "passed",
-            "shards": [{"path": str(smoke_path)}],
+            "shards": [
+                {
+                    "path": str(smoke_path),
+                    "model_name": "qwen3-vl-8b",
+                    "dataset_name": "pope",
+                    "source_dataset": "pope",
+                    "subset": "popular",
+                    "split": "popular",
+                    "status": "passed",
+                    "errors": [],
+                    "num_entries": 2,
+                }
+            ],
             "total_entries": 2,
             "errors": [],
         },
@@ -496,13 +684,94 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
     assert plan["summary"]["next_recommended_commands"] == [
         (
             "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
-            f"--output-root {output_root} "
-            "--models qwen3-vl-8b internvl3.5-8b "
-            "--datasets pope "
-            "--subsets popular random adversarial "
-            "--device cpu --dtype float16 --full-run"
+            "--config configs/v2/stage0/stage0_complete.yaml"
         )
     ]
+
+
+def test_orchestrator_dry_run_plans_repope_and_dash_b_materialization_without_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_dry_materialization")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    image_root = repo_root / "data" / "coco" / "val2014"
+    image_root.mkdir(parents=True)
+    (image_root / "COCO_val2014_000000310196.jpg").write_bytes(b"")
+    for dataset_name in ("pope", "repope"):
+        for subset in ("popular", "random", "adversarial"):
+            _write_raw_pope_style_record(repo_root, dataset_name=dataset_name, subset=subset)
+    dash_images = repo_root / "data" / "dash_b" / "images"
+    dash_images.mkdir(parents=True)
+    (dash_images / "dash_benchmark_neg.json").write_text(
+        json.dumps({"coco": {"toaster": ["COCO_val2014_000000000314.jpg"]}}),
+        encoding="utf-8",
+    )
+    (dash_images / "dash_benchmark_pos.json").write_text(
+        json.dumps({"coco": {"dog": ["COCO_val2014_000000000042.jpg"]}}),
+        encoding="utf-8",
+    )
+
+    def fail_stage0_write_or_extraction(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("dry-run must not call write-heavy Stage 0 operations")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "write_split_manifest", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "run_extraction", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_write_or_extraction)
+
+    config_path = tmp_path / "stage0.yaml"
+    _write_complete_stage0_config(config_path, output_root=output_root)
+    args = module.parse_args(["--config", str(config_path), "--dry-run"])
+
+    exit_code = module.run_orchestration(args, repo_root=repo_root)
+
+    assert exit_code == 0
+    assert not output_root.exists()
+    repope_output = (
+        repo_root
+        / "outputs"
+        / "round2_2026_04"
+        / "normalized"
+        / "repope"
+        / "random.jsonl"
+    )
+    dash_b_output = (
+        repo_root
+        / "outputs"
+        / "round2_2026_04"
+        / "normalized"
+        / "dash-b"
+        / "all.jsonl"
+    )
+    assert not repope_output.exists()
+    assert not dash_b_output.exists()
+    plan = json.loads(capsys.readouterr().out)
+    materializations = {
+        (row["dataset_name"], row["subset"]): row
+        for row in plan["materializations"]
+    }
+    assert len(materializations) == 7
+    assert materializations[("repope", "random")] == {
+        "dataset_name": "repope",
+        "subset": "random",
+        "source_path": str(repo_root / "data" / "repope" / "random.jsonl"),
+        "output_path": str(repope_output),
+        "record_count": 1,
+        "status": "planned",
+    }
+    assert materializations[("dash-b", "all")] == {
+        "dataset_name": "dash-b",
+        "subset": "all",
+        "source_path": str(repo_root / "data" / "dash_b"),
+        "output_path": str(dash_b_output),
+        "record_count": 2,
+        "status": "planned",
+    }
 
 
 def test_orchestrator_writes_failed_summary_for_missing_required_dataset(
@@ -582,7 +851,7 @@ def test_orchestrator_fails_before_extraction_when_pope_image_root_is_missing(
     assert "Image root for pope is missing" in summary["blocking_issues"][0]
 
 
-def test_full_run_fails_on_raw_random_before_stage0_outputs(
+def test_full_run_materializes_raw_random_before_stage0_outputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -591,8 +860,36 @@ def test_full_run_fails_on_raw_random_before_stage0_outputs(
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "v2_stage0"
     normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
-    _write_jsonl(normalized_root / "popular.jsonl", [_record("sample-001", 1)])
-    _write_jsonl(normalized_root / "adversarial.jsonl", [_record("sample-002", 2)])
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="pope",
+        subset="popular",
+        sample_id="sample-001",
+        image_id=1,
+    )
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="pope",
+        subset="adversarial",
+        sample_id="sample-002",
+        image_id=2,
+    )
+    for dataset_name in ("repope",):
+        for index, subset in enumerate(("popular", "random", "adversarial"), start=3):
+            _write_normalized_closure_record(
+                repo_root,
+                dataset_name=dataset_name,
+                subset=subset,
+                sample_id=f"{dataset_name}-{subset}",
+                image_id=index,
+            )
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="dash-b",
+        subset="all",
+        sample_id="dash-b-all",
+        image_id=6,
+    )
     _write_jsonl(
         repo_root / "data" / "pope" / "random.jsonl",
         [
@@ -604,46 +901,49 @@ def test_full_run_fails_on_raw_random_before_stage0_outputs(
             }
         ],
     )
-    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+    image_root = repo_root / "data" / "coco" / "val2014"
+    image_root.mkdir(parents=True)
+    (image_root / "COCO_val2014_000000310196.jpg").write_bytes(b"")
 
-    def fail_stage0_side_effect(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("full-run input validation must run before Stage 0 side effects")
+    def stop_after_materialization(specs: object, **_kwargs: object) -> object:
+        assert (normalized_root / "random.jsonl").exists()
+        assert [
+            spec.path
+            for spec in specs  # type: ignore[attr-defined]
+            if spec.dataset_name == "pope" and spec.subset == "random"
+        ] == [
+            normalized_root / "random.jsonl"
+        ]
+        raise RuntimeError("stop after raw materialization")
 
     monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
     monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
-    monkeypatch.setattr(module, "run_audit", fail_stage0_side_effect)
-    monkeypatch.setattr(module, "write_split_manifest", fail_stage0_side_effect)
-    monkeypatch.setattr(module, "run_extraction", fail_stage0_side_effect)
-    monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "run_audit", stop_after_materialization)
+    monkeypatch.setattr(module, "write_split_manifest", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module, "run_extraction", lambda **_kwargs: [])
+    monkeypatch.setattr(module, "validate_stage0_cache", lambda *_args, **_kwargs: {})
 
-    args = module.parse_args(
-        [
-            "--output-root",
-            str(output_root),
-            "--models",
-            "qwen3-vl-8b",
-            "--datasets",
-            "pope",
-            "--subsets",
-            "popular",
-            "random",
-            "adversarial",
-            "--device",
-            "cpu",
-            "--dtype",
-            "float16",
-            "--full-run",
-        ]
-    )
+    config_path = tmp_path / "stage0.yaml"
+    _write_complete_stage0_config(config_path, output_root=output_root)
+    args = module.parse_args(["--config", str(config_path)])
 
     exit_code = module.run_orchestration(args, repo_root=repo_root)
 
     assert exit_code != 0
-    assert not output_root.exists()
+    written = json.loads((normalized_root / "random.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert written == {
+        "image_id": 310196,
+        "image_path": "COCO_val2014_000000310196.jpg",
+        "label": 1,
+        "object_name": "snowboard",
+        "question": "Is there a snowboard in the image?",
+        "sample_id": "1",
+        "source_dataset": "pope",
+        "split": "random",
+        "subset": "random",
+    }
     captured = capsys.readouterr()
-    assert "Normalized extraction-ready dataset is missing for full-run: pope/random" in captured.err
-    assert "raw file exists" in captured.err
-    assert "full-run does not accept raw POPE files" in captured.err
+    assert "stop after raw materialization" in captured.err
 
 
 def test_full_run_fails_on_missing_random_before_stage0_outputs(
@@ -655,8 +955,36 @@ def test_full_run_fails_on_missing_random_before_stage0_outputs(
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "v2_stage0"
     normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
-    _write_jsonl(normalized_root / "popular.jsonl", [_record("sample-001", 1)])
-    _write_jsonl(normalized_root / "adversarial.jsonl", [_record("sample-002", 2)])
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="pope",
+        subset="popular",
+        sample_id="sample-001",
+        image_id=1,
+    )
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="pope",
+        subset="adversarial",
+        sample_id="sample-002",
+        image_id=2,
+    )
+    for dataset_name in ("repope",):
+        for index, subset in enumerate(("popular", "random", "adversarial"), start=3):
+            _write_normalized_closure_record(
+                repo_root,
+                dataset_name=dataset_name,
+                subset=subset,
+                sample_id=f"{dataset_name}-{subset}",
+                image_id=index,
+            )
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="dash-b",
+        subset="all",
+        sample_id="dash-b-all",
+        image_id=6,
+    )
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
 
     def fail_stage0_side_effect(*_args: object, **_kwargs: object) -> object:
@@ -669,25 +997,9 @@ def test_full_run_fails_on_missing_random_before_stage0_outputs(
     monkeypatch.setattr(module, "run_extraction", fail_stage0_side_effect)
     monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_side_effect)
 
-    args = module.parse_args(
-        [
-            "--output-root",
-            str(output_root),
-            "--models",
-            "qwen3-vl-8b",
-            "--datasets",
-            "pope",
-            "--subsets",
-            "popular",
-            "random",
-            "adversarial",
-            "--device",
-            "cpu",
-            "--dtype",
-            "float16",
-            "--full-run",
-        ]
-    )
+    config_path = tmp_path / "stage0.yaml"
+    _write_complete_stage0_config(config_path, output_root=output_root)
+    args = module.parse_args(["--config", str(config_path)])
 
     exit_code = module.run_orchestration(args, repo_root=repo_root)
 

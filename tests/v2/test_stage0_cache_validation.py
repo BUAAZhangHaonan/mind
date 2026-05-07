@@ -27,6 +27,11 @@ def _load_script() -> ModuleType:
 
 def _base_entry(**overrides: object) -> dict[str, object]:
     entry: dict[str, object] = {
+        "model_name": "tiny-model",
+        "dataset_name": "pope",
+        "source_dataset": "pope",
+        "subset": "popular",
+        "split": "encoder_train",
         "sample_id": "sample-001",
         "image_id": "image-001",
         "image_path": "images/000001.jpg",
@@ -54,6 +59,7 @@ def _base_sidecar(**overrides: object) -> dict[str, object]:
         "model_id": "org/tiny-model",
         "model_family": "tiny",
         "dataset_name": "pope",
+        "source_dataset": "pope",
         "subset": "popular",
         "split": "encoder_train",
         "total_layers": 2,
@@ -83,9 +89,22 @@ def _write_shard(
 ) -> Path:
     cache_root.mkdir(parents=True, exist_ok=True)
     shard_path = cache_root / name
-    payload = [_base_entry()] if entries is None else entries
+    base_sidecar = _base_sidecar() if sidecar is None else sidecar
+    payload = (
+        [
+            _base_entry(
+                model_name=base_sidecar["model_name"],
+                dataset_name=base_sidecar["dataset_name"],
+                source_dataset=base_sidecar.get("source_dataset", "pope"),
+                subset=base_sidecar["subset"],
+                split=base_sidecar["split"],
+            )
+        ]
+        if entries is None
+        else entries
+    )
     torch.save(payload, shard_path)
-    sidecar_payload = _base_sidecar(num_entries=len(payload)) if sidecar is None else sidecar
+    sidecar_payload = {**base_sidecar, "num_entries": len(payload)}
     (cache_root / f"{name}.json").write_text(
         json.dumps(sidecar_payload, indent=2) + "\n",
         encoding="utf-8",
@@ -117,11 +136,39 @@ def test_valid_shard_passes_and_writes_manifest(tmp_path: Path) -> None:
     shard = manifest["shards"][0]
     assert shard["path"] == str(cache_root / "shard-00000.pt")
     assert shard["sidecar_path"] == str(cache_root / "shard-00000.pt.json")
+    assert shard["model_name"] == "tiny-model"
+    assert shard["dataset_name"] == "pope"
+    assert shard["source_dataset"] == "pope"
     assert shard["num_entries"] == 1
     assert shard["hidden_dim"] == 3
     assert shard["total_layers"] == 2
     assert shard["selected_layers"] == [0, 1]
     assert shard["errors"] == []
+
+
+def test_missing_row_level_model_and_dataset_metadata_fails(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    entry = _base_entry()
+    del entry["model_name"]
+    del entry["dataset_name"]
+    _write_shard(cache_root, entries=[entry])
+
+    manifest = _assert_validation_fails(cache_root, "model_name")
+
+    assert manifest["status"] == "failed"
+    assert "missing required fields: model_name, dataset_name" in manifest["shards"][0]["errors"][0]
+
+
+def test_missing_required_sidecar_source_dataset_fails(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    sidecar = _base_sidecar()
+    del sidecar["source_dataset"]
+    _write_shard(cache_root, sidecar=sidecar)
+
+    manifest = _assert_validation_fails(cache_root, "source_dataset")
+
+    assert manifest["status"] == "failed"
+    assert "sidecar missing required metadata: source_dataset" in manifest["shards"][0]["errors"]
 
 
 def test_missing_layer_vectors_fails(tmp_path: Path) -> None:

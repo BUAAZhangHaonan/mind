@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 REQUIRED_ENTRY_FIELDS = (
+    "model_name",
+    "dataset_name",
+    "source_dataset",
+    "subset",
+    "split",
     "sample_id",
     "image_id",
     "image_path",
@@ -26,6 +31,7 @@ REQUIRED_SIDECAR_FIELDS = (
     "model_id",
     "model_family",
     "dataset_name",
+    "source_dataset",
     "subset",
     "split",
     "total_layers",
@@ -231,6 +237,16 @@ def _validate_shard(
         if key is not None:
             keys.append(key)
 
+    model_name = _optional_text(sidecar.get("model_name"))
+    dataset_name = _optional_text(sidecar.get("dataset_name"))
+    subset = _optional_text(sidecar.get("subset"))
+    split = _optional_text(sidecar.get("split"))
+    source_dataset = (
+        _optional_text(sidecar.get("source_dataset"))
+        or _single_entry_text(entries, "source_dataset")
+        or dataset_name
+    )
+
     if (
         sidecar_hidden_dim is not None
         and observed_hidden_dim is not None
@@ -244,6 +260,12 @@ def _validate_shard(
     shard = {
         "path": str(shard_path),
         "sidecar_path": str(sidecar_path),
+        "status": "failed" if errors else "passed",
+        "model_name": model_name,
+        "dataset_name": dataset_name,
+        "source_dataset": source_dataset,
+        "subset": subset,
+        "split": split,
         "num_entries": len(entries),
         "hidden_dim": observed_hidden_dim,
         "total_layers": total_layers,
@@ -251,6 +273,14 @@ def _validate_shard(
         "errors": errors,
     }
     return shard, keys
+
+
+def _single_entry_text(entries: Sequence[Mapping[str, object]], field: str) -> str | None:
+    values = {_optional_text(entry.get(field)) for entry in entries}
+    values.discard(None)
+    if len(values) == 1:
+        return next(iter(values))
+    return None
 
 
 def _load_sidecar(sidecar_path: Path) -> tuple[dict[str, object], list[str]]:
@@ -326,6 +356,7 @@ def _validate_entry(
     missing_fields = [field for field in REQUIRED_ENTRY_FIELDS if field not in entry]
     if missing_fields:
         errors.append(f"entry {index} missing required fields: {', '.join(missing_fields)}")
+    errors.extend(_entry_identity_errors(entry, index=index, sidecar=sidecar))
 
     layer_vectors = entry.get("layer_vectors")
     hidden_dim: int | None = None
@@ -397,17 +428,39 @@ def _duplicate_key(
     entry: Mapping[str, object],
     sidecar: Mapping[str, object],
 ) -> DuplicateKey | None:
-    model_name = _optional_text(entry.get("model_name")) or _optional_text(
-        sidecar.get("model_name")
-    )
-    dataset_name = _optional_text(entry.get("dataset_name")) or _optional_text(
-        sidecar.get("dataset_name")
-    )
-    split = _optional_text(entry.get("split")) or _optional_text(sidecar.get("split"))
+    _ = sidecar
+    model_name = _optional_text(entry.get("model_name"))
+    dataset_name = _optional_text(entry.get("dataset_name"))
+    split = _optional_text(entry.get("split"))
     sample_id = _optional_text(entry.get("sample_id"))
     if model_name is None or dataset_name is None or split is None or sample_id is None:
         return None
     return (model_name, dataset_name, split, sample_id)
+
+
+def _entry_identity_errors(
+    entry: Mapping[str, object],
+    *,
+    index: int,
+    sidecar: Mapping[str, object],
+) -> list[str]:
+    errors: list[str] = []
+    comparisons = (
+        ("model_name", "model_name"),
+        ("dataset_name", "dataset_name"),
+        ("subset", "subset"),
+        ("split", "split"),
+        ("source_dataset", "source_dataset"),
+    )
+    for entry_field, sidecar_field in comparisons:
+        expected = _optional_text(sidecar.get(sidecar_field))
+        observed = _optional_text(entry.get(entry_field))
+        if expected is not None and observed is not None and observed != expected:
+            errors.append(
+                f"entry {index} {entry_field}={observed} does not match sidecar "
+                f"{sidecar_field}={expected}"
+            )
+    return errors
 
 
 def _optional_text(value: object | None) -> str | None:

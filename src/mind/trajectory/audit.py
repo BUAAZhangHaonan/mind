@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from .dataset import DatasetSpec, NormalizedRecord, load_dataset_records
 from .metadata import (
+    CACHE_LABEL_BALANCE_COLUMNS,
     DATASET_AUDIT_COLUMNS,
     LABEL_BALANCE_COLUMNS,
     OBJECT_NAME_AUDIT_COLUMNS,
@@ -17,11 +19,13 @@ from .metadata import (
 )
 from .utils import parse_yes_no_label, write_csv
 
-CacheKey = tuple[str, str, str]
+CacheKey = tuple[str, str, str, str]
+RecordCacheKey = tuple[str, str, str]
 
 
 @dataclass(frozen=True)
 class CacheAnswer:
+    model_name: str | None
     dataset_name: str | None
     subset: str | None
     sample_id: str
@@ -34,6 +38,7 @@ class CacheAnswer:
 @dataclass(frozen=True)
 class CacheAnswerIndex:
     by_identity: Mapping[CacheKey, CacheAnswer]
+    by_record_identity: Mapping[RecordCacheKey, tuple[CacheAnswer, ...]]
     legacy_by_sample_id: Mapping[str, tuple[CacheAnswer, ...]]
 
 
@@ -42,6 +47,7 @@ class AuditResult:
     audit_dir: Path
     dataset_audit_rows: list[dict[str, object | None]]
     label_balance_rows: list[dict[str, object | None]]
+    cache_label_balance_rows: list[dict[str, object | None]]
     object_name_audit_rows: list[dict[str, object | None]]
     sample_overlap_audit_rows: list[dict[str, object | None]]
 
@@ -74,6 +80,7 @@ def run_audit(
     present_by_key: dict[tuple[str, str], bool] = {}
     dataset_rows: list[dict[str, object | None]] = []
     label_rows: list[dict[str, object | None]] = []
+    cache_label_rows: list[dict[str, object | None]] = []
     object_rows: list[dict[str, object | None]] = []
 
     for spec in specs:
@@ -103,6 +110,19 @@ def run_audit(
 
     write_csv(audit_dir / "dataset_audit.csv", dataset_rows, DATASET_AUDIT_COLUMNS)
     write_csv(audit_dir / "label_balance.csv", label_rows, LABEL_BALANCE_COLUMNS)
+    if cache_answers is not None:
+        cache_label_rows = _cache_label_balance_rows(
+            specs,
+            records_by_key,
+            cache_answers,
+            ambiguous_sample_ids,
+            model_names=None,
+        )
+        write_csv(
+            audit_dir / "cache_label_balance.csv",
+            cache_label_rows,
+            CACHE_LABEL_BALANCE_COLUMNS,
+        )
     write_csv(audit_dir / "object_name_audit.csv", object_rows, OBJECT_NAME_AUDIT_COLUMNS)
     write_csv(audit_dir / "sample_overlap_audit.csv", overlap_rows, SAMPLE_OVERLAP_AUDIT_COLUMNS)
 
@@ -110,8 +130,86 @@ def run_audit(
         audit_dir=audit_dir,
         dataset_audit_rows=dataset_rows,
         label_balance_rows=label_rows,
+        cache_label_balance_rows=cache_label_rows,
         object_name_audit_rows=object_rows,
         sample_overlap_audit_rows=overlap_rows,
+    )
+
+
+def build_cache_label_balance_rows(
+    specs: Sequence[DatasetSpec],
+    *,
+    cache_root: Path | str,
+    model_names: Sequence[str] | None = None,
+) -> list[dict[str, object | None]]:
+    cache_answers = load_cache_answers(Path(cache_root))
+    records_by_key = {
+        (spec.dataset_name, spec.subset): load_dataset_records(spec)
+        for spec in specs
+        if spec.path.exists()
+    }
+    ambiguous_sample_ids = _ambiguous_sample_ids(records_by_key.values())
+    return _cache_label_balance_rows(
+        specs,
+        records_by_key,
+        cache_answers,
+        ambiguous_sample_ids,
+        model_names=model_names,
+    )
+
+
+def _cache_label_balance_rows(
+    specs: Sequence[DatasetSpec],
+    records_by_key: Mapping[tuple[str, str], Sequence[NormalizedRecord]],
+    cache_answers: CacheAnswerIndex,
+    ambiguous_sample_ids: set[str],
+    *,
+    model_names: Sequence[str] | None,
+) -> list[dict[str, object | None]]:
+    rows: list[dict[str, object | None]] = []
+    scoped_models = list(model_names or _cache_model_names(cache_answers))
+    if scoped_models:
+        for model_name in scoped_models:
+            for spec in specs:
+                records = records_by_key.get((spec.dataset_name, spec.subset))
+                if records is None:
+                    rows.append(_missing_cache_label_balance_row(spec, model_name=model_name))
+                    continue
+                rows.append(
+                    _cache_label_balance_row(
+                        spec,
+                        records,
+                        cache_answers,
+                        ambiguous_sample_ids,
+                        model_name=model_name,
+                    )
+                )
+        return rows
+
+    for spec in specs:
+        records = records_by_key.get((spec.dataset_name, spec.subset))
+        if records is None:
+            rows.append(_missing_cache_label_balance_row(spec, model_name=None))
+            continue
+        rows.append(
+            _cache_label_balance_row(
+                spec,
+                records,
+                cache_answers,
+                ambiguous_sample_ids,
+                model_name=None,
+            )
+        )
+    return rows
+
+
+def _cache_model_names(cache_answers: CacheAnswerIndex) -> list[str]:
+    return sorted(
+        {
+            answer.model_name
+            for answer in cache_answers.by_identity.values()
+            if answer.model_name is not None
+        }
     )
 
 
@@ -124,20 +222,30 @@ def load_cache_answers(cache_root: Path) -> CacheAnswerIndex:
     import torch
 
     by_identity: dict[CacheKey, CacheAnswer] = {}
+    by_record_identity: dict[RecordCacheKey, list[CacheAnswer]] = defaultdict(list)
     legacy_by_sample_id: dict[str, list[CacheAnswer]] = defaultdict(list)
     for shard_path in sorted(cache_root.rglob("*.pt")):
         if not shard_path.is_file():
             continue
+        sidecar = _load_cache_sidecar(shard_path)
         payload = torch.load(shard_path, weights_only=False)
         for entry in _iter_cache_entries(payload):
             sample_id = _identity_text(entry.get("sample_id"))
             if sample_id is None:
                 continue
-            dataset_name = _identity_text(entry.get("dataset_name") or entry.get("source_dataset"))
-            subset = _identity_text(entry.get("subset") or entry.get("split"))
+            model_name = _identity_text(entry.get("model_name")) or _identity_text(sidecar.get("model_name"))
+            dataset_name = (
+                _identity_text(entry.get("dataset_name") or entry.get("source_dataset"))
+                or _identity_text(sidecar.get("dataset_name") or sidecar.get("source_dataset"))
+            )
+            subset = (
+                _identity_text(entry.get("subset") or entry.get("split"))
+                or _identity_text(sidecar.get("subset") or sidecar.get("split"))
+            )
             has_parsed = "parsed_answer" in entry
             parsed = parse_yes_no_label(entry.get("parsed_answer")) if has_parsed else None
             answer = CacheAnswer(
+                model_name=model_name,
                 dataset_name=dataset_name,
                 subset=subset,
                 sample_id=sample_id,
@@ -146,17 +254,35 @@ def load_cache_answers(cache_root: Path) -> CacheAnswerIndex:
                 has_answer_text="answer_text" in entry,
                 has_first_token_logits="first_token_logits" in entry,
             )
-            if dataset_name is not None and subset is not None:
-                by_identity[(dataset_name, subset, sample_id)] = answer
+            if model_name is not None and dataset_name is not None and subset is not None:
+                by_identity[(model_name, dataset_name, subset, sample_id)] = answer
+                by_record_identity[(dataset_name, subset, sample_id)].append(answer)
+            elif dataset_name is not None and subset is not None:
+                by_record_identity[(dataset_name, subset, sample_id)].append(answer)
             elif dataset_name is None and subset is None:
                 legacy_by_sample_id[sample_id].append(answer)
     return CacheAnswerIndex(
         by_identity=by_identity,
+        by_record_identity={
+            key: tuple(answers)
+            for key, answers in by_record_identity.items()
+        },
         legacy_by_sample_id={
             sample_id: tuple(answers)
             for sample_id, answers in legacy_by_sample_id.items()
         },
     )
+
+
+def _load_cache_sidecar(shard_path: Path) -> Mapping[str, object]:
+    sidecar_path = Path(str(shard_path) + ".json")
+    if not sidecar_path.exists():
+        return {}
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, Mapping) else {}
 
 
 def _identity_text(value: object | None) -> str | None:
@@ -231,8 +357,12 @@ def _dataset_audit_row(spec: DatasetSpec, records: Sequence[NormalizedRecord]) -
     }
 
 
-def _missing_label_balance_row(spec: DatasetSpec) -> dict[str, object | None]:
-    return {
+def _missing_label_balance_row(
+    spec: DatasetSpec,
+    *,
+    model_name: str | None = None,
+) -> dict[str, object | None]:
+    row: dict[str, object | None] = {
         "dataset_name": spec.dataset_name,
         "subset": spec.subset,
         "status": "missing",
@@ -248,6 +378,84 @@ def _missing_label_balance_row(spec: DatasetSpec) -> dict[str, object | None]:
         "hallucination_rate": None,
         "parsed_answer_status": "missing",
     }
+    if model_name is not None:
+        row["model_name"] = model_name
+    return row
+
+
+def _missing_cache_label_balance_row(
+    spec: DatasetSpec,
+    *,
+    model_name: str | None,
+) -> dict[str, object | None]:
+    return {
+        "model_name": model_name,
+        "dataset_name": spec.dataset_name,
+        "subset": spec.subset,
+        "num_entries": 0,
+        "num_gt_yes": 0,
+        "num_gt_no": 0,
+        "num_parsed_yes": 0,
+        "num_parsed_no": 0,
+        "num_parsed_none": 0,
+        "num_correct": 0,
+        "num_hard_hallucination": 0,
+        "num_false_negative_error": 0,
+        "num_primary_population": 0,
+        "hallucination_rate_in_primary_population": None,
+    }
+
+
+def _cache_label_balance_row(
+    spec: DatasetSpec,
+    records: Sequence[NormalizedRecord],
+    cache_answers: CacheAnswerIndex,
+    ambiguous_sample_ids: set[str],
+    *,
+    model_name: str | None,
+) -> dict[str, object | None]:
+    labels = Counter(record.label for record in records)
+    parsed_labels = [
+        None
+        if (answer := _cache_answer_for(record, cache_answers, ambiguous_sample_ids, model_name=model_name))
+        is None
+        else answer.parsed_answer
+        for record in records
+    ]
+    num_hard_hallucination = sum(
+        1
+        for record, parsed in zip(records, parsed_labels)
+        if record.label == 0 and parsed == 1
+    )
+    num_false_negative_error = sum(
+        1
+        for record, parsed in zip(records, parsed_labels)
+        if record.label == 1 and parsed == 0
+    )
+    primary_population = labels[0]
+    return {
+        "model_name": model_name,
+        "dataset_name": spec.dataset_name,
+        "subset": spec.subset,
+        "num_entries": len(records),
+        "num_gt_yes": labels[1],
+        "num_gt_no": labels[0],
+        "num_parsed_yes": sum(1 for value in parsed_labels if value == 1),
+        "num_parsed_no": sum(1 for value in parsed_labels if value == 0),
+        "num_parsed_none": sum(1 for value in parsed_labels if value is None),
+        "num_correct": sum(
+            1
+            for record, parsed in zip(records, parsed_labels)
+            if parsed is not None and parsed == record.label
+        ),
+        "num_hard_hallucination": num_hard_hallucination,
+        "num_false_negative_error": num_false_negative_error,
+        "num_primary_population": primary_population,
+        "hallucination_rate_in_primary_population": _format_rate(
+            num_hard_hallucination,
+            primary_population,
+        ),
+    }
 
 
 def _label_balance_row(
@@ -255,6 +463,8 @@ def _label_balance_row(
     records: Sequence[NormalizedRecord],
     cache_answers: CacheAnswerIndex | None,
     ambiguous_sample_ids: set[str],
+    *,
+    model_name: str | None = None,
 ) -> dict[str, object | None]:
     labels = Counter(record.label for record in records)
     row: dict[str, object | None] = {
@@ -266,11 +476,16 @@ def _label_balance_row(
         "num_gt_no": labels[0],
         "num_invalid_label": labels[None],
     }
+    if model_name is not None:
+        row["model_name"] = model_name
     if cache_answers is None:
         row.update(_blank_parsed_metrics("not_available_before_cache"))
         return row
 
-    parsed_values = [_cache_answer_for(record, cache_answers, ambiguous_sample_ids) for record in records]
+    parsed_values = [
+        _cache_answer_for(record, cache_answers, ambiguous_sample_ids, model_name=model_name)
+        for record in records
+    ]
     if not any(value is not None and value.has_parsed_answer_field for value in parsed_values):
         row.update(_blank_parsed_metrics("not_available_in_cache"))
         return row
@@ -330,7 +545,7 @@ def _object_name_rows(
         }
         if cache_answers is not None:
             parsed_values = [
-                _cache_answer_for(record, cache_answers, ambiguous_sample_ids)
+                _cache_answer_for(record, cache_answers, ambiguous_sample_ids, model_name=None)
                 for record in object_records
             ]
             if any(value is not None and value.has_parsed_answer_field for value in parsed_values):
@@ -353,10 +568,19 @@ def _cache_answer_for(
     record: NormalizedRecord,
     cache_answers: CacheAnswerIndex,
     ambiguous_sample_ids: set[str],
+    *,
+    model_name: str | None,
 ) -> CacheAnswer | None:
-    exact = cache_answers.by_identity.get((record.dataset_name, record.subset, record.sample_id))
-    if exact is not None:
-        return exact
+    if model_name is not None:
+        return cache_answers.by_identity.get(
+            (model_name, record.dataset_name, record.subset, record.sample_id)
+        )
+    exact_answers = cache_answers.by_record_identity.get(
+        (record.dataset_name, record.subset, record.sample_id),
+        (),
+    )
+    if len(exact_answers) == 1:
+        return exact_answers[0]
     if record.sample_id in ambiguous_sample_ids:
         return None
     legacy_answers = cache_answers.legacy_by_sample_id.get(record.sample_id, ())

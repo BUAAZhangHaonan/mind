@@ -232,6 +232,7 @@ def build_sidecar_metadata(
     *,
     model_config: ModelConfig,
     dataset_name: str,
+    source_dataset: str,
     subset: str,
     split: str,
     total_layers: int,
@@ -251,6 +252,7 @@ def build_sidecar_metadata(
         "model_id": model_config.model_id,
         "model_family": model_config.family,
         "dataset_name": dataset_name,
+        "source_dataset": source_dataset,
         "subset": subset,
         "split": split,
         "total_layers": int(total_layers),
@@ -281,6 +283,20 @@ def merge_top_level_sidecar_metadata(path: Path, metadata: Mapping[str, object])
         json.dumps(sidecar, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def resolve_source_dataset(entries: Sequence[Mapping[str, object]], *, fallback: str) -> str:
+    values: set[str] = set()
+    for entry in entries:
+        value = entry.get("source_dataset")
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            values.add(text)
+    if len(values) == 1:
+        return next(iter(values))
+    return fallback
 
 
 def run_extraction(
@@ -323,18 +339,21 @@ def run_extraction(
             entries: list[dict[str, object]] = []
             for start in range(0, len(shard_records), batch_size):
                 batch_records = shard_records[start : start + batch_size]
-                entries.extend(
-                    extract_prefill_entries(
-                        model=model,
-                        processor=processor,
-                        wrapper=wrapper,
-                        records=batch_records,
-                        selected_layers=selected_layers,
-                        device=device,
-                        token_index=token_index,
-                        max_new_tokens=max_new_tokens,
-                    )
+                batch_entries = extract_prefill_entries(
+                    model=model,
+                    processor=processor,
+                    wrapper=wrapper,
+                    records=batch_records,
+                    selected_layers=selected_layers,
+                    device=device,
+                    token_index=token_index,
+                    max_new_tokens=max_new_tokens,
                 )
+                for entry in batch_entries:
+                    entry["model_name"] = model_config.name
+                    entry["dataset_name"] = dataset_name
+                    entry.setdefault("source_dataset", dataset_name)
+                entries.extend(batch_entries)
 
             output_path = build_cache_output_path(
                 output_root=output_root,
@@ -351,6 +370,7 @@ def run_extraction(
             metadata = build_sidecar_metadata(
                 model_config=model_config,
                 dataset_name=dataset_name,
+                source_dataset=resolve_source_dataset(entries, fallback=dataset_name),
                 subset=subset,
                 split=split,
                 total_layers=total_layers,

@@ -9,8 +9,25 @@ from types import ModuleType
 import pytest
 import torch
 
-from mind.trajectory.audit import run_audit, validate_required_datasets
+from mind.trajectory.audit import build_cache_label_balance_rows, run_audit, validate_required_datasets
 from mind.trajectory.dataset import DatasetSpec, discover_known_datasets
+
+CACHE_LABEL_BALANCE_COLUMNS = [
+    "model_name",
+    "dataset_name",
+    "subset",
+    "num_entries",
+    "num_gt_yes",
+    "num_gt_no",
+    "num_parsed_yes",
+    "num_parsed_no",
+    "num_parsed_none",
+    "num_correct",
+    "num_hard_hallucination",
+    "num_false_negative_error",
+    "num_primary_population",
+    "hallucination_rate_in_primary_population",
+]
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -356,6 +373,281 @@ def test_cache_answers_match_dataset_subset_when_sample_ids_collide(tmp_path: Pa
     assert label_rows[("repope", "popular")]["num_parsed_no"] == "1"
 
 
+def test_cache_label_balance_is_model_scoped_when_cache_has_multiple_models(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "pope" / "popular.jsonl"
+    cache_root = tmp_path / "cache"
+    _write_jsonl(
+        dataset_path,
+        [
+            {
+                "sample_id": "shared",
+                "image_id": 1,
+                "image_path": "images/1.jpg",
+                "question": "Is there a cat in the image?",
+                "label": 1,
+                "object_name": "cat",
+            }
+        ],
+    )
+    for model_name, parsed_answer in (("model-a", 1), ("model-b", 0)):
+        shard_path = cache_root / model_name / "pope" / "popular" / "shard-00000.pt"
+        shard_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            [
+                {
+                    "model_name": model_name,
+                    "dataset_name": "pope",
+                    "source_dataset": "pope",
+                    "subset": "popular",
+                    "split": "popular",
+                    "sample_id": "shared",
+                    "parsed_answer": parsed_answer,
+                    "answer_text": "yes" if parsed_answer == 1 else "no",
+                }
+            ],
+            shard_path,
+        )
+
+    rows = build_cache_label_balance_rows(
+        [DatasetSpec("pope", "popular", dataset_path)],
+        cache_root=cache_root,
+        model_names=["model-a", "model-b"],
+    )
+
+    by_model = {row["model_name"]: row for row in rows}
+    assert set(by_model) == {"model-a", "model-b"}
+    assert list(by_model["model-a"]) == CACHE_LABEL_BALANCE_COLUMNS
+    assert by_model["model-a"]["num_parsed_yes"] == 1
+    assert by_model["model-a"]["num_parsed_no"] == 0
+    assert by_model["model-a"]["num_correct"] == 1
+    assert by_model["model-a"]["num_hard_hallucination"] == 0
+    assert by_model["model-a"]["num_false_negative_error"] == 0
+    assert by_model["model-a"]["num_primary_population"] == 0
+    assert by_model["model-a"]["hallucination_rate_in_primary_population"] is None
+    assert by_model["model-b"]["num_parsed_yes"] == 0
+    assert by_model["model-b"]["num_parsed_no"] == 1
+    assert by_model["model-b"]["num_correct"] == 0
+    assert by_model["model-b"]["num_hard_hallucination"] == 0
+    assert by_model["model-b"]["num_false_negative_error"] == 1
+
+
+def test_cli_writes_cache_label_balance_from_synthetic_cache_shards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("scripts/v2/stage0_audit_data.py", "stage0_audit_data_cache_balance")
+    dataset_path = tmp_path / "pope" / "popular.jsonl"
+    cache_root = tmp_path / "cache"
+    _write_jsonl(
+        dataset_path,
+        [
+            {
+                "sample_id": "gt-yes",
+                "image_id": 1,
+                "image_path": "images/1.jpg",
+                "question": "Is there a cat in the image?",
+                "label": 1,
+                "object_name": "cat",
+            },
+            {
+                "sample_id": "gt-no",
+                "image_id": 2,
+                "image_path": "images/2.jpg",
+                "question": "Is there a dog in the image?",
+                "label": 0,
+                "object_name": "dog",
+            },
+        ],
+    )
+    for model_name, parsed_answers in {
+        "model-a": {"gt-yes": 1, "gt-no": 0},
+        "model-b": {"gt-yes": 0, "gt-no": 1},
+    }.items():
+        shard_path = cache_root / model_name / "pope" / "popular" / "shard-00000.pt"
+        shard_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            [
+                {
+                    "model_name": model_name,
+                    "dataset_name": "pope",
+                    "subset": "popular",
+                    "sample_id": sample_id,
+                    "parsed_answer": parsed_answer,
+                    "answer_text": "no" if parsed_answer == 1 else "yes",
+                }
+                for sample_id, parsed_answer in parsed_answers.items()
+            ],
+            shard_path,
+        )
+
+    monkeypatch.chdir(tmp_path)
+    exit_code = module.main(
+        [
+            "--dataset",
+            "pope",
+            "popular",
+            str(dataset_path),
+            "--cache-root",
+            str(cache_root),
+        ]
+    )
+
+    assert exit_code == 0
+    cache_label_balance_path = Path("outputs/v2_stage0/audit/cache_label_balance.csv")
+    with cache_label_balance_path.open(newline="", encoding="utf-8") as handle:
+        assert next(csv.reader(handle)) == CACHE_LABEL_BALANCE_COLUMNS
+    rows = _read_csv(cache_label_balance_path)
+    by_model = {row["model_name"]: row for row in rows}
+    assert set(by_model) == {"model-a", "model-b"}
+    assert list(rows[0]) == CACHE_LABEL_BALANCE_COLUMNS
+    assert by_model["model-a"]["num_gt_yes"] == "1"
+    assert by_model["model-a"]["num_gt_no"] == "1"
+    assert by_model["model-a"]["num_entries"] == "2"
+    assert by_model["model-a"]["num_parsed_yes"] == "1"
+    assert by_model["model-a"]["num_parsed_no"] == "1"
+    assert by_model["model-a"]["num_correct"] == "2"
+    assert by_model["model-a"]["num_hard_hallucination"] == "0"
+    assert by_model["model-a"]["num_false_negative_error"] == "0"
+    assert by_model["model-a"]["num_primary_population"] == "1"
+    assert by_model["model-a"]["hallucination_rate_in_primary_population"] == "0"
+    assert by_model["model-b"]["num_parsed_yes"] == "1"
+    assert by_model["model-b"]["num_parsed_no"] == "1"
+    assert by_model["model-b"]["num_correct"] == "0"
+    assert by_model["model-b"]["num_hard_hallucination"] == "1"
+    assert by_model["model-b"]["num_false_negative_error"] == "1"
+    assert by_model["model-b"]["num_primary_population"] == "1"
+    assert by_model["model-b"]["hallucination_rate_in_primary_population"] == "1"
+
+
+def test_cache_label_balance_uses_parsed_answer_and_gt_no_primary_population(
+    tmp_path: Path,
+) -> None:
+    dataset_path = tmp_path / "pope" / "popular.jsonl"
+    cache_root = tmp_path / "cache"
+    _write_jsonl(
+        dataset_path,
+        [
+            {
+                "sample_id": "yes-correct",
+                "image_id": 1,
+                "image_path": "images/1.jpg",
+                "question": "Is there a cat in the image?",
+                "label": 1,
+                "object_name": "cat",
+            },
+            {
+                "sample_id": "yes-false-negative",
+                "image_id": 2,
+                "image_path": "images/2.jpg",
+                "question": "Is there a cat in the image?",
+                "label": 1,
+                "object_name": "cat",
+            },
+            {
+                "sample_id": "no-correct",
+                "image_id": 3,
+                "image_path": "images/3.jpg",
+                "question": "Is there a dog in the image?",
+                "label": 0,
+                "object_name": "dog",
+            },
+            {
+                "sample_id": "no-hard-hallucination",
+                "image_id": 4,
+                "image_path": "images/4.jpg",
+                "question": "Is there a dog in the image?",
+                "label": 0,
+                "object_name": "dog",
+            },
+            {
+                "sample_id": "no-unparsed",
+                "image_id": 5,
+                "image_path": "images/5.jpg",
+                "question": "Is there a dog in the image?",
+                "label": 0,
+                "object_name": "dog",
+            },
+        ],
+    )
+    shard_path = cache_root / "model-a" / "pope" / "popular" / "shard-00000.pt"
+    shard_path.parent.mkdir(parents=True)
+    torch.save(
+        [
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "yes-correct",
+                "parsed_answer": 1,
+                "answer_text": "no",
+                "first_token_logits": torch.tensor([10.0, -10.0]),
+            },
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "yes-false-negative",
+                "parsed_answer": 0,
+                "answer_text": "yes",
+                "first_token_logits": torch.tensor([-10.0, 10.0]),
+            },
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "no-correct",
+                "parsed_answer": 0,
+                "answer_text": "yes",
+                "first_token_logits": torch.tensor([-10.0, 10.0]),
+            },
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "no-hard-hallucination",
+                "parsed_answer": 1,
+                "answer_text": "no",
+                "first_token_logits": torch.tensor([10.0, -10.0]),
+            },
+            {
+                "model_name": "model-a",
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "no-unparsed",
+                "parsed_answer": None,
+                "answer_text": "yes",
+                "first_token_logits": torch.tensor([-10.0, 10.0]),
+            },
+        ],
+        shard_path,
+    )
+
+    rows = build_cache_label_balance_rows(
+        [DatasetSpec("pope", "popular", dataset_path)],
+        cache_root=cache_root,
+        model_names=["model-a"],
+    )
+
+    assert rows == [
+        {
+            "model_name": "model-a",
+            "dataset_name": "pope",
+            "subset": "popular",
+            "num_entries": 5,
+            "num_gt_yes": 2,
+            "num_gt_no": 3,
+            "num_parsed_yes": 2,
+            "num_parsed_no": 2,
+            "num_parsed_none": 1,
+            "num_correct": 2,
+            "num_hard_hallucination": 1,
+            "num_false_negative_error": 1,
+            "num_primary_population": 3,
+            "hallucination_rate_in_primary_population": "0.333333",
+        }
+    ]
+
+
 def test_explicit_bad_cache_root_fails_clearly(tmp_path: Path) -> None:
     dataset_path = tmp_path / "pope" / "popular.jsonl"
     _write_jsonl(dataset_path, [])
@@ -415,6 +707,38 @@ def test_required_dataset_validation_and_known_discovery(tmp_path: Path, monkeyp
 
     with pytest.raises(FileNotFoundError, match="Required dataset is missing: pope/adversarial"):
         validate_required_datasets(specs, [("pope", "adversarial")])
+
+
+def test_known_discovery_audits_raw_only_dash_b_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    dash_b_root = Path("data/dash_b")
+    images_dir = dash_b_root / "images"
+    images_dir.mkdir(parents=True)
+    (images_dir / "dash_benchmark_neg.json").write_text(
+        json.dumps({"coco": {"toaster": ["COCO_val2014_000000000314.jpg"]}}),
+        encoding="utf-8",
+    )
+    (images_dir / "dash_benchmark_pos.json").write_text(
+        json.dumps({"coco": {"dog": ["COCO_val2014_000000000042.jpg"]}}),
+        encoding="utf-8",
+    )
+
+    specs = discover_known_datasets(Path("."))
+    by_key = {(spec.dataset_name, spec.subset): spec for spec in specs}
+
+    assert by_key[("dash-b", "all")].path == dash_b_root
+    assert not Path("outputs/round2_2026_04/normalized/dash-b/all.jsonl").exists()
+
+    result = run_audit(
+        [by_key[("dash-b", "all")]],
+        output_root=tmp_path / "outputs" / "v2_stage0",
+        cache_root=None,
+    )
+
+    assert result.dataset_audit_rows[0]["status"] == "present"
+    assert result.dataset_audit_rows[0]["num_records"] == 2
+    assert result.label_balance_rows[0]["num_gt_yes"] == 1
+    assert result.label_balance_rows[0]["num_gt_no"] == 1
 
 
 def test_cli_dry_run_reads_and_reports_without_writing_audit_outputs(
