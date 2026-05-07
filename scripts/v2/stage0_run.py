@@ -41,6 +41,10 @@ MODEL_ALIASES: dict[str, dict[str, str]] = {
 }
 KNOWN_DATASETS = {"pope", "repope"}
 KNOWN_SUBSETS = {"popular", "random", "adversarial"}
+DATASET_IMAGE_ROOTS = {
+    "pope": Path("data/coco/val2014"),
+    "repope": Path("data/coco/val2014"),
+}
 PRIMARY_STAGE0_MODELS = ("qwen3-vl-8b", "internvl3.5-8b")
 POPE_FULL_RUN_SUBSETS = ("popular", "random", "adversarial")
 SUMMARY_KEYS = (
@@ -175,6 +179,19 @@ def resolve_dataset_path(*, repo_root: Path, dataset_name: str, subset: str) -> 
     return candidates[0]
 
 
+def resolve_dataset_image_root(*, repo_root: Path, dataset_name: str) -> Path | None:
+    normalized_dataset = dataset_name.strip().lower()
+    configured_root = DATASET_IMAGE_ROOTS.get(normalized_dataset)
+    if configured_root is None:
+        return None
+    image_root = configured_root if configured_root.is_absolute() else repo_root / configured_root
+    if not image_root.exists():
+        raise FileNotFoundError(f"Image root for {normalized_dataset} is missing: {image_root}")
+    if not image_root.is_dir():
+        raise NotADirectoryError(f"Image root for {normalized_dataset} is not a directory: {image_root}")
+    return image_root
+
+
 def audit_output_paths(audit_dir: Path) -> list[str]:
     return [
         str(audit_dir / "dataset_audit.csv"),
@@ -302,6 +319,13 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
             dataset_specs,
             [(spec.dataset_name, spec.subset) for spec in dataset_specs],
         )
+        image_roots = {
+            spec.dataset_name: resolve_dataset_image_root(
+                repo_root=repo_root,
+                dataset_name=spec.dataset_name,
+            )
+            for spec in dataset_specs
+        }
 
         primary_manifest: dict[str, object] | None = None
         for index, spec in enumerate(dataset_specs):
@@ -332,7 +356,7 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
                     dataset_name=spec.dataset_name,
                     subset=spec.subset,
                     split=spec.subset,
-                    image_root=None,
+                    image_root=image_roots[spec.dataset_name],
                     device=args.device,
                     dtype=dtype,
                     max_new_tokens=1,

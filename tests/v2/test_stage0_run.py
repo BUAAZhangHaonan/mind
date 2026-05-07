@@ -199,16 +199,19 @@ def test_orchestrator_writes_passed_smoke_summary(
     output_root = repo_root / "outputs" / "v2_stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
+    image_root = repo_root / "data" / "coco" / "val2014"
+    image_root.mkdir(parents=True)
 
     smoke_path = output_root / "cache" / "qwen3-vl-8b" / "pope" / "popular" / "shard-00000.pt"
+    extraction_calls: list[dict[str, object]] = []
+
+    def fake_run_extraction(**kwargs: object) -> list[Path]:
+        extraction_calls.append(kwargs)
+        return [smoke_path]
 
     monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
     monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
-    monkeypatch.setattr(
-        module,
-        "run_extraction",
-        lambda **_kwargs: [smoke_path],
-    )
+    monkeypatch.setattr(module, "run_extraction", fake_run_extraction)
     monkeypatch.setattr(
         module,
         "validate_stage0_cache",
@@ -242,6 +245,8 @@ def test_orchestrator_writes_passed_smoke_summary(
     exit_code = module.run_orchestration(args, repo_root=repo_root)
 
     assert exit_code == 0
+    assert len(extraction_calls) == 1
+    assert extraction_calls[0]["image_root"] == image_root
     captured = capsys.readouterr()
     expected_full_run_command = (
         "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
@@ -317,3 +322,44 @@ def test_orchestrator_writes_failed_summary_for_missing_required_dataset(
     assert summary["smoke_cache_paths"] == []
     assert summary["blocking_issues"]
     assert "Required dataset is missing: pope/popular" in summary["blocking_issues"][0]
+
+
+def test_orchestrator_fails_before_extraction_when_pope_image_root_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_missing_image_root")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    _write_jsonl(records_path, [_record("sample-001", 1)])
+
+    def fail_run_extraction(**_kwargs: object) -> list[Path]:
+        raise AssertionError("run_extraction must not run without the POPE image root")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_extraction", fail_run_extraction)
+
+    args = module.parse_args(
+        [
+            "--output-root",
+            str(output_root),
+            "--models",
+            "qwen3-vl-8b",
+            "--datasets",
+            "pope",
+            "--subsets",
+            "popular",
+        ]
+    )
+
+    exit_code = module.run_orchestration(args, repo_root=repo_root)
+
+    assert exit_code != 0
+    summary = json.loads(
+        (output_root / "manifests" / "stage0_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary["status"] == "failed"
+    assert summary["smoke_cache_paths"] == []
+    assert "Image root for pope is missing" in summary["blocking_issues"][0]
