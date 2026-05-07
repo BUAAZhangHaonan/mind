@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -286,6 +287,97 @@ def test_orchestrator_writes_passed_smoke_summary(
     assert summary["cache_manifest"] == str(output_root / "manifests" / "cache_manifest.json")
     assert summary["next_recommended_commands"] == [expected_full_run_command]
     assert (output_root / "logs" / "stage0_run.log").exists()
+
+
+def test_make_verify_env_makes_src_importable_without_editable_install() -> None:
+    result = subprocess.run(
+        ["make", "-n", "verify-env", "PYTHON=python"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "PYTHONPATH=" in result.stdout
+    assert "src" in result.stdout
+    assert "python scripts/verify_env.py" in result.stdout
+
+
+def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_dry")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
+    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+
+    def fail_stage0_write_or_extraction(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("dry-run must not call write-heavy Stage 0 operations")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "write_split_manifest", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "run_extraction", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_write_or_extraction)
+
+    args = module.parse_args(
+        [
+            "--output-root",
+            str(output_root),
+            "--models",
+            "qwen3-vl-8b",
+            "--datasets",
+            "pope",
+            "--subsets",
+            "popular",
+            "--smoke-limit",
+            "2",
+            "--device",
+            "cpu",
+            "--dtype",
+            "float16",
+            "--dry-run",
+        ]
+    )
+
+    exit_code = module.run_orchestration(args, repo_root=repo_root)
+
+    assert exit_code == 0
+    assert not output_root.exists()
+    captured = capsys.readouterr()
+    plan = json.loads(captured.out)
+    assert plan["dry_run"] is True
+    assert plan["summary"]["status"] == "dry_run"
+    assert plan["summary"]["git_commit"] == "deadbeef"
+    assert plan["summary"]["models_checked"] == ["qwen3-vl-8b"]
+    assert plan["summary"]["datasets_checked"] == ["pope/popular"]
+    assert plan["audit_outputs"] == [
+        str(output_root / "audit" / "dataset_audit.csv"),
+        str(output_root / "audit" / "label_balance.csv"),
+        str(output_root / "audit" / "object_name_audit.csv"),
+        str(output_root / "audit" / "sample_overlap_audit.csv"),
+    ]
+    assert plan["split_manifests"] == [
+        str(output_root / "manifests" / "split_manifest_pope_popular.json"),
+        str(output_root / "manifests" / "split_manifest.json"),
+    ]
+    assert len(plan["extraction_commands"]) == 1
+    assert "--dry-run" in plan["extraction_commands"][0]
+    assert "stage0_extract_full_layer_cache.py" in plan["extraction_commands"][0]
+    assert plan["summary"]["next_recommended_commands"] == [
+        (
+            "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
+            f"--output-root {output_root} "
+            "--models qwen3-vl-8b internvl3.5-8b "
+            "--datasets pope "
+            "--subsets popular random adversarial "
+            "--device cpu --dtype float16 --full-run"
+        )
+    ]
 
 
 def test_orchestrator_writes_failed_summary_for_missing_required_dataset(

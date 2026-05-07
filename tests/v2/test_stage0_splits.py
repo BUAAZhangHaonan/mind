@@ -169,7 +169,6 @@ def test_cli_main_writes_manifest(tmp_path: Path) -> None:
             "0.20",
             "--group-key",
             "image_id",
-            "--dry-run",
         ]
     )
 
@@ -186,3 +185,55 @@ def test_cli_main_writes_manifest(tmp_path: Path) -> None:
     assert Counter(row["split"] for row in manifest["assignments"]) == Counter(
         manifest["counts_per_split"]
     )
+
+
+def test_cli_dry_run_builds_manifest_without_writing_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    script_path = Path("scripts/v2/stage0_build_splits.py")
+    spec = importlib.util.spec_from_file_location("stage0_build_splits_dry", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    input_records = tmp_path / "input.jsonl"
+    output = tmp_path / "manifests" / "split_manifest.json"
+    _write_jsonl(input_records, _synthetic_rows(groups=10, rows_per_group=1))
+
+    exit_code = module.main(
+        [
+            "--dataset-name",
+            "pope",
+            "--subset",
+            "popular",
+            "--input-records",
+            str(input_records),
+            "--output",
+            str(output),
+            "--seed",
+            "7",
+            "--ratios",
+            "0.50",
+            "0.20",
+            "0.10",
+            "0.20",
+            "--group-key",
+            "image_id",
+            "--dry-run",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert not output.exists()
+    assert not output.parent.exists()
+    assert "dry_run=true" in captured.out
+    manifest = json.loads(captured.out.strip().splitlines()[-1])
+    assert manifest["dry_run"] is True
+    assert manifest["output"] == str(output)
+    assert manifest["manifest"]["dataset_name"] == "pope"
+    assert manifest["manifest"]["subset"] == "popular"
+    assert manifest["manifest"]["seed"] == 7
+    assert sum(manifest["manifest"]["counts_per_split"].values()) == 10

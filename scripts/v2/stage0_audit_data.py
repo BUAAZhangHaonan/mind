@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -14,6 +15,7 @@ if repo_src_path in sys.path:
 sys.path.insert(0, repo_src_path)
 
 from mind.trajectory import DatasetSpec, discover_known_datasets, run_audit, validate_required_datasets
+import mind.trajectory.audit as audit_module
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,7 +52,11 @@ def main(argv: list[str] | None = None) -> int:
         print(str(error), file=sys.stderr)
         return 2
 
-    result = run_audit(specs, output_root=args.output_root, cache_root=args.cache_root)
+    result = (
+        _run_audit_without_writes(specs, output_root=args.output_root, cache_root=args.cache_root)
+        if args.dry_run
+        else run_audit(specs, output_root=args.output_root, cache_root=args.cache_root)
+    )
     _print_summary(result, dry_run=args.dry_run, cache_root=args.cache_root)
     return 0
 
@@ -60,6 +66,20 @@ def _dataset_specs_from_args(values: list[list[str]]) -> list[DatasetSpec]:
         DatasetSpec(dataset_name=dataset_name, subset=subset, path=Path(path))
         for dataset_name, subset, path in values
     ]
+
+
+def _run_audit_without_writes(
+    specs: list[DatasetSpec],
+    *,
+    output_root: Path,
+    cache_root: Path | None,
+):
+    original_write_csv = audit_module.write_csv
+    audit_module.write_csv = lambda *_args, **_kwargs: None
+    try:
+        return run_audit(specs, output_root=output_root, cache_root=cache_root)
+    finally:
+        audit_module.write_csv = original_write_csv
 
 
 def _print_summary(result, *, dry_run: bool, cache_root: Path | None) -> None:
@@ -72,6 +92,21 @@ def _print_summary(result, *, dry_run: bool, cache_root: Path | None) -> None:
     print(f"datasets_present={present} datasets_missing={missing} records={records}")
     print(f"parsed_answer_status={','.join(parsed_statuses) if parsed_statuses else 'none'}")
     print(f"cache_root={cache_root if cache_root is not None else 'not_supplied'} dry_run={str(dry_run).lower()}")
+    if dry_run:
+        print(
+            json.dumps(
+                {
+                    "dry_run": dry_run,
+                    "audit_dir": str(result.audit_dir),
+                    "datasets_present": present,
+                    "datasets_missing": missing,
+                    "records": records,
+                    "parsed_answer_status": parsed_statuses,
+                    "cache_root": str(cache_root) if cache_root is not None else None,
+                },
+                sort_keys=True,
+            )
+        )
 
 
 if __name__ == "__main__":

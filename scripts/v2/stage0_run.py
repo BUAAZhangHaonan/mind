@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
+import shlex
 import sys
 from typing import Mapping, Sequence
 
@@ -72,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--dtype", default="float16")
     parser.add_argument("--full-run", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve Stage 0 commands and summary intent without writing artifacts or extracting cache.",
+    )
     return parser
 
 
@@ -276,6 +282,184 @@ def full_run_command(args: argparse.Namespace) -> str:
     return " ".join(parts)
 
 
+def audit_command(
+    *,
+    output_root: Path,
+    dataset_specs: Sequence[DatasetSpec],
+) -> str:
+    parts = [
+        "python",
+        "scripts/v2/stage0_audit_data.py",
+        "--output-root",
+        str(output_root),
+        "--dry-run",
+    ]
+    for spec in dataset_specs:
+        parts.extend(["--dataset", spec.dataset_name, spec.subset, str(spec.path)])
+        parts.extend(["--require", spec.dataset_name, spec.subset])
+    return shlex.join(parts)
+
+
+def split_command(
+    *,
+    spec: DatasetSpec,
+    output: Path,
+) -> str:
+    return shlex.join(
+        [
+            "python",
+            "scripts/v2/stage0_build_splits.py",
+            "--dataset-name",
+            spec.dataset_name,
+            "--subset",
+            spec.subset,
+            "--input-records",
+            str(spec.path),
+            "--output",
+            str(output),
+            "--dry-run",
+        ]
+    )
+
+
+def extraction_dry_run_command(
+    *,
+    spec: DatasetSpec,
+    model_spec: Mapping[str, object],
+    cache_root: Path,
+    image_root: Path | None,
+    args: argparse.Namespace,
+    limit: int,
+) -> str:
+    parts = [
+        "python",
+        "scripts/v2/stage0_extract_full_layer_cache.py",
+        "--records",
+        str(spec.path),
+        "--model-config",
+        str(model_spec["config_path"]),
+        "--output-root",
+        str(cache_root),
+        "--dataset-name",
+        spec.dataset_name,
+        "--subset",
+        spec.subset,
+        "--split",
+        spec.subset,
+        "--device",
+        args.device,
+        "--dtype",
+        args.dtype,
+        "--max-new-tokens",
+        "1",
+        "--token-index",
+        "-1",
+        "--limit",
+        str(limit),
+        "--shard-size",
+        "128",
+        "--batch-size",
+        "1",
+        "--dry-run",
+    ]
+    if image_root is not None:
+        parts.extend(["--image-root", str(image_root)])
+    return shlex.join(parts)
+
+
+def build_dry_run_plan(
+    args: argparse.Namespace,
+    *,
+    repo_root: Path,
+    output_root: Path,
+    manifests_dir: Path,
+    cache_root: Path,
+    cache_manifest_path: Path,
+    split_manifest_path: Path,
+) -> dict[str, object]:
+    env_output = run_environment_check(repo_root)
+    model_specs = resolve_model_aliases(args.models, repo_root)
+    dataset_specs = resolve_dataset_specs(
+        datasets=args.datasets,
+        subsets=args.subsets,
+        repo_root=repo_root,
+    )
+    validate_required_datasets(
+        dataset_specs,
+        [(spec.dataset_name, spec.subset) for spec in dataset_specs],
+    )
+    image_roots = {
+        spec.dataset_name: resolve_dataset_image_root(
+            repo_root=repo_root,
+            dataset_name=spec.dataset_name,
+        )
+        for spec in dataset_specs
+    }
+
+    split_manifest_paths: list[str] = []
+    split_commands: list[str] = []
+    split_summaries: list[dict[str, object]] = []
+    primary_manifest: dict[str, object] | None = None
+    for index, spec in enumerate(dataset_specs):
+        manifest = build_split_manifest(
+            dataset_name=spec.dataset_name,
+            subset=spec.subset,
+            input_records=spec.path,
+        )
+        per_dataset_path = manifests_dir / f"split_manifest_{spec.dataset_name}_{spec.subset}.json"
+        split_manifest_paths.append(str(per_dataset_path))
+        split_commands.append(split_command(spec=spec, output=per_dataset_path))
+        split_summaries.append(
+            {
+                "dataset_name": spec.dataset_name,
+                "subset": spec.subset,
+                "input_records": str(spec.path),
+                "output": str(per_dataset_path),
+                "counts_per_split": manifest["counts_per_split"],
+            }
+        )
+        if index == 0:
+            primary_manifest = manifest
+    if primary_manifest is None:
+        raise ValueError("No dataset specs were requested.")
+    split_manifest_paths.append(str(split_manifest_path))
+
+    limit = 0 if args.full_run else args.smoke_limit
+    extraction_commands = [
+        extraction_dry_run_command(
+            spec=spec,
+            model_spec=model_spec,
+            cache_root=cache_root,
+            image_root=image_roots[spec.dataset_name],
+            args=args,
+            limit=limit,
+        )
+        for model_spec in model_specs
+        for spec in dataset_specs
+    ]
+
+    summary = initial_summary(args, repo_root=repo_root)
+    summary["status"] = "dry_run"
+    summary["audit_outputs"] = audit_output_paths(output_root / "audit")
+    summary["split_manifest"] = str(split_manifest_path)
+    summary["cache_manifest"] = str(cache_manifest_path)
+    summary["blocking_issues"] = []
+    summary["next_recommended_commands"] = [] if args.full_run else [full_run_command(args)]
+
+    return {
+        "dry_run": True,
+        "environment_check": env_output,
+        "audit_command": audit_command(output_root=output_root, dataset_specs=dataset_specs),
+        "audit_outputs": summary["audit_outputs"],
+        "split_commands": split_commands,
+        "split_manifests": split_manifest_paths,
+        "split_summaries": split_summaries,
+        "extraction_commands": extraction_commands,
+        "cache_manifest": str(cache_manifest_path),
+        "summary": {key: summary.get(key) for key in SUMMARY_KEYS},
+    }
+
+
 def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") -> int:
     repo_root = Path(repo_root)
     output_root = args.output_root
@@ -291,15 +475,28 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
     cache_manifest_path = manifests_dir / "cache_manifest.json"
     split_manifest_path = manifests_dir / "split_manifest.json"
 
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    manifests_dir.mkdir(parents=True, exist_ok=True)
     summary = initial_summary(args, repo_root=repo_root)
 
     def log(message: str) -> None:
+        logs_dir.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"{utc_now_iso()} {message}\n")
 
     try:
+        if args.dry_run:
+            plan = build_dry_run_plan(
+                args,
+                repo_root=repo_root,
+                output_root=output_root,
+                manifests_dir=manifests_dir,
+                cache_root=cache_root,
+                cache_manifest_path=cache_manifest_path,
+                split_manifest_path=split_manifest_path,
+            )
+            print(json.dumps(plan, indent=2, sort_keys=False))
+            return 0
+
+        manifests_dir.mkdir(parents=True, exist_ok=True)
         log("stage0_run start")
         env_output = run_environment_check(repo_root)
         log(f"environment_check {env_output}")
@@ -396,8 +593,12 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
         return 0
     except Exception as error:
         issue = str(error)
+        if args.dry_run:
+            print(issue, file=sys.stderr)
+            return 2
         summary["status"] = "failed"
         summary["blocking_issues"] = [issue]
+        manifests_dir.mkdir(parents=True, exist_ok=True)
         write_summary(summary_path, summary)
         log(f"stage0_run failed error={issue}")
         print(issue, file=sys.stderr)

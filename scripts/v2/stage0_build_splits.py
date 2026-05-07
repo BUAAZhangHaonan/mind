@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -44,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Build and write the manifest, then print a dry-run summary.",
+        help="Build and validate the manifest without writing it.",
     )
     return parser
 
@@ -60,7 +61,8 @@ def main(argv: list[str] | None = None) -> int:
             ratios=args.ratios,
             group_key=args.group_key,
         )
-        write_split_manifest(manifest, args.output)
+        if not args.dry_run:
+            write_split_manifest(manifest, args.output)
     except (FileNotFoundError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -88,6 +90,17 @@ def _print_summary(
         )
     )
     print(f"dry_run={str(dry_run).lower()}")
+    if dry_run:
+        print(
+            json.dumps(
+                {
+                    "dry_run": dry_run,
+                    "output": str(output),
+                    "manifest": manifest,
+                },
+                sort_keys=True,
+            )
+        )
 
 
 if __name__ == "__main__":

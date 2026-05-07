@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import torch
@@ -22,6 +24,16 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _load_script(path: str, name: str) -> ModuleType:
+    script_path = Path(path)
+    spec = importlib.util.spec_from_file_location(name, script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_run_audit_writes_counts_and_missing_rows(tmp_path: Path) -> None:
@@ -403,3 +415,48 @@ def test_required_dataset_validation_and_known_discovery(tmp_path: Path, monkeyp
 
     with pytest.raises(FileNotFoundError, match="Required dataset is missing: pope/adversarial"):
         validate_required_datasets(specs, [("pope", "adversarial")])
+
+
+def test_cli_dry_run_reads_and_reports_without_writing_audit_outputs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("scripts/v2/stage0_audit_data.py", "stage0_audit_data_dry")
+    dataset_path = tmp_path / "data" / "pope" / "popular.jsonl"
+    output_root = tmp_path / "outputs"
+    _write_jsonl(
+        dataset_path,
+        [
+            {
+                "sample_id": "s1",
+                "image_id": 1,
+                "image_path": "images/000001.jpg",
+                "question": "Is there a cat in the image?",
+                "label": "yes",
+                "object_name": "cat",
+            }
+        ],
+    )
+
+    exit_code = module.main(
+        [
+            "--dataset",
+            "pope",
+            "popular",
+            str(dataset_path),
+            "--output-root",
+            str(output_root),
+            "--dry-run",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert not output_root.exists()
+    assert "dry_run=true" in captured.out
+    summary = json.loads(captured.out.strip().splitlines()[-1])
+    assert summary["dry_run"] is True
+    assert summary["audit_dir"] == str(output_root / "audit")
+    assert summary["datasets_present"] == 1
+    assert summary["datasets_missing"] == 0
+    assert summary["records"] == 1

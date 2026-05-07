@@ -2,6 +2,7 @@ ENV_NAME ?= mind-py311
 CONDA ?= conda
 CONDA_RUN ?= $(CONDA) run --no-capture-output -n $(ENV_NAME)
 PYTHON ?= $(CONDA_RUN) python
+PROJECT_PYTHONPATH := $(CURDIR)/src
 CERT_BUNDLE ?= /etc/ssl/certs/ca-certificates.crt
 HF_ENDPOINT ?= https://hf-mirror.com
 MODEL_ID ?= Qwen/Qwen3-VL-8B-Instruct
@@ -21,10 +22,10 @@ install:
 	SSL_CERT_FILE=$(CERT_BUNDLE) REQUESTS_CA_BUNDLE=$(CERT_BUNDLE) PIP_CERT=$(CERT_BUNDLE) $(PYTHON) -m pip install -e .
 
 verify-env:
-	$(PYTHON) scripts/verify_env.py
+	PYTHONPATH=$(PROJECT_PYTHONPATH)$${PYTHONPATH:+:$${PYTHONPATH}} $(PYTHON) scripts/verify_env.py
 
 verify-model:
-	HF_ENDPOINT=$(HF_ENDPOINT) $(PYTHON) scripts/verify_env.py --model-id $(MODEL_ID)
+	HF_ENDPOINT=$(HF_ENDPOINT) PYTHONPATH=$(PROJECT_PYTHONPATH)$${PYTHONPATH:+:$${PYTHONPATH}} $(PYTHON) scripts/verify_env.py --model-id $(MODEL_ID)
 
 test:
 	PYTHONWARNINGS=ignore $(PYTHON) -m pytest -q tests/unit tests/integration
