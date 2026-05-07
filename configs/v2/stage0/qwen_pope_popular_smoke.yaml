@@ -1,0 +1,21 @@
+name: qwen-pope-popular-smoke
+version: v2
+stage: stage0
+mode: smoke
+output_root: outputs/v2_stage0
+dtype: float16
+max_new_tokens: 1
+token_index: -1
+smoke_limit: 8
+models:
+  - name: qwen3-vl-8b
+    config_path: configs/models/qwen3_vl_8b.yaml
+datasets:
+  - name: pope_popular
+    family: pope
+    subset: popular
+    record_path: outputs/round2_2026_04/normalized/pope/popular.jsonl
+split:
+  seed: 20260506
+  group_key: image_id
+  ratios: [0.50, 0.20, 0.10, 0.20]

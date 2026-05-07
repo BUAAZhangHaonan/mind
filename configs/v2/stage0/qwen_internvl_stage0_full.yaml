@@ -1,0 +1,31 @@
+name: qwen-internvl-stage0-full
+version: v2
+stage: stage0
+mode: full
+output_root: outputs/v2_stage0
+dtype: float16
+max_new_tokens: 1
+token_index: -1
+smoke_limit: 8
+models:
+  - name: qwen3-vl-8b
+    config_path: configs/models/qwen3_vl_8b.yaml
+  - name: internvl3.5-8b
+    config_path: configs/models/internvl3_5_8b.yaml
+datasets:
+  - name: pope_popular
+    family: pope
+    subset: popular
+    record_path: outputs/round2_2026_04/normalized/pope/popular.jsonl
+  - name: pope_random
+    family: pope
+    subset: random
+    record_path: outputs/round2_2026_04/normalized/pope/random.jsonl
+  - name: pope_adversarial
+    family: pope
+    subset: adversarial
+    record_path: outputs/round2_2026_04/normalized/pope/adversarial.jsonl
+split:
+  seed: 20260506
+  group_key: image_id
+  ratios: [0.50, 0.20, 0.10, 0.20]
