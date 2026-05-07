@@ -43,7 +43,7 @@ REQUIRED_SIDECAR_FIELDS = (
     "image_root",
 )
 
-DuplicateKey = tuple[str, str, str]
+DuplicateKey = tuple[str, str, str, str]
 
 
 class CacheValidationError(ValueError):
@@ -124,7 +124,7 @@ def build_stage0_cache_manifest(
     for key in duplicate_keys:
         errors.append(
             "duplicate cache key "
-            f"dataset_name={key[0]} split={key[1]} sample_id={key[2]}"
+            f"model_name={key[0]} dataset_name={key[1]} split={key[2]} sample_id={key[3]}"
         )
 
     for shard in shards:
@@ -370,7 +370,10 @@ def _validate_entry(
 
     key = _duplicate_key(entry, sidecar)
     if key is None and "sample_id" in entry:
-        errors.append(f"entry {index} is missing dataset_name or split metadata for duplicate check")
+        errors.append(
+            f"entry {index} is missing model_name, dataset_name, or split metadata "
+            "for duplicate check"
+        )
     return errors, hidden_dim, key
 
 
@@ -394,14 +397,17 @@ def _duplicate_key(
     entry: Mapping[str, object],
     sidecar: Mapping[str, object],
 ) -> DuplicateKey | None:
+    model_name = _optional_text(entry.get("model_name")) or _optional_text(
+        sidecar.get("model_name")
+    )
     dataset_name = _optional_text(entry.get("dataset_name")) or _optional_text(
         sidecar.get("dataset_name")
     )
     split = _optional_text(entry.get("split")) or _optional_text(sidecar.get("split"))
     sample_id = _optional_text(entry.get("sample_id"))
-    if dataset_name is None or split is None or sample_id is None:
+    if model_name is None or dataset_name is None or split is None or sample_id is None:
         return None
-    return (dataset_name, split, sample_id)
+    return (model_name, dataset_name, split, sample_id)
 
 
 def _optional_text(value: object | None) -> str | None:

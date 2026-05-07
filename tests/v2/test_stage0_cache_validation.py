@@ -168,7 +168,25 @@ def test_duplicate_sample_ids_fail_across_cache_set(tmp_path: Path) -> None:
 
     manifest = _assert_validation_fails(cache_root, "duplicate")
 
-    assert manifest["duplicate_keys"] == [["pope", "encoder_train", "sample-001"]]
+    assert manifest["duplicate_keys"] == [["tiny-model", "pope", "encoder_train", "sample-001"]]
+    assert "model_name=tiny-model" in manifest["errors"][0]
+
+
+def test_duplicate_sample_ids_pass_across_different_model_cache_sets(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    _write_shard(cache_root, name="qwen-shard-00000.pt")
+    _write_shard(
+        cache_root,
+        name="internvl-shard-00000.pt",
+        sidecar=_base_sidecar(model_name="internvl3.5-8b", model_id="OpenGVLab/InternVL3_5-8B"),
+    )
+    validate_stage0_cache, _ = _cache_api()
+
+    manifest = validate_stage0_cache(cache_root)
+
+    assert manifest["status"] == "passed"
+    assert manifest["duplicate_keys"] == []
+    assert manifest["total_entries"] == 2
 
 
 def test_non_contiguous_selected_layers_fail_for_full_layer_cache(tmp_path: Path) -> None:
