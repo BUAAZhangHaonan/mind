@@ -20,6 +20,10 @@ DATASET_AUDIT_COLUMNS = (
     "num_missing_question",
     "num_unknown_object",
     "unique_objects",
+    "unique_images",
+    "num_duplicate_sample_id",
+    "num_null_required_fields",
+    "num_invalid_label",
 )
 
 LABEL_BALANCE_COLUMNS = (
@@ -29,6 +33,7 @@ LABEL_BALANCE_COLUMNS = (
     "num_records",
     "num_gt_yes",
     "num_gt_no",
+    "num_invalid_label",
     "num_parsed_yes",
     "num_parsed_no",
     "num_parsed_none",

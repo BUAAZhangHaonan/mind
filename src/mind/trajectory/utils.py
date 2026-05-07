@@ -18,11 +18,18 @@ _OBJECT_FROM_QUESTION_PATTERN = re.compile(
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
-    return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    rows: list[dict[str, object]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{path}: line {line_number}: invalid JSON: {error.msg}") from error
+        if not isinstance(value, dict):
+            raise ValueError(f"{path}: line {line_number}: expected JSON object")
+        rows.append(value)
+    return rows
 
 
 def write_csv(path: Path, rows: Iterable[Mapping[str, object | None]], columns: tuple[str, ...]) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -17,13 +17,24 @@ from .metadata import (
 )
 from .utils import parse_yes_no_label, write_csv
 
+CacheKey = tuple[str, str, str]
+
 
 @dataclass(frozen=True)
 class CacheAnswer:
+    dataset_name: str | None
+    subset: str | None
+    sample_id: str
     parsed_answer: int | None
     has_parsed_answer_field: bool
     has_answer_text: bool
     has_first_token_logits: bool
+
+
+@dataclass(frozen=True)
+class CacheAnswerIndex:
+    by_identity: Mapping[CacheKey, CacheAnswer]
+    legacy_by_sample_id: Mapping[str, tuple[CacheAnswer, ...]]
 
 
 @dataclass(frozen=True)
@@ -60,22 +71,33 @@ def run_audit(
     cache_answers = load_cache_answers(Path(cache_root)) if cache_root is not None else None
 
     records_by_key: dict[tuple[str, str], list[NormalizedRecord]] = {}
+    present_by_key: dict[tuple[str, str], bool] = {}
     dataset_rows: list[dict[str, object | None]] = []
     label_rows: list[dict[str, object | None]] = []
     object_rows: list[dict[str, object | None]] = []
 
     for spec in specs:
+        key = (spec.dataset_name, spec.subset)
         if not spec.path.exists():
             dataset_rows.append(_missing_dataset_row(spec))
-            label_rows.append(_missing_label_balance_row(spec))
-            records_by_key[(spec.dataset_name, spec.subset)] = []
+            records_by_key[key] = []
+            present_by_key[key] = False
             continue
 
         records = load_dataset_records(spec)
-        records_by_key[(spec.dataset_name, spec.subset)] = records
+        records_by_key[key] = records
+        present_by_key[key] = True
         dataset_rows.append(_dataset_audit_row(spec, records))
-        label_rows.append(_label_balance_row(spec, records, cache_answers))
-        object_rows.extend(_object_name_rows(spec, records, cache_answers))
+
+    ambiguous_sample_ids = _ambiguous_sample_ids(records_by_key.values())
+    for spec in specs:
+        key = (spec.dataset_name, spec.subset)
+        records = records_by_key[key]
+        if not present_by_key[key]:
+            label_rows.append(_missing_label_balance_row(spec))
+            continue
+        label_rows.append(_label_balance_row(spec, records, cache_answers, ambiguous_sample_ids))
+        object_rows.extend(_object_name_rows(spec, records, cache_answers, ambiguous_sample_ids))
 
     overlap_rows = _overlap_rows(records_by_key)
 
@@ -93,28 +115,55 @@ def run_audit(
     )
 
 
-def load_cache_answers(cache_root: Path) -> dict[str, CacheAnswer]:
+def load_cache_answers(cache_root: Path) -> CacheAnswerIndex:
     if not cache_root.exists():
-        return {}
+        raise FileNotFoundError(f"Cache root does not exist: {cache_root}")
+    if not cache_root.is_dir():
+        raise NotADirectoryError(f"Cache root is not a directory: {cache_root}")
 
     import torch
 
-    answers: dict[str, CacheAnswer] = {}
+    by_identity: dict[CacheKey, CacheAnswer] = {}
+    legacy_by_sample_id: dict[str, list[CacheAnswer]] = defaultdict(list)
     for shard_path in sorted(cache_root.rglob("*.pt")):
+        if not shard_path.is_file():
+            continue
         payload = torch.load(shard_path, weights_only=False)
         for entry in _iter_cache_entries(payload):
-            sample_id = entry.get("sample_id")
-            if sample_id is None or not str(sample_id).strip():
+            sample_id = _identity_text(entry.get("sample_id"))
+            if sample_id is None:
                 continue
+            dataset_name = _identity_text(entry.get("dataset_name") or entry.get("source_dataset"))
+            subset = _identity_text(entry.get("subset") or entry.get("split"))
             has_parsed = "parsed_answer" in entry
             parsed = parse_yes_no_label(entry.get("parsed_answer")) if has_parsed else None
-            answers[str(sample_id).strip()] = CacheAnswer(
+            answer = CacheAnswer(
+                dataset_name=dataset_name,
+                subset=subset,
+                sample_id=sample_id,
                 parsed_answer=parsed,
                 has_parsed_answer_field=has_parsed,
                 has_answer_text="answer_text" in entry,
                 has_first_token_logits="first_token_logits" in entry,
             )
-    return answers
+            if dataset_name is not None and subset is not None:
+                by_identity[(dataset_name, subset, sample_id)] = answer
+            elif dataset_name is None and subset is None:
+                legacy_by_sample_id[sample_id].append(answer)
+    return CacheAnswerIndex(
+        by_identity=by_identity,
+        legacy_by_sample_id={
+            sample_id: tuple(answers)
+            for sample_id, answers in legacy_by_sample_id.items()
+        },
+    )
+
+
+def _identity_text(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _iter_cache_entries(payload: object) -> Iterable[Mapping[str, object]]:
@@ -151,12 +200,18 @@ def _missing_dataset_row(spec: DatasetSpec) -> dict[str, object | None]:
         "num_missing_question": 0,
         "num_unknown_object": 0,
         "unique_objects": 0,
+        "unique_images": 0,
+        "num_duplicate_sample_id": 0,
+        "num_null_required_fields": 0,
+        "num_invalid_label": 0,
     }
 
 
 def _dataset_audit_row(spec: DatasetSpec, records: Sequence[NormalizedRecord]) -> dict[str, object | None]:
     labels = Counter(record.label for record in records)
     objects = {record.object_name for record in records}
+    sample_counts = Counter(record.sample_id for record in records if record.sample_id)
+    image_keys = {_image_key(record) for record in records if _image_key(record)}
     return {
         "dataset_name": spec.dataset_name,
         "subset": spec.subset,
@@ -169,6 +224,10 @@ def _dataset_audit_row(spec: DatasetSpec, records: Sequence[NormalizedRecord]) -
         "num_missing_question": sum(1 for record in records if not record.question),
         "num_unknown_object": sum(1 for record in records if record.object_name == UNKNOWN_OBJECT_NAME),
         "unique_objects": len(objects),
+        "unique_images": len(image_keys),
+        "num_duplicate_sample_id": sum(count - 1 for count in sample_counts.values() if count > 1),
+        "num_null_required_fields": sum(_null_required_field_count(record) for record in records),
+        "num_invalid_label": labels[None],
     }
 
 
@@ -180,6 +239,7 @@ def _missing_label_balance_row(spec: DatasetSpec) -> dict[str, object | None]:
         "num_records": 0,
         "num_gt_yes": 0,
         "num_gt_no": 0,
+        "num_invalid_label": 0,
         "num_parsed_yes": None,
         "num_parsed_no": None,
         "num_parsed_none": None,
@@ -193,7 +253,8 @@ def _missing_label_balance_row(spec: DatasetSpec) -> dict[str, object | None]:
 def _label_balance_row(
     spec: DatasetSpec,
     records: Sequence[NormalizedRecord],
-    cache_answers: Mapping[str, CacheAnswer] | None,
+    cache_answers: CacheAnswerIndex | None,
+    ambiguous_sample_ids: set[str],
 ) -> dict[str, object | None]:
     labels = Counter(record.label for record in records)
     row: dict[str, object | None] = {
@@ -203,12 +264,13 @@ def _label_balance_row(
         "num_records": len(records),
         "num_gt_yes": labels[1],
         "num_gt_no": labels[0],
+        "num_invalid_label": labels[None],
     }
     if cache_answers is None:
         row.update(_blank_parsed_metrics("not_available_before_cache"))
         return row
 
-    parsed_values = [_cache_answer_for(record, cache_answers) for record in records]
+    parsed_values = [_cache_answer_for(record, cache_answers, ambiguous_sample_ids) for record in records]
     if not any(value is not None and value.has_parsed_answer_field for value in parsed_values):
         row.update(_blank_parsed_metrics("not_available_in_cache"))
         return row
@@ -252,7 +314,8 @@ def _blank_parsed_metrics(status: str) -> dict[str, object | None]:
 def _object_name_rows(
     spec: DatasetSpec,
     records: Sequence[NormalizedRecord],
-    cache_answers: Mapping[str, CacheAnswer] | None,
+    cache_answers: CacheAnswerIndex | None,
+    ambiguous_sample_ids: set[str],
 ) -> list[dict[str, object | None]]:
     rows: list[dict[str, object | None]] = []
     for object_name in sorted({record.object_name for record in records}):
@@ -266,7 +329,10 @@ def _object_name_rows(
             "num_hallucination": None,
         }
         if cache_answers is not None:
-            parsed_values = [_cache_answer_for(record, cache_answers) for record in object_records]
+            parsed_values = [
+                _cache_answer_for(record, cache_answers, ambiguous_sample_ids)
+                for record in object_records
+            ]
             if any(value is not None and value.has_parsed_answer_field for value in parsed_values):
                 parsed_labels = [None if value is None else value.parsed_answer for value in parsed_values]
                 row["num_correct"] = sum(
@@ -285,9 +351,38 @@ def _object_name_rows(
 
 def _cache_answer_for(
     record: NormalizedRecord,
-    cache_answers: Mapping[str, CacheAnswer],
+    cache_answers: CacheAnswerIndex,
+    ambiguous_sample_ids: set[str],
 ) -> CacheAnswer | None:
-    return cache_answers.get(record.sample_id)
+    exact = cache_answers.by_identity.get((record.dataset_name, record.subset, record.sample_id))
+    if exact is not None:
+        return exact
+    if record.sample_id in ambiguous_sample_ids:
+        return None
+    legacy_answers = cache_answers.legacy_by_sample_id.get(record.sample_id, ())
+    if len(legacy_answers) == 1:
+        return legacy_answers[0]
+    return None
+
+
+def _ambiguous_sample_ids(record_groups: Iterable[Sequence[NormalizedRecord]]) -> set[str]:
+    counts: Counter[str] = Counter()
+    for records in record_groups:
+        counts.update(record.sample_id for record in records if record.sample_id)
+    return {sample_id for sample_id, count in counts.items() if count > 1}
+
+
+def _image_key(record: NormalizedRecord) -> str:
+    return record.image_id or record.image_path
+
+
+def _null_required_field_count(record: NormalizedRecord) -> int:
+    return (
+        int(not record.sample_id)
+        + int(not record.image_path)
+        + int(not record.question)
+        + int(record.label is None)
+    )
 
 
 def _format_rate(numerator: int, denominator: int) -> str | None:

@@ -60,6 +60,14 @@ def test_run_audit_writes_counts_and_missing_rows(tmp_path: Path) -> None:
                 "label": 0,
                 "object_name": "",
             },
+            {
+                "sample_id": "s5",
+                "image_id": 5,
+                "image_path": "images/000005.jpg",
+                "question": "Is there a bird in the image?",
+                "label": "maybe",
+                "object_name": "bird",
+            },
         ],
     )
 
@@ -76,15 +84,23 @@ def test_run_audit_writes_counts_and_missing_rows(tmp_path: Path) -> None:
     present = next(row for row in dataset_rows if row["subset"] == "popular")
     missing = next(row for row in dataset_rows if row["subset"] == "random")
     assert present["status"] == "present"
-    assert present["num_records"] == "4"
+    assert present["num_records"] == "5"
     assert present["num_label_yes"] == "2"
     assert present["num_label_no"] == "2"
     assert present["num_missing_image_path"] == "1"
     assert present["num_missing_question"] == "1"
     assert present["num_unknown_object"] == "2"
-    assert present["unique_objects"] == "3"
+    assert present["unique_objects"] == "4"
+    assert present["unique_images"] == "5"
+    assert present["num_duplicate_sample_id"] == "0"
+    assert present["num_null_required_fields"] == "3"
+    assert present["num_invalid_label"] == "1"
     assert missing["status"] == "missing"
     assert missing["num_records"] == "0"
+    assert missing["unique_images"] == "0"
+    assert missing["num_duplicate_sample_id"] == "0"
+    assert missing["num_null_required_fields"] == "0"
+    assert missing["num_invalid_label"] == "0"
 
     label_rows = _read_csv(result.audit_dir / "label_balance.csv")
     label_present = next(row for row in label_rows if row["subset"] == "popular")
@@ -210,6 +226,8 @@ def test_label_balance_uses_synthetic_cache_shard(tmp_path: Path) -> None:
         ],
     )
     cache_root.mkdir()
+    (cache_root / "ignored.pt").mkdir()
+    (cache_root / "notes.txt").write_text("not a torch shard", encoding="utf-8")
     torch.save(
         [
             {
@@ -254,6 +272,115 @@ def test_label_balance_uses_synthetic_cache_shard(tmp_path: Path) -> None:
     }
     assert object_counts["cat"]["num_correct"] == "1"
     assert object_counts["dog"]["num_hallucination"] == "1"
+
+
+def test_cache_answers_match_dataset_subset_when_sample_ids_collide(tmp_path: Path) -> None:
+    pope_path = tmp_path / "pope" / "popular.jsonl"
+    repope_path = tmp_path / "repope" / "popular.jsonl"
+    cache_root = tmp_path / "cache"
+    _write_jsonl(
+        pope_path,
+        [
+            {
+                "sample_id": "shared",
+                "image_id": 1,
+                "image_path": "images/1.jpg",
+                "question": "Is there a cat in the image?",
+                "label": 1,
+                "object_name": "cat",
+            }
+        ],
+    )
+    _write_jsonl(
+        repope_path,
+        [
+            {
+                "sample_id": "shared",
+                "image_id": 2,
+                "image_path": "images/2.jpg",
+                "question": "Is there a dog in the image?",
+                "label": 0,
+                "object_name": "dog",
+            }
+        ],
+    )
+    cache_root.mkdir()
+    torch.save(
+        [
+            {
+                "dataset_name": "repope",
+                "subset": "popular",
+                "sample_id": "shared",
+                "parsed_answer": 0,
+                "answer_text": "no",
+            },
+            {
+                "dataset_name": "pope",
+                "subset": "popular",
+                "sample_id": "shared",
+                "parsed_answer": 1,
+                "answer_text": "yes",
+            },
+        ],
+        cache_root / "shard-00000.pt",
+    )
+
+    result = run_audit(
+        [
+            DatasetSpec("pope", "popular", pope_path),
+            DatasetSpec("repope", "popular", repope_path),
+        ],
+        output_root=tmp_path / "outputs",
+        cache_root=cache_root,
+    )
+
+    label_rows = {
+        (row["dataset_name"], row["subset"]): row
+        for row in _read_csv(result.audit_dir / "label_balance.csv")
+    }
+    assert label_rows[("pope", "popular")]["num_parsed_yes"] == "1"
+    assert label_rows[("pope", "popular")]["num_parsed_no"] == "0"
+    assert label_rows[("repope", "popular")]["num_parsed_yes"] == "0"
+    assert label_rows[("repope", "popular")]["num_parsed_no"] == "1"
+
+
+def test_explicit_bad_cache_root_fails_clearly(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "pope" / "popular.jsonl"
+    _write_jsonl(dataset_path, [])
+
+    with pytest.raises(FileNotFoundError, match="Cache root does not exist"):
+        run_audit(
+            [DatasetSpec("pope", "popular", dataset_path)],
+            output_root=tmp_path / "outputs",
+            cache_root=tmp_path / "missing-cache",
+        )
+
+    file_cache_root = tmp_path / "cache-file"
+    file_cache_root.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(NotADirectoryError, match="Cache root is not a directory"):
+        run_audit(
+            [DatasetSpec("pope", "popular", dataset_path)],
+            output_root=tmp_path / "outputs",
+            cache_root=file_cache_root,
+        )
+
+
+def test_non_object_jsonl_row_reports_path_and_line(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "pope" / "popular.jsonl"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        json.dumps({"sample_id": "ok", "label": "yes"}) + "\n"
+        + json.dumps(["not", "an", "object"])
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=rf"{dataset_path}.*line 2.*JSON object"):
+        run_audit(
+            [DatasetSpec("pope", "popular", dataset_path)],
+            output_root=tmp_path / "outputs",
+            cache_root=None,
+        )
 
 
 def test_required_dataset_validation_and_known_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
