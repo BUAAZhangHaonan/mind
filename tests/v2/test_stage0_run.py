@@ -243,7 +243,18 @@ def test_orchestrator_writes_passed_smoke_summary(
 
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "--full-run" in captured.out
+    expected_full_run_command = (
+        "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
+        f"--output-root {output_root} "
+        "--models qwen3-vl-8b internvl3.5-8b "
+        "--datasets pope "
+        "--subsets popular random adversarial "
+        "--device cpu --dtype float16 --full-run"
+    )
+    assert captured.out == (
+        "Smoke Stage 0 passed. Full-run command:\n"
+        f"{expected_full_run_command}\n"
+    )
     summary_path = output_root / "manifests" / "stage0_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert set(summary) == {
@@ -259,7 +270,7 @@ def test_orchestrator_writes_passed_smoke_summary(
         "blocking_issues",
         "next_recommended_commands",
     }
-    assert summary["stage"] == "v2_stage0"
+    assert summary["stage"] == "stage0"
     assert summary["status"] == "passed"
     assert summary["git_commit"] == "deadbeef"
     assert summary["models_checked"] == ["qwen3-vl-8b"]
@@ -268,13 +279,7 @@ def test_orchestrator_writes_passed_smoke_summary(
     assert summary["blocking_issues"] == []
     assert summary["split_manifest"] == str(output_root / "manifests" / "split_manifest.json")
     assert summary["cache_manifest"] == str(output_root / "manifests" / "cache_manifest.json")
-    assert summary["next_recommended_commands"] == [
-        (
-            "python scripts/v2/stage0_run.py --output-root "
-            f"{output_root} --models qwen3-vl-8b --datasets pope --subsets popular "
-            "--smoke-limit 2 --device cpu --dtype float16 --full-run"
-        )
-    ]
+    assert summary["next_recommended_commands"] == [expected_full_run_command]
     assert (output_root / "logs" / "stage0_run.log").exists()
 
 

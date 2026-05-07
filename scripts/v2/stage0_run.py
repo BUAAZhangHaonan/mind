@@ -41,6 +41,8 @@ MODEL_ALIASES: dict[str, dict[str, str]] = {
 }
 KNOWN_DATASETS = {"pope", "repope"}
 KNOWN_SUBSETS = {"popular", "random", "adversarial"}
+PRIMARY_STAGE0_MODELS = ("qwen3-vl-8b", "internvl3.5-8b")
+POPE_FULL_RUN_SUBSETS = ("popular", "random", "adversarial")
 SUMMARY_KEYS = (
     "stage",
     "status",
@@ -189,7 +191,7 @@ def write_json(path: Path, payload: Mapping[str, object]) -> None:
 
 def initial_summary(args: argparse.Namespace, *, repo_root: Path) -> dict[str, object]:
     return {
-        "stage": "v2_stage0",
+        "stage": "stage0",
         "status": "failed",
         "git_commit": get_git_commit(),
         "models_checked": list(args.models),
@@ -208,20 +210,46 @@ def write_summary(path: Path, summary: Mapping[str, object]) -> None:
     write_json(path, ordered)
 
 
+def recommended_full_run_models(requested_models: Sequence[str]) -> list[str]:
+    requested = list(requested_models)
+    if all(model in requested for model in PRIMARY_STAGE0_MODELS):
+        return requested
+    return list(PRIMARY_STAGE0_MODELS)
+
+
+def recommended_full_run_datasets_and_subsets(
+    *,
+    requested_datasets: Sequence[str],
+    requested_subsets: Sequence[str],
+) -> tuple[list[str], list[str]]:
+    datasets = list(requested_datasets)
+    normalized_datasets = [dataset.strip().lower() for dataset in datasets]
+    if normalized_datasets == ["pope"]:
+        return ["pope"], list(POPE_FULL_RUN_SUBSETS)
+    return datasets, list(requested_subsets)
+
+
 def full_run_command(args: argparse.Namespace) -> str:
+    datasets, subsets = recommended_full_run_datasets_and_subsets(
+        requested_datasets=args.datasets,
+        requested_subsets=args.subsets,
+    )
     parts = [
+        "conda",
+        "run",
+        "--no-capture-output",
+        "-n",
+        "mind-py311",
         "python",
         "scripts/v2/stage0_run.py",
         "--output-root",
         str(args.output_root),
         "--models",
-        *args.models,
+        *recommended_full_run_models(args.models),
         "--datasets",
-        *args.datasets,
+        *datasets,
         "--subsets",
-        *args.subsets,
-        "--smoke-limit",
-        str(args.smoke_limit),
+        *subsets,
         "--device",
         args.device,
         "--dtype",
