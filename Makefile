@@ -6,7 +6,10 @@ PROJECT_PYTHONPATH := $(CURDIR)/src
 CERT_BUNDLE ?= /etc/ssl/certs/ca-certificates.crt
 HF_ENDPOINT ?= https://hf-mirror.com
 MODEL_ID ?= Qwen/Qwen3-VL-8B-Instruct
-SMOKE_CONFIG ?= configs/experiments/smoke/qwen3_5_4b_pope_popular.yaml
+SMOKE_MODELS ?= qwen3-vl-8b
+SMOKE_DATASETS ?= pope
+SMOKE_SUBSETS ?= popular
+SMOKE_OUTPUT_ROOT ?= outputs/v2_stage0
 
 .PHONY: help env install verify-env verify-model test plan-smoke clean
 
@@ -28,10 +31,10 @@ verify-model:
 	HF_ENDPOINT=$(HF_ENDPOINT) PYTHONPATH=$(PROJECT_PYTHONPATH)$${PYTHONPATH:+:$${PYTHONPATH}} $(PYTHON) scripts/verify_env.py --model-id $(MODEL_ID)
 
 test:
-	PYTHONWARNINGS=ignore $(PYTHON) -m pytest -q tests/unit tests/integration
+	PYTHONWARNINGS=ignore $(PYTHON) -m pytest -q tests/unit tests/v2
 
 plan-smoke:
-	$(PYTHON) scripts/run_experiment.py --config $(SMOKE_CONFIG) --stages all
+	$(PYTHON) scripts/v2/stage0_run.py --models $(SMOKE_MODELS) --datasets $(SMOKE_DATASETS) --subsets $(SMOKE_SUBSETS) --output-root $(SMOKE_OUTPUT_ROOT) --dry-run
 
 clean:
 	rm -rf .pytest_cache htmlcov src/*.egg-info

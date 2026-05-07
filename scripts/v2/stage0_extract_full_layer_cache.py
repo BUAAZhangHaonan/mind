@@ -30,6 +30,7 @@ from mind.extractors.prefill import (
 )
 from mind.models.factory import create_model_wrapper
 from mind.models.types import resolve_torch_dtype
+from mind.trajectory.dataset import validate_extraction_ready_row
 
 
 LAYER_CONFIG_PATHS = (
@@ -80,6 +81,12 @@ def load_normalized_records(path: Path) -> list[HallucinationRecord]:
             raise ValueError(
                 f"{path}:{line_number}: missing required record fields: {', '.join(missing)}"
             )
+        validate_extraction_ready_row(
+            row,
+            path=path,
+            record_number=line_number,
+            required_fields=REQUIRED_RECORD_FIELDS,
+        )
         payload = {field: row[field] for field in REQUIRED_RECORD_FIELDS}
         try:
             records.append(HallucinationRecord(**payload))
@@ -298,17 +305,17 @@ def run_extraction(
     if limit < 0:
         raise ValueError("limit must be non-negative")
 
+    records = load_normalized_records(records_path)
+    if limit > 0:
+        records = records[:limit]
+    records = resolve_image_paths(records, image_root=image_root)
+
     model_config = load_yaml_config(model_config_path, ModelConfig)
     wrapper = create_model_wrapper(model_config)
     processor = wrapper.load_processor()
     model = wrapper.load_model(device=device)
     total_layers = resolve_total_layers(model)
     selected_layers = selected_layers_for_total(total_layers)
-
-    records = load_normalized_records(records_path)
-    if limit > 0:
-        records = records[:limit]
-    records = resolve_image_paths(records, image_root=image_root)
 
     output_paths: list[Path] = []
     with torch.inference_mode():

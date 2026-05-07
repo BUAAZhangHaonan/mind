@@ -1,8 +1,0 @@
-name: smoke-qwen3-vl-4b-popular
-model_config: configs/models/qwen3_vl_4b.yaml
-dataset_config: configs/data/pope.yaml
-subset: popular
-split: val
-limit: 200
-selected_layers: 16
-detector: logistic

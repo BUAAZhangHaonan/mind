@@ -21,7 +21,13 @@ sys.path.insert(0, repo_src_path)
 from mind.models.types import resolve_torch_dtype
 from mind.trajectory.audit import run_audit, validate_required_datasets
 from mind.trajectory.cache import validate_stage0_cache
-from mind.trajectory.dataset import DatasetSpec
+from mind.trajectory.dataset import (
+    DatasetSpec,
+    discover_known_datasets,
+    normalized_dataset_path,
+    raw_dataset_path,
+    validate_extraction_ready_dataset_specs,
+)
 from mind.trajectory.splits import build_split_manifest, write_split_manifest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -146,6 +152,7 @@ def resolve_dataset_specs(
     datasets: Sequence[str],
     subsets: Sequence[str],
     repo_root: Path,
+    require_normalized: bool = False,
 ) -> list[DatasetSpec]:
     specs: list[DatasetSpec] = []
     for dataset in datasets:
@@ -168,16 +175,30 @@ def resolve_dataset_specs(
                         repo_root=repo_root,
                         dataset_name=normalized_dataset,
                         subset=normalized_subset,
+                        require_normalized=require_normalized,
                     ),
                 )
             )
     return specs
 
 
-def resolve_dataset_path(*, repo_root: Path, dataset_name: str, subset: str) -> Path:
+def resolve_dataset_path(
+    *,
+    repo_root: Path,
+    dataset_name: str,
+    subset: str,
+    require_normalized: bool = False,
+) -> Path:
+    normalized = normalized_dataset_path(
+        repo_root=repo_root,
+        dataset_name=dataset_name,
+        subset=subset,
+    )
+    if require_normalized:
+        return normalized
     candidates = [
-        repo_root / "outputs" / "round2_2026_04" / "normalized" / dataset_name / f"{subset}.jsonl",
-        repo_root / "data" / dataset_name / f"{subset}.jsonl",
+        normalized,
+        raw_dataset_path(repo_root=repo_root, dataset_name=dataset_name, subset=subset),
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -286,6 +307,7 @@ def audit_command(
     *,
     output_root: Path,
     dataset_specs: Sequence[DatasetSpec],
+    required_specs: Sequence[DatasetSpec],
 ) -> str:
     parts = [
         "python",
@@ -296,6 +318,7 @@ def audit_command(
     ]
     for spec in dataset_specs:
         parts.extend(["--dataset", spec.dataset_name, spec.subset, str(spec.path)])
+    for spec in required_specs:
         parts.extend(["--require", spec.dataset_name, spec.subset])
     return shlex.join(parts)
 
@@ -383,6 +406,13 @@ def build_dry_run_plan(
         datasets=args.datasets,
         subsets=args.subsets,
         repo_root=repo_root,
+        require_normalized=args.full_run,
+    )
+    audit_dataset_specs = discover_known_datasets(repo_root)
+    validate_extraction_ready_dataset_specs(
+        dataset_specs,
+        repo_root=repo_root,
+        require_normalized=args.full_run,
     )
     validate_required_datasets(
         dataset_specs,
@@ -449,7 +479,11 @@ def build_dry_run_plan(
     return {
         "dry_run": True,
         "environment_check": env_output,
-        "audit_command": audit_command(output_root=output_root, dataset_specs=dataset_specs),
+        "audit_command": audit_command(
+            output_root=output_root,
+            dataset_specs=audit_dataset_specs,
+            required_specs=dataset_specs,
+        ),
         "audit_outputs": summary["audit_outputs"],
         "split_commands": split_commands,
         "split_manifests": split_manifest_paths,
@@ -496,19 +530,32 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
             print(json.dumps(plan, indent=2, sort_keys=False))
             return 0
 
-        manifests_dir.mkdir(parents=True, exist_ok=True)
-        log("stage0_run start")
-        env_output = run_environment_check(repo_root)
-        log(f"environment_check {env_output}")
-
         model_specs = resolve_model_aliases(args.models, repo_root)
         dataset_specs = resolve_dataset_specs(
             datasets=args.datasets,
             subsets=args.subsets,
             repo_root=repo_root,
+            require_normalized=args.full_run,
         )
+        audit_dataset_specs = discover_known_datasets(repo_root)
+        try:
+            validate_extraction_ready_dataset_specs(
+                dataset_specs,
+                repo_root=repo_root,
+                require_normalized=args.full_run,
+            )
+        except Exception as error:
+            if args.full_run:
+                print(str(error), file=sys.stderr)
+                return 2
+            raise
 
-        audit_result = run_audit(dataset_specs, output_root=output_root, cache_root=None)
+        manifests_dir.mkdir(parents=True, exist_ok=True)
+        log("stage0_run start")
+        env_output = run_environment_check(repo_root)
+        log(f"environment_check {env_output}")
+
+        audit_result = run_audit(audit_dataset_specs, output_root=output_root, cache_root=None)
         summary["audit_outputs"] = audit_output_paths(audit_result.audit_dir)
         log(f"audit complete dir={audit_result.audit_dir}")
 

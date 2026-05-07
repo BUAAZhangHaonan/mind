@@ -190,6 +190,53 @@ def test_extractor_dry_run_resolves_layers_without_loading_model(
     assert not (tmp_path / "cache").exists()
 
 
+def test_extractor_validates_records_before_loading_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script(
+        "scripts/v2/stage0_extract_full_layer_cache.py",
+        "stage0_extract_full_layer_cache_validate_first",
+    )
+    records_path = tmp_path / "raw-pope.jsonl"
+    _write_jsonl(
+        records_path,
+        [
+            {
+                "question_id": 1,
+                "image": "COCO_val2014_000000310196.jpg",
+                "text": "Is there a snowboard in the image?",
+                "label": "yes",
+            }
+        ],
+    )
+
+    def fail_model_load(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("record validation must happen before model loading")
+
+    monkeypatch.setattr(module, "load_yaml_config", fail_model_load)
+    monkeypatch.setattr(module, "create_model_wrapper", fail_model_load)
+
+    with pytest.raises(ValueError, match="missing required record fields"):
+        module.run_extraction(
+            records_path=records_path,
+            model_config_path=tmp_path / "model.yaml",
+            output_root=tmp_path / "cache",
+            dataset_name="pope",
+            subset="popular",
+            split="popular",
+            image_root=None,
+            device="cpu",
+            dtype=module.resolve_torch_dtype("float16"),
+            max_new_tokens=1,
+            token_index=-1,
+            limit=0,
+            shard_size=128,
+            batch_size=1,
+        )
+    assert not (tmp_path / "cache").exists()
+
+
 def test_orchestrator_writes_passed_smoke_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -287,6 +334,84 @@ def test_orchestrator_writes_passed_smoke_summary(
     assert summary["cache_manifest"] == str(output_root / "manifests" / "cache_manifest.json")
     assert summary["next_recommended_commands"] == [expected_full_run_command]
     assert (output_root / "logs" / "stage0_run.log").exists()
+
+
+def test_orchestrator_audits_discovered_specs_but_extracts_requested_specs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_audit_scope")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
+    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+
+    audit_keys: list[tuple[str, str]] = []
+    required_keys: list[tuple[str, str]] = []
+    extraction_keys: list[tuple[str, str]] = []
+    smoke_path = output_root / "cache" / "qwen3-vl-8b" / "pope" / "popular" / "shard-00000.pt"
+
+    def fake_run_audit(specs: object, **_kwargs: object) -> object:
+        audit_keys.extend((spec.dataset_name, spec.subset) for spec in specs)  # type: ignore[attr-defined]
+        return SimpleNamespace(audit_dir=output_root / "audit")
+
+    def fake_validate_required_datasets(specs: object, required: object) -> None:
+        required_keys.extend((spec.dataset_name, spec.subset) for spec in specs)  # type: ignore[attr-defined]
+        assert list(required) == required_keys
+
+    def fake_run_extraction(**kwargs: object) -> list[Path]:
+        extraction_keys.append((str(kwargs["dataset_name"]), str(kwargs["subset"])))
+        return [smoke_path]
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fake_run_audit)
+    monkeypatch.setattr(module, "validate_required_datasets", fake_validate_required_datasets)
+    monkeypatch.setattr(module, "run_extraction", fake_run_extraction)
+    monkeypatch.setattr(
+        module,
+        "validate_stage0_cache",
+        lambda *_args, **_kwargs: {
+            "status": "passed",
+            "shards": [{"path": str(smoke_path)}],
+            "total_entries": 2,
+            "errors": [],
+        },
+    )
+
+    args = module.parse_args(
+        [
+            "--output-root",
+            str(output_root),
+            "--models",
+            "qwen3-vl-8b",
+            "--datasets",
+            "pope",
+            "--subsets",
+            "popular",
+            "--smoke-limit",
+            "2",
+            "--device",
+            "cpu",
+            "--dtype",
+            "float16",
+        ]
+    )
+
+    exit_code = module.run_orchestration(args, repo_root=repo_root)
+
+    assert exit_code == 0
+    assert audit_keys == [
+        ("pope", "popular"),
+        ("pope", "random"),
+        ("pope", "adversarial"),
+        ("repope", "popular"),
+        ("repope", "random"),
+        ("repope", "adversarial"),
+    ]
+    assert required_keys == [("pope", "popular")]
+    assert extraction_keys == [("pope", "popular")]
 
 
 def test_make_verify_env_makes_src_importable_without_editable_install() -> None:
@@ -455,3 +580,119 @@ def test_orchestrator_fails_before_extraction_when_pope_image_root_is_missing(
     assert summary["status"] == "failed"
     assert summary["smoke_cache_paths"] == []
     assert "Image root for pope is missing" in summary["blocking_issues"][0]
+
+
+def test_full_run_fails_on_raw_random_before_stage0_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_raw_random")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
+    _write_jsonl(normalized_root / "popular.jsonl", [_record("sample-001", 1)])
+    _write_jsonl(normalized_root / "adversarial.jsonl", [_record("sample-002", 2)])
+    _write_jsonl(
+        repo_root / "data" / "pope" / "random.jsonl",
+        [
+            {
+                "question_id": 1,
+                "image": "COCO_val2014_000000310196.jpg",
+                "text": "Is there a snowboard in the image?",
+                "label": "yes",
+            }
+        ],
+    )
+    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+
+    def fail_stage0_side_effect(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("full-run input validation must run before Stage 0 side effects")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "write_split_manifest", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "run_extraction", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_side_effect)
+
+    args = module.parse_args(
+        [
+            "--output-root",
+            str(output_root),
+            "--models",
+            "qwen3-vl-8b",
+            "--datasets",
+            "pope",
+            "--subsets",
+            "popular",
+            "random",
+            "adversarial",
+            "--device",
+            "cpu",
+            "--dtype",
+            "float16",
+            "--full-run",
+        ]
+    )
+
+    exit_code = module.run_orchestration(args, repo_root=repo_root)
+
+    assert exit_code != 0
+    assert not output_root.exists()
+    captured = capsys.readouterr()
+    assert "Normalized extraction-ready dataset is missing for full-run: pope/random" in captured.err
+    assert "raw file exists" in captured.err
+    assert "full-run does not accept raw POPE files" in captured.err
+
+
+def test_full_run_fails_on_missing_random_before_stage0_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_missing_random")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
+    _write_jsonl(normalized_root / "popular.jsonl", [_record("sample-001", 1)])
+    _write_jsonl(normalized_root / "adversarial.jsonl", [_record("sample-002", 2)])
+    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+
+    def fail_stage0_side_effect(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("full-run input validation must run before Stage 0 side effects")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "write_split_manifest", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "run_extraction", fail_stage0_side_effect)
+    monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_side_effect)
+
+    args = module.parse_args(
+        [
+            "--output-root",
+            str(output_root),
+            "--models",
+            "qwen3-vl-8b",
+            "--datasets",
+            "pope",
+            "--subsets",
+            "popular",
+            "random",
+            "adversarial",
+            "--device",
+            "cpu",
+            "--dtype",
+            "float16",
+            "--full-run",
+        ]
+    )
+
+    exit_code = module.run_orchestration(args, repo_root=repo_root)
+
+    assert exit_code != 0
+    assert not output_root.exists()
+    captured = capsys.readouterr()
+    assert "Normalized extraction-ready dataset is missing for full-run: pope/random" in captured.err
+    assert "raw file exists" not in captured.err

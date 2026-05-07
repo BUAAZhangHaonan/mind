@@ -16,7 +16,6 @@ REQUIRED_MODULES = (
     "transformers",
     "accelerate",
     "datasets",
-    "pywt",
     "sklearn",
     "pandas",
     "yaml",

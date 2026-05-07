@@ -4,7 +4,8 @@ Stage 0 is the data audit, split, and cache entry point for the MIND v2 pipeline
 
 ## What Stage 0 Does
 
-- Loads normalized dataset records from configured JSONL paths.
+- Loads normalized extraction records for cache work.
+- Audits discovered POPE/RePOPE records, using normalized files when present and raw local files for audit-only coverage when normalized files are missing.
 - Audits dataset fields, object names, label balance, and sample overlap before cache work starts.
 - Creates deterministic grouped splits by `image_id`.
 - Extracts pre-generation full-layer hidden states for each configured model and record.
@@ -19,7 +20,7 @@ Stage 0 is the data audit, split, and cache entry point for the MIND v2 pipeline
 
 ## Branch Migration Status
 
-The v1 work is frozen on the local branch `v1` and tag `v1-freeze-before-v2` at commit `81e3444`. The remote push is deferred until v2 checks pass. The v2 path starts from the new `configs/v2`, `docs/v2`, and `src/mind/trajectory` surface.
+The v1 work is frozen on branch `v1` and tag `v1-freeze-before-v2` at commit `81e3444`. Both refs are pushed to `origin`. `master` is the v2 Stage 0 line.
 
 ## Output Contract
 
@@ -50,7 +51,7 @@ The cache shard stores full-layer hidden states. The `.pt.json` sidecar stores s
 
 ## Dataset Audit Contract
 
-The audit must run before cache extraction. It must fail closed when a required field is missing.
+The audit must run before cache extraction. It must report missing optional datasets as structured rows and fail closed for requested extraction datasets that are not extraction-ready.
 
 Required record fields:
 
@@ -65,6 +66,8 @@ Required record fields:
 - `subset`
 
 The audit CSVs must cover row count, label counts, unique image count, duplicate sample IDs, missing image paths, null required fields, object-name coverage, object-name frequency, label balance by dataset and subset, sample overlap across configured datasets, and the source record path for each dataset.
+
+Full extraction does not accept raw POPE files. If a requested full-run subset only exists under `data/pope`, normalize it first with `scripts/prepare_data.py`.
 
 ## Cache Extraction Contract
 
@@ -90,36 +93,40 @@ The ratio order is `encoder_train`, `bank`, `cal`, `test`. All rows with the sam
 
 ## Smoke Run Command
 
-This is the required smoke command surface once the Stage 0 runner exists:
+This is the smoke command:
 
 ```bash
-python scripts/v2/stage0_run.py \
-  --config configs/v2/stage0/qwen_pope_popular_smoke.yaml
-```
-
-Use the same shape for the InternVL smoke run:
-
-```bash
-python scripts/v2/stage0_run.py \
-  --config configs/v2/stage0/internvl_pope_popular_smoke.yaml
+conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py \
+  --output-root outputs/v2_stage0 \
+  --models qwen3-vl-8b internvl3.5-8b \
+  --datasets pope \
+  --subsets popular \
+  --smoke-limit 8 \
+  --device cuda:0 \
+  --dtype float16
 ```
 
 ## Full Run Command
 
-This is the required full-run command surface once the Stage 0 runner exists:
+This is the full-run command:
 
 ```bash
-python scripts/v2/stage0_run.py \
-  --config configs/v2/stage0/qwen_internvl_stage0_full.yaml \
+HF_HUB_DISABLE_XET=1 conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py \
+  --output-root outputs/v2_stage0 \
+  --models qwen3-vl-8b internvl3.5-8b \
+  --datasets pope \
+  --subsets popular random adversarial \
+  --device cuda:0 \
+  --dtype float16 \
   --full-run
 ```
 
-The full config must include POPE subsets in this order: popular, random, adversarial.
+The full run must include POPE subsets in this order: popular, random, adversarial. For long runs, mount the command in `tmux` and keep output under `outputs/v2_stage0/logs`.
 
 ## Gate Criteria For Stage A
 
-- Both smoke configs load and complete on POPE popular with `smoke_limit: 8`.
-- The full config loads with both models and POPE popular, random, and adversarial.
+- The smoke CLI completes on POPE popular with both primary models and `smoke_limit: 8`.
+- The full-run CLI preflights both models and POPE popular, random, and adversarial before any model load or cache write.
 - Dataset audit CSVs have no missing required fields.
 - Splits have no `image_id` leakage across split groups.
 - Cache manifests match audited row counts for each model and dataset.
