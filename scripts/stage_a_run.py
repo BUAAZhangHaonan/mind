@@ -181,6 +181,16 @@ def main(argv: list[str] | None = None) -> int:
         if model_name == "qwen3-vl-8b":
             qwen_decision = str(model_result["overall_decision"])
 
+    if "internvl3.5-8b" not in requested_models:
+        reason = "internvl3.5-8b was not requested for this Stage A run"
+        _write_not_run(
+            args.output_root,
+            "internvl3.5-8b",
+            reason=reason,
+            skip_type="not_requested",
+        )
+        skipped_models["internvl3.5-8b"] = {"reason": reason, "skip_type": "not_requested"}
+
     overall = _overall_stage_a_decision(gates)
     _write_stage_a_summary(
         args.output_root,
@@ -810,25 +820,62 @@ def _pair_gate(
 
 
 def _layer_order_gate(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    ordered = _find_metric(rows, "Sphere-Traj-LSTM-v0", "Diag-Classifier", "test", "pooled")
-    shuffled = _find_metric(rows, "Sphere-Traj-Shuffled-LSTM", "Diag-Classifier", "test", "pooled")
+    comparisons: list[dict[str, object]] = []
+    missing_readouts: list[str] = []
+    for readout in READOUTS:
+        comparison = _layer_order_readout_comparison(rows, readout)
+        if comparison is None:
+            missing_readouts.append(readout)
+        else:
+            comparisons.append(comparison)
+    if missing_readouts:
+        return {
+            "status": "mixed",
+            "reason": "missing LSTM metric rows",
+            "comparisons": comparisons,
+            "missing_readouts": missing_readouts,
+            "total_comparisons": len(comparisons),
+        }
+    if comparisons and all(comparison["evidence"] == "supports_order" for comparison in comparisons):
+        status = "pass"
+    elif comparisons and all(comparison["evidence"] == "against_order" for comparison in comparisons):
+        status = "fail"
+    else:
+        status = "mixed"
+    return {
+        "status": status,
+        "comparisons": comparisons,
+        "total_comparisons": len(comparisons),
+    }
+
+
+def _layer_order_readout_comparison(
+    rows: Sequence[Mapping[str, object]],
+    readout: str,
+) -> dict[str, object] | None:
+    ordered = _find_metric(rows, "Sphere-Traj-LSTM-v0", readout, "test", "pooled")
+    shuffled = _find_metric(rows, "Sphere-Traj-Shuffled-LSTM", readout, "test", "pooled")
     if ordered is None or shuffled is None:
-        return {"status": "mixed", "reason": "missing LSTM metric rows"}
+        return None
     pr_delta = float(ordered["pr_auc"]) - float(shuffled["pr_auc"])
     roc_delta = float(ordered["roc_auc"]) - float(shuffled["roc_auc"])
     intervals_overlap = not (
         float(ordered["pr_auc_ci_low"]) > float(shuffled["pr_auc_ci_high"])
         or float(shuffled["pr_auc_ci_low"]) > float(ordered["pr_auc_ci_high"])
     )
-    if pr_delta >= 0.01 and roc_delta >= 0.005:
-        status = "pass"
-    elif intervals_overlap:
-        status = "mixed"
-    elif pr_delta < 0.0 and roc_delta < 0.0:
-        status = "fail"
+    if pr_delta >= 0.01 and roc_delta >= 0.005 and not intervals_overlap:
+        evidence = "supports_order"
+    elif pr_delta < 0.0 and roc_delta < 0.0 and not intervals_overlap:
+        evidence = "against_order"
     else:
-        status = "mixed"
-    return {"status": status, "pr_auc_delta": pr_delta, "roc_auc_delta": roc_delta}
+        evidence = "mixed"
+    return {
+        "readout": readout,
+        "evidence": evidence,
+        "pr_auc_delta": pr_delta,
+        "roc_auc_delta": roc_delta,
+        "pr_auc_ci_overlap": intervals_overlap,
+    }
 
 
 def _norm_gate(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:

@@ -56,6 +56,27 @@ def _stage_a_summary(tmp_path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _lstm_metric_row(
+    *,
+    readout: str,
+    ordered: bool,
+    pr_auc: float,
+    roc_auc: float,
+    pr_auc_ci_low: float,
+    pr_auc_ci_high: float,
+) -> dict[str, object]:
+    return {
+        "variant": "Sphere-Traj-LSTM-v0" if ordered else "Sphere-Traj-Shuffled-LSTM",
+        "readout": readout,
+        "eval_split": "test",
+        "eval_scope": "pooled",
+        "pr_auc": pr_auc,
+        "roc_auc": roc_auc,
+        "pr_auc_ci_low": pr_auc_ci_low,
+        "pr_auc_ci_high": pr_auc_ci_high,
+    }
+
+
 def test_metric_row_reports_one_class_scope_without_crashing() -> None:
     module = _load_script()
     entries = [
@@ -87,6 +108,49 @@ def test_metric_row_reports_one_class_scope_without_crashing() -> None:
     assert np.isnan(row["pr_auc"])
     assert row["num_test_correct"] == 2
     assert row["num_test_hard_hallucination"] == 0
+
+
+def test_layer_order_gate_requires_both_lstm_readouts_to_support_order() -> None:
+    module = _load_script()
+    rows = [
+        _lstm_metric_row(
+            readout="Diag-Classifier",
+            ordered=True,
+            pr_auc=0.70,
+            roc_auc=0.76,
+            pr_auc_ci_low=0.68,
+            pr_auc_ci_high=0.72,
+        ),
+        _lstm_metric_row(
+            readout="Diag-Classifier",
+            ordered=False,
+            pr_auc=0.64,
+            roc_auc=0.73,
+            pr_auc_ci_low=0.61,
+            pr_auc_ci_high=0.66,
+        ),
+        _lstm_metric_row(
+            readout="Diag-KNN",
+            ordered=True,
+            pr_auc=0.51,
+            roc_auc=0.51,
+            pr_auc_ci_low=0.45,
+            pr_auc_ci_high=0.56,
+        ),
+        _lstm_metric_row(
+            readout="Diag-KNN",
+            ordered=False,
+            pr_auc=0.50,
+            roc_auc=0.52,
+            pr_auc_ci_low=0.46,
+            pr_auc_ci_high=0.55,
+        ),
+    ]
+
+    gate = module._layer_order_gate(rows)
+
+    assert gate["status"] == "mixed"
+    assert len(gate["comparisons"]) == 2
 
 
 def test_preflight_failure_summary_is_failed(tmp_path: Path) -> None:
@@ -195,6 +259,27 @@ def test_requested_internvl_without_qwen_gate_skip_is_partial(
     assert payload["status"] == "partial"
     assert payload["full_stage_a_run"] is False
     assert "requested_models_not_completed_or_qwen_gate_skipped" in payload["run_scope"]["reasons"]
+
+
+def test_qwen_only_run_writes_internvl_not_requested_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script()
+    _patch_lightweight_stage_a_run(module, monkeypatch)
+
+    result = module.main(_base_stage_a_args(tmp_path))
+
+    not_run_path = tmp_path / "stageA" / "reports" / "internvl3.5-8b" / "not_run.json"
+    not_run = json.loads(not_run_path.read_text(encoding="utf-8"))
+    payload = _stage_a_summary(tmp_path)
+    assert result == 0
+    assert payload["status"] == "completed"
+    assert payload["full_stage_a_run"] is True
+    assert not_run["model_name"] == "internvl3.5-8b"
+    assert not_run["status"] == "not_run"
+    assert not_run["skip_type"] == "not_requested"
+    assert "not requested" in not_run["reason"]
 
 
 def test_qwen_gate_skip_counts_as_full_requested_model_handling(
