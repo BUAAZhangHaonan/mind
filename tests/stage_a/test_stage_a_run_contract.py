@@ -227,6 +227,44 @@ def test_runtime_model_failure_overwrites_stale_completed_status(
     assert "requested_models_not_completed_or_qwen_gate_skipped" in payload["run_scope"]["reasons"]
 
 
+def test_split_build_failure_overwrites_stale_completed_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script()
+    monkeypatch.setattr(module, "run_preflight", lambda **_: {"status": "passed"})
+
+    def fail_splits(**_: object) -> dict[str, object]:
+        raise RuntimeError("split building exploded")
+
+    monkeypatch.setattr(module, "build_family_splits", fail_splits)
+    monkeypatch.setattr(module, "_write_population_audits", lambda **_: None)
+    summary_path = tmp_path / "stageA" / "manifests" / "stageA_summary.json"
+    summary_path.parent.mkdir(parents=True)
+    summary_path.write_text(
+        json.dumps({"status": "completed", "completed_models": ["qwen3-vl-8b"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="split building exploded"):
+        module.main(_base_stage_a_args(tmp_path))
+
+    payload = _stage_a_summary(tmp_path)
+    assert payload["status"] == "failed"
+    assert payload["overall_decision"] == "fail"
+    assert payload["stage0_acceptance"] == "passed"
+    assert payload["stage_b_started"] is False
+    assert payload["completed_models"] == []
+    assert payload["failure_reason"] == (
+        "runtime failure while preparing Stage A: RuntimeError: split building exploded"
+    )
+    assert payload["requested_models"] == ["qwen3-vl-8b"]
+    assert payload["requested_subsets"] == ["popular", "random", "adversarial"]
+    assert payload["run_scope"]["requested_models"] == ["qwen3-vl-8b"]
+    assert payload["run_scope"]["requested_subsets"] == ["popular", "random", "adversarial"]
+    assert "requested_models_not_completed_or_qwen_gate_skipped" in payload["run_scope"]["reasons"]
+
+
 def test_failed_summary_overwrites_stale_completed_status(tmp_path: Path) -> None:
     module = _load_script()
     summary_path = tmp_path / "manifests" / "stageA_summary.json"

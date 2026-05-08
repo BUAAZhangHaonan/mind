@@ -20,6 +20,8 @@ FORBIDDEN_TRACKED_FILES = {
 }
 
 FORBIDDEN_CODE_TOKENS = (
+    "outputs/round2_2026_04",
+    "round2_2026_04",
     "mind.drift",
     "mind.manifolds",
     "mind.wavelets",

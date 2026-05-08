@@ -67,7 +67,7 @@ def discover_known_datasets(repo_root: Path | str = ".") -> list[DatasetSpec]:
             normalized = (
                 root
                 / "outputs"
-                / "round2_2026_04"
+                / "stage0"
                 / "normalized"
                 / dataset_name
                 / f"{subset}.jsonl"
@@ -110,7 +110,7 @@ def normalized_dataset_path(
     return (
         root
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / dataset_name
         / f"{subset}.jsonl"

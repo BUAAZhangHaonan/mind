@@ -28,6 +28,11 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     )
 
 
+def _assert_no_stage0_write_outputs(output_root: Path) -> None:
+    for child in ("audit", "cache", "logs", "manifests"):
+        assert not (output_root / child).exists()
+
+
 def _record(sample_id: str = "sample-001", image_id: int = 1) -> dict[str, object]:
     return {
         "sample_id": sample_id,
@@ -113,7 +118,7 @@ def test_orchestrator_passes_configured_split_options_to_dataset_manifests(
     module = _load_script("scripts/stage0_run.py", "stage0_run_split_config_flow")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    records_path = repo_root / "outputs" / "stage0" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
     config_path = tmp_path / "stage0.yaml"
@@ -208,7 +213,7 @@ def _write_normalized_closure_record(
     _write_jsonl(
         repo_root
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / dataset_name
         / f"{subset}.jsonl",
@@ -439,7 +444,7 @@ def test_orchestrator_writes_passed_smoke_summary(
     module = _load_script("scripts/stage0_run.py", "stage0_run")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    records_path = repo_root / "outputs" / "stage0" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     image_root = repo_root / "data" / "coco" / "val2014"
     image_root.mkdir(parents=True)
@@ -642,7 +647,7 @@ def test_orchestrator_audits_discovered_specs_but_extracts_requested_specs(
     module = _load_script("scripts/stage0_run.py", "stage0_run_audit_scope")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    records_path = repo_root / "outputs" / "stage0" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
 
@@ -746,7 +751,7 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
     module = _load_script("scripts/stage0_run.py", "stage0_run_dry")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    records_path = repo_root / "outputs" / "stage0" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
 
@@ -783,7 +788,7 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
     exit_code = module.run_orchestration(args, repo_root=repo_root)
 
     assert exit_code == 0
-    assert not output_root.exists()
+    _assert_no_stage0_write_outputs(output_root)
     captured = capsys.readouterr()
     plan = json.loads(captured.out)
     assert plan["dry_run"] is True
@@ -821,7 +826,7 @@ def test_orchestrator_dry_run_includes_configured_split_command(
     module = _load_script("scripts/stage0_run.py", "stage0_run_dry_split_command")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    records_path = repo_root / "outputs" / "stage0" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
     config_path = tmp_path / "stage0.yaml"
@@ -913,11 +918,11 @@ def test_orchestrator_dry_run_plans_repope_and_dash_b_materialization_without_wr
     exit_code = module.run_orchestration(args, repo_root=repo_root)
 
     assert exit_code == 0
-    assert not output_root.exists()
+    _assert_no_stage0_write_outputs(output_root)
     repope_output = (
         repo_root
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / "repope"
         / "random.jsonl"
@@ -925,7 +930,7 @@ def test_orchestrator_dry_run_plans_repope_and_dash_b_materialization_without_wr
     dash_b_output = (
         repo_root
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / "dash-b"
         / "all.jsonl"
@@ -1084,7 +1089,7 @@ def test_orchestrator_fails_before_extraction_when_pope_image_root_is_missing(
     module = _load_script("scripts/stage0_run.py", "stage0_run_missing_image_root")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    records_path = repo_root / "outputs" / "stage0" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1)])
 
     def fail_run_extraction(**_kwargs: object) -> list[Path]:
@@ -1126,7 +1131,7 @@ def test_full_run_materializes_raw_random_before_stage0_outputs(
     module = _load_script("scripts/stage0_run.py", "stage0_run_raw_random")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
+    normalized_root = repo_root / "outputs" / "stage0" / "normalized" / "pope"
     _write_normalized_closure_record(
         repo_root,
         dataset_name="pope",
@@ -1221,7 +1226,7 @@ def test_full_run_fails_on_missing_random_before_stage0_outputs(
     module = _load_script("scripts/stage0_run.py", "stage0_run_missing_random")
     repo_root = tmp_path / "repo"
     output_root = repo_root / "outputs" / "stage0"
-    normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
+    normalized_root = repo_root / "outputs" / "stage0" / "normalized" / "pope"
     _write_normalized_closure_record(
         repo_root,
         dataset_name="pope",
@@ -1271,7 +1276,7 @@ def test_full_run_fails_on_missing_random_before_stage0_outputs(
     exit_code = module.run_orchestration(args, repo_root=repo_root)
 
     assert exit_code != 0
-    assert not output_root.exists()
+    _assert_no_stage0_write_outputs(output_root)
     captured = capsys.readouterr()
     assert "Normalized extraction-ready dataset is missing for full-run: pope/random" in captured.err
     assert "raw file exists" not in captured.err

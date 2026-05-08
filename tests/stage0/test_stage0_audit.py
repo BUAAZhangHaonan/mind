@@ -689,9 +689,9 @@ def test_non_object_jsonl_row_reports_path_and_line(tmp_path: Path) -> None:
 
 def test_required_dataset_validation_and_known_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
-    normalized_popular = Path("outputs/round2_2026_04/normalized/pope/popular.jsonl")
+    normalized_popular = Path("outputs/stage0/normalized/pope/popular.jsonl")
     raw_random = Path("data/pope/random.jsonl")
-    dash_b = Path("outputs/round2_2026_04/normalized/dash-b/main.jsonl")
+    dash_b = Path("outputs/stage0/normalized/dash-b/main.jsonl")
     _write_jsonl(normalized_popular, [])
     _write_jsonl(raw_random, [])
     _write_jsonl(dash_b, [])
@@ -727,7 +727,7 @@ def test_known_discovery_audits_raw_only_dash_b_assets(tmp_path: Path, monkeypat
     by_key = {(spec.dataset_name, spec.subset): spec for spec in specs}
 
     assert by_key[("dash-b", "all")].path == dash_b_root
-    assert not Path("outputs/round2_2026_04/normalized/dash-b/all.jsonl").exists()
+    assert not Path("outputs/stage0/normalized/dash-b/all.jsonl").exists()
 
     result = run_audit(
         [by_key[("dash-b", "all")]],

@@ -42,7 +42,7 @@ None outside ignored paths. `git ls-files --others --exclude-standard` returned 
 | Path | Proposed action |
 | --- | --- |
 | old versioned Stage 0 output root | Move to `outputs/stage0/` if `outputs/stage0/` is absent or empty. Update path strings and stage labels in JSON metadata and sidecars only. Preserve tensor payloads and scientific metadata. Remove the old directory after a successful move. |
-| `outputs/round2_2026_04/` | Keep. This is the normalized input used by current Stage 0 configs. |
+| `outputs/stage0/` | Keep. This is the normalized input used by current Stage 0 configs. |
 
 ## Local V1 Artifacts
 

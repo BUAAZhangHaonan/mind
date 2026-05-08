@@ -14,7 +14,7 @@ datasets:
   - name: pope_popular
     family: pope
     subset: popular
-    record_path: outputs/round2_2026_04/normalized/pope/popular.jsonl
+    record_path: outputs/stage0/normalized/pope/popular.jsonl
 split:
   seed: 20260506
   group_key: image_id

@@ -106,42 +106,42 @@ def main(argv: list[str] | None = None) -> int:
         print("Stage A preflight failed; experiments were not started", file=sys.stderr)
         return 2
 
-    split_manifest = build_family_splits(
-        stage0_root=args.stage0_root,
-        output_root=args.output_root,
-        dataset_names=("pope",),
-        seed=args.seed,
-    )
-    _write_population_audits(
-        stage0_root=args.stage0_root,
-        output_root=args.output_root,
-        subsets=args.subsets,
-        split_manifest=split_manifest,
-        limit_per_subset=args.limit_per_subset,
-    )
-
-    if args.dry_run:
-        summary = _write_stage_a_summary(
-            args.output_root,
-            preflight,
-            {},
-            [],
-            "dry_run",
-            dry_run=True,
-            requested_models=requested_models,
-            requested_subsets=args.subsets,
-            limit_per_subset=args.limit_per_subset,
-            skip_lstm=args.skip_lstm,
-        )
-        print(f"Stage A dry run complete: {summary}")
-        return 0
-
     completed_models: list[str] = []
     skipped_models: dict[str, dict[str, object]] = {}
     gates: dict[str, dict[str, object]] = {}
     qwen_decision: str | None = None
     active_model: str | None = None
     try:
+        split_manifest = build_family_splits(
+            stage0_root=args.stage0_root,
+            output_root=args.output_root,
+            dataset_names=("pope",),
+            seed=args.seed,
+        )
+        _write_population_audits(
+            stage0_root=args.stage0_root,
+            output_root=args.output_root,
+            subsets=args.subsets,
+            split_manifest=split_manifest,
+            limit_per_subset=args.limit_per_subset,
+        )
+
+        if args.dry_run:
+            summary = _write_stage_a_summary(
+                args.output_root,
+                preflight,
+                {},
+                [],
+                "dry_run",
+                dry_run=True,
+                requested_models=requested_models,
+                requested_subsets=args.subsets,
+                limit_per_subset=args.limit_per_subset,
+                skip_lstm=args.skip_lstm,
+            )
+            print(f"Stage A dry run complete: {summary}")
+            return 0
+
         for model_name in requested_models:
             active_model = model_name
             if model_name == "internvl3.5-8b" and qwen_decision == "fail" and not _only_internvl_requested(args.models):
@@ -186,6 +186,33 @@ def main(argv: list[str] | None = None) -> int:
             if model_name == "qwen3-vl-8b":
                 qwen_decision = str(model_result["overall_decision"])
             active_model = None
+
+        if "internvl3.5-8b" not in requested_models:
+            reason = "internvl3.5-8b was not requested for this Stage A run"
+            _write_not_run(
+                args.output_root,
+                "internvl3.5-8b",
+                reason=reason,
+                skip_type="not_requested",
+            )
+            skipped_models["internvl3.5-8b"] = {"reason": reason, "skip_type": "not_requested"}
+
+        overall = _overall_stage_a_decision(gates)
+        _write_stage_a_summary(
+            args.output_root,
+            preflight,
+            gates,
+            completed_models,
+            overall,
+            dry_run=False,
+            requested_models=requested_models,
+            requested_subsets=args.subsets,
+            limit_per_subset=args.limit_per_subset,
+            skip_lstm=args.skip_lstm,
+            skipped_models=skipped_models,
+        )
+        print(f"Stage A complete overall_decision={overall}")
+        return 0 if overall != "fail" or completed_models else 2
     except Exception as error:
         failure_reason = _runtime_failure_reason(error, model_name=active_model)
         _write_stage_a_summary(
@@ -194,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
             gates,
             completed_models,
             "fail",
-            dry_run=False,
+            dry_run=args.dry_run,
             requested_models=requested_models,
             requested_subsets=args.subsets,
             limit_per_subset=args.limit_per_subset,
@@ -204,33 +231,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Stage A failed: {failure_reason}", file=sys.stderr)
         raise
-
-    if "internvl3.5-8b" not in requested_models:
-        reason = "internvl3.5-8b was not requested for this Stage A run"
-        _write_not_run(
-            args.output_root,
-            "internvl3.5-8b",
-            reason=reason,
-            skip_type="not_requested",
-        )
-        skipped_models["internvl3.5-8b"] = {"reason": reason, "skip_type": "not_requested"}
-
-    overall = _overall_stage_a_decision(gates)
-    _write_stage_a_summary(
-        args.output_root,
-        preflight,
-        gates,
-        completed_models,
-        overall,
-        dry_run=False,
-        requested_models=requested_models,
-        requested_subsets=args.subsets,
-        limit_per_subset=args.limit_per_subset,
-        skip_lstm=args.skip_lstm,
-        skipped_models=skipped_models,
-    )
-    print(f"Stage A complete overall_decision={overall}")
-    return 0 if overall != "fail" or completed_models else 2
 
 
 def run_model_stage_a(
@@ -1171,6 +1171,10 @@ def _write_stage_a_summary(
         "stage": "stageA",
         "status": summary_status,
         "stage0_acceptance": preflight.get("status"),
+        "requested_models": current_requested_models,
+        "requested_subsets": list(
+            REQUIRED_STAGE_A_SUBSETS if requested_subsets is None else requested_subsets
+        ),
         "completed_models": current_completed_models,
         "model_decisions": model_decisions,
         "overall_decision": merged_overall,
@@ -1188,7 +1192,7 @@ def _write_stage_a_summary(
 def _runtime_failure_reason(error: BaseException, *, model_name: str | None) -> str:
     if model_name:
         return f"runtime failure while running {model_name}: {type(error).__name__}: {error}"
-    return f"runtime failure after Stage A preflight: {type(error).__name__}: {error}"
+    return f"runtime failure while preparing Stage A: {type(error).__name__}: {error}"
 
 
 def _stage_a_run_scope(

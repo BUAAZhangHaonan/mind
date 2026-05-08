@@ -89,7 +89,7 @@ def test_discover_known_datasets_lists_full_closure_surface(tmp_path: Path) -> N
             _write_jsonl(
                 tmp_path
                 / "outputs"
-                / "round2_2026_04"
+                / "stage0"
                 / "normalized"
                 / dataset_name
                 / f"{subset}.jsonl",
@@ -98,7 +98,7 @@ def test_discover_known_datasets_lists_full_closure_surface(tmp_path: Path) -> N
     _write_jsonl(
         tmp_path
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / "dash-b"
         / "all.jsonl",
@@ -126,7 +126,7 @@ def test_orchestrator_resolves_dash_b_all_dataset_spec(
     records_path = (
         tmp_path
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / "dash-b"
         / "all.jsonl"
@@ -373,7 +373,7 @@ def test_top_level_split_manifest_indexes_every_requested_dataset_subset(
         _write_jsonl(
             repo_root
             / "outputs"
-            / "round2_2026_04"
+            / "stage0"
             / "normalized"
             / "pope"
             / f"{subset}.jsonl",
@@ -591,7 +591,7 @@ def _write_matrix_records(repo_root: Path, *, datasets: tuple[str, ...], subsets
             _write_jsonl(
                 repo_root
                 / "outputs"
-                / "round2_2026_04"
+                / "stage0"
                 / "normalized"
                 / dataset_name
                 / f"{subset}.jsonl",
@@ -624,7 +624,7 @@ def _write_matrix_records_with_count(
     _write_jsonl(
         repo_root
         / "outputs"
-        / "round2_2026_04"
+        / "stage0"
         / "normalized"
         / dataset_name
         / f"{subset}.jsonl",
