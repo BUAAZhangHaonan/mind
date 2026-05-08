@@ -61,13 +61,14 @@ LSTM_VARIANTS = VARIANTS[6:]
 READOUTS = ("Diag-Classifier", "Diag-KNN")
 SPLITS = ("encoder_train", "bank", "cal", "test")
 PRIMARY_MODELS = ("qwen3-vl-8b", "internvl3.5-8b")
+REQUIRED_STAGE_A_SUBSETS = ("popular", "random", "adversarial")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage0-root", type=Path, default=Path("outputs/stage0"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/stageA"))
-    parser.add_argument("--models", nargs="+", default=["qwen3-vl-8b"])
+    parser.add_argument("--models", nargs="+", default=["qwen3-vl-8b"], choices=PRIMARY_MODELS)
     parser.add_argument("--subsets", nargs="+", default=["popular", "random", "adversarial"])
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--seed", type=int, default=DEFAULT_STAGE_A_SEED)
@@ -86,10 +87,22 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     set_deterministic_seed(args.seed)
     args.output_root.mkdir(parents=True, exist_ok=True)
+    requested_models = _ordered_requested_models(args.models)
 
     preflight = run_preflight(stage0_root=args.stage0_root, output_root=args.output_root)
     if preflight["status"] != "passed":
-        _write_stage_a_summary(args.output_root, preflight, {}, [], "fail", dry_run=args.dry_run)
+        _write_stage_a_summary(
+            args.output_root,
+            preflight,
+            {},
+            [],
+            "fail",
+            dry_run=args.dry_run,
+            requested_models=requested_models,
+            requested_subsets=args.subsets,
+            limit_per_subset=args.limit_per_subset,
+            skip_lstm=args.skip_lstm,
+        )
         print("Stage A preflight failed; experiments were not started", file=sys.stderr)
         return 2
 
@@ -115,28 +128,38 @@ def main(argv: list[str] | None = None) -> int:
             [],
             "dry_run",
             dry_run=True,
+            requested_models=requested_models,
+            requested_subsets=args.subsets,
+            limit_per_subset=args.limit_per_subset,
+            skip_lstm=args.skip_lstm,
         )
         print(f"Stage A dry run complete: {summary}")
         return 0
 
-    requested_models = _ordered_requested_models(args.models)
     completed_models: list[str] = []
+    skipped_models: dict[str, dict[str, object]] = {}
     gates: dict[str, dict[str, object]] = {}
     qwen_decision: str | None = None
     for model_name in requested_models:
         if model_name == "internvl3.5-8b" and qwen_decision == "fail" and not _only_internvl_requested(args.models):
+            reason = "qwen3-vl-8b Stage A decision was fail"
             _write_not_run(
                 args.output_root,
                 model_name,
-                reason="qwen3-vl-8b Stage A decision was fail",
+                reason=reason,
+                skip_type="qwen_gate",
             )
+            skipped_models[model_name] = {"reason": reason, "skip_type": "qwen_gate"}
             continue
         if model_name == "internvl3.5-8b" and not args.include_internvl_after_qwen_pass and "qwen3-vl-8b" in requested_models:
+            reason = "--include-internvl-after-qwen-pass was not set"
             _write_not_run(
                 args.output_root,
                 model_name,
-                reason="--include-internvl-after-qwen-pass was not set",
+                reason=reason,
+                skip_type="deferred_until_qwen_pass",
             )
+            skipped_models[model_name] = {"reason": reason, "skip_type": "deferred_until_qwen_pass"}
             continue
         model_result = run_model_stage_a(
             model_name=model_name,
@@ -159,7 +182,19 @@ def main(argv: list[str] | None = None) -> int:
             qwen_decision = str(model_result["overall_decision"])
 
     overall = _overall_stage_a_decision(gates)
-    _write_stage_a_summary(args.output_root, preflight, gates, completed_models, overall, dry_run=False)
+    _write_stage_a_summary(
+        args.output_root,
+        preflight,
+        gates,
+        completed_models,
+        overall,
+        dry_run=False,
+        requested_models=requested_models,
+        requested_subsets=args.subsets,
+        limit_per_subset=args.limit_per_subset,
+        skip_lstm=args.skip_lstm,
+        skipped_models=skipped_models,
+    )
     print(f"Stage A complete overall_decision={overall}")
     return 0 if overall != "fail" or completed_models else 2
 
@@ -971,10 +1006,15 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 
-def _write_not_run(output_root: Path, model_name: str, *, reason: str) -> None:
+def _write_not_run(output_root: Path, model_name: str, *, reason: str, skip_type: str) -> None:
     _write_json(
         output_root / "reports" / model_name / "not_run.json",
-        {"model_name": model_name, "status": "not_run", "reason": reason},
+        {
+            "model_name": model_name,
+            "status": "not_run",
+            "reason": reason,
+            "skip_type": skip_type,
+        },
     )
 
 
@@ -1011,55 +1051,115 @@ def _write_stage_a_summary(
     overall: str,
     *,
     dry_run: bool,
+    requested_models: Sequence[str] | None = None,
+    requested_subsets: Sequence[str] | None = None,
+    limit_per_subset: int | None = None,
+    skip_lstm: bool = False,
+    skipped_models: Mapping[str, Mapping[str, object]] | None = None,
 ) -> str:
     path = output_root / "manifests" / "stageA_summary.json"
-    previous: dict[str, object] = {}
-    if path.exists():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                previous = loaded
-        except json.JSONDecodeError:
-            previous = {}
-    previous_models = [
-        str(model_name)
-        for model_name in previous.get("completed_models", [])
-        if isinstance(model_name, str)
-    ]
-    merged_models = list(dict.fromkeys([*previous_models, *completed_models]))
-    previous_decisions = previous.get("model_decisions", {})
-    merged_decisions = dict(previous_decisions) if isinstance(previous_decisions, Mapping) else {}
-    merged_decisions.update(
-        {
-            model_name: gate.get("overall_decision")
-            for model_name, gate in gates.items()
-        }
+    current_completed_models = list(completed_models)
+    current_requested_models = list(
+        current_completed_models if requested_models is None else requested_models
     )
-    merged_overall = _decision_from_values([str(value) for value in merged_decisions.values()])
-    if not merged_decisions:
-        merged_overall = overall
-    previous_completed = previous.get("status") == "completed"
-    if previous_completed:
-        summary_status = "completed"
-    elif preflight.get("status") != "passed":
+    current_skipped_models = {
+        str(model_name): dict(details)
+        for model_name, details in (skipped_models or {}).items()
+    }
+    run_scope = _stage_a_run_scope(
+        stage0_acceptance=preflight.get("status"),
+        requested_models=current_requested_models,
+        completed_models=current_completed_models,
+        skipped_models=current_skipped_models,
+        requested_subsets=REQUIRED_STAGE_A_SUBSETS if requested_subsets is None else requested_subsets,
+        dry_run=dry_run,
+        limit_per_subset=limit_per_subset,
+        skip_lstm=skip_lstm,
+    )
+    if preflight.get("status") != "passed":
         summary_status = "failed"
     elif dry_run:
         summary_status = "dry_run"
-    else:
+    elif run_scope["full_stage_a_run"]:
         summary_status = "completed"
-    summary_dry_run = False if previous_completed else dry_run
+    else:
+        summary_status = "partial"
+    model_decisions = {
+        model_name: gate.get("overall_decision")
+        for model_name, gate in gates.items()
+    }
+    merged_overall = _decision_from_values([str(value) for value in model_decisions.values()])
+    if not model_decisions:
+        merged_overall = overall
     payload = {
         "stage": "stageA",
         "status": summary_status,
         "stage0_acceptance": preflight.get("status"),
-        "completed_models": merged_models,
-        "model_decisions": merged_decisions,
+        "completed_models": current_completed_models,
+        "model_decisions": model_decisions,
         "overall_decision": merged_overall,
         "stage_b_started": False,
-        "dry_run": summary_dry_run,
+        "dry_run": dry_run,
+        "full_stage_a_run": run_scope["full_stage_a_run"],
+        "run_scope": run_scope,
     }
     _write_json(path, payload)
     return str(path)
+
+
+def _stage_a_run_scope(
+    *,
+    stage0_acceptance: object,
+    requested_models: Sequence[str],
+    completed_models: Sequence[str],
+    skipped_models: Mapping[str, Mapping[str, object]],
+    requested_subsets: Sequence[str],
+    dry_run: bool,
+    limit_per_subset: int | None,
+    skip_lstm: bool,
+) -> dict[str, object]:
+    reasons: list[str] = []
+    subset_values = list(requested_subsets)
+    skipped = {str(model_name): dict(details) for model_name, details in skipped_models.items()}
+
+    if dry_run:
+        reasons.append("dry_run")
+    if stage0_acceptance != "passed":
+        reasons.append("stage0_acceptance_not_passed")
+    if limit_per_subset is not None:
+        reasons.append("limit_per_subset")
+    if skip_lstm:
+        reasons.append("skip_lstm")
+    if not _is_required_stage_a_subset_scope(subset_values):
+        reasons.append("required_subsets")
+    handled_models = set(completed_models)
+    handled_models.update(
+        model_name
+        for model_name, details in skipped.items()
+        if details.get("skip_type") == "qwen_gate"
+    )
+    if any(model_name not in handled_models for model_name in requested_models):
+        reasons.append("requested_models_not_completed_or_qwen_gate_skipped")
+
+    return {
+        "full_stage_a_run": not reasons,
+        "reasons": reasons,
+        "requested_models": list(requested_models),
+        "completed_models": list(completed_models),
+        "skipped_models": skipped,
+        "requested_subsets": subset_values,
+        "required_subsets": list(REQUIRED_STAGE_A_SUBSETS),
+        "limit_per_subset": limit_per_subset,
+        "skip_lstm": skip_lstm,
+        "dry_run": dry_run,
+    }
+
+
+def _is_required_stage_a_subset_scope(subsets: Sequence[str]) -> bool:
+    return (
+        len(subsets) == len(REQUIRED_STAGE_A_SUBSETS)
+        and set(subsets) == set(REQUIRED_STAGE_A_SUBSETS)
+    )
 
 
 def _ordered_requested_models(models: Sequence[str]) -> list[str]:

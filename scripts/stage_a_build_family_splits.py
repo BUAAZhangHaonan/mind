@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Sequence
+from typing import Mapping, Sequence
 
 REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
@@ -26,6 +26,7 @@ from mind.trajectory.stage_a_splits import (
 
 
 POPE_FAMILY_DATASETS = ("pope",)
+POPE_FAMILY_SUBSETS = ("popular", "random", "adversarial")
 DEFAULT_OUTPUT = Path("outputs/stageA/manifests/pope_family_split_manifest.json")
 
 
@@ -44,20 +45,39 @@ def build_family_splits(
     stage0_root = Path(stage0_root)
     output_root = Path(output_root)
     output_path = Path(output) if output is not None else output_root / "manifests" / DEFAULT_OUTPUT.name
-    entries = stream_stage0_cache_entries(
-        stage0_root,
-        dataset_names=dataset_names,
-        include_tensors=False,
+    dataset_names = _validate_dataset_names(dataset_names)
+    entries = list(
+        stream_stage0_cache_entries(
+            stage0_root,
+            dataset_names=dataset_names,
+            include_tensors=False,
+        )
     )
+    _validate_pope_family_subsets(entries)
     manifest = build_pope_family_split(entries, seed=seed, ratios=ratios)
     if int(manifest["num_entries"]) == 0:
         raise ValueError("no POPE-family cache entries found in Stage 0 cache")
     manifest["stage0_root"] = str(stage0_root)
     manifest["output"] = str(output_path)
     manifest["dataset_names"] = list(dataset_names)
+    manifest["allowed_subsets"] = list(POPE_FAMILY_SUBSETS)
     if write_output:
         write_family_split_manifest(manifest, output_path)
     return manifest
+
+
+def _validate_dataset_names(dataset_names: Sequence[str]) -> tuple[str, ...]:
+    values = tuple(str(name).strip() for name in dataset_names)
+    if values != POPE_FAMILY_DATASETS:
+        raise ValueError("Stage A split builder only accepts dataset_names=['pope']")
+    return values
+
+
+def _validate_pope_family_subsets(entries: Sequence[Mapping[str, object]]) -> None:
+    subset_values = {str(row.get("subset", "")).strip() or "<blank>" for row in entries}
+    unsupported = sorted(subset for subset in subset_values if subset not in POPE_FAMILY_SUBSETS)
+    if unsupported:
+        raise ValueError("unsupported Stage A POPE subsets: " + ", ".join(unsupported))
 
 
 def build_parser() -> argparse.ArgumentParser:

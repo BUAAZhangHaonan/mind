@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+from types import ModuleType
+
+import pytest
+
 from mind.trajectory.stage_a_splits import build_pope_family_split
 
 
@@ -26,6 +32,16 @@ def _row(
     if stage0_split is not None:
         row["stage0_split"] = stage0_split
     return row
+
+
+def _load_split_script() -> ModuleType:
+    script_path = Path("scripts/stage_a_build_family_splits.py")
+    spec = importlib.util.spec_from_file_location("stage_a_build_family_splits", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_family_level_split_has_no_image_id_overlap() -> None:
@@ -86,3 +102,38 @@ def test_model_specific_entries_are_handled_correctly() -> None:
     assert manifest["counts_per_model"]["qwen3-vl-8b"] == 1
     assert manifest["counts_per_model"]["internvl3.5-8b"] == 2
     assert manifest["sample_id_overlap_validation"]["valid"] is True
+
+
+def test_split_builder_rejects_non_pope_dataset_name(tmp_path: Path) -> None:
+    module = _load_split_script()
+
+    with pytest.raises(ValueError, match="Stage A split builder only accepts dataset_names=\\['pope'\\]"):
+        module.build_family_splits(
+            stage0_root=tmp_path / "stage0",
+            output_root=tmp_path / "stageA",
+            dataset_names=("repope",),
+            write_output=False,
+        )
+
+
+def test_split_builder_rejects_non_stage_a_pope_subset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_split_script()
+    monkeypatch.setattr(
+        module,
+        "stream_stage0_cache_entries",
+        lambda *_, **__: [
+            _row(subset="popular", sample_id="p-1", image_id="img-1"),
+            _row(subset="other", sample_id="o-1", image_id="img-2"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="unsupported Stage A POPE subsets: other"):
+        module.build_family_splits(
+            stage0_root=tmp_path / "stage0",
+            output_root=tmp_path / "stageA",
+            dataset_names=("pope",),
+            write_output=False,
+        )
