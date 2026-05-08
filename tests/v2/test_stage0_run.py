@@ -75,6 +75,128 @@ def _write_complete_stage0_config(path: Path, *, output_root: Path) -> None:
     )
 
 
+def test_stage0_complete_config_sets_split_options() -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_complete_split_config")
+
+    args = module.parse_args(["--config", "configs/v2/stage0/stage0_complete.yaml", "--dry-run"])
+
+    assert args.split_seed == 20260506
+    assert args.split_group_key == "image_id"
+    assert args.split_ratios == [0.50, 0.20, 0.10, 0.20]
+
+
+def test_parse_args_preserves_default_split_options_without_config() -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_default_split_config")
+
+    args = module.parse_args(
+        [
+            "--output-root",
+            "outputs/v2_stage0",
+            "--models",
+            "qwen3-vl-8b",
+            "--datasets",
+            "pope",
+            "--subsets",
+            "popular",
+        ]
+    )
+
+    assert args.split_seed == module.stage0_splits.DEFAULT_SEED
+    assert args.split_group_key == "image_id"
+    assert args.split_ratios == list(module.stage0_splits.DEFAULT_RATIOS)
+
+
+def test_orchestrator_passes_configured_split_options_to_dataset_manifests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_split_config_flow")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
+    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+    config_path = tmp_path / "stage0.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                f"output_root: {output_root}",
+                "device: cpu",
+                "dtype: float16",
+                "models:",
+                "  - qwen3-vl-8b",
+                "datasets:",
+                "  - family: pope",
+                "    subset: popular",
+                "split:",
+                "  seed: 12345",
+                "  group_key: sample_id",
+                "  ratios: [0.25, 0.25, 0.25, 0.25]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    build_calls: list[dict[str, object]] = []
+    smoke_path = output_root / "cache" / "qwen3-vl-8b" / "pope" / "popular" / "shard-00000.pt"
+
+    def fake_build_split_manifest(**kwargs: object) -> dict[str, object]:
+        build_calls.append(kwargs)
+        return {
+            "dataset_name": kwargs["dataset_name"],
+            "subset": kwargs["subset"],
+            "input_records": str(kwargs["input_records"]),
+            "counts_per_split": {"encoder_train": 1, "bank": 1, "cal": 0, "test": 0},
+            "label_counts_per_split": {},
+            "object_counts_per_split": {},
+            "image_id_overlap_validation": {},
+            "sample_id_overlap_validation": {},
+        }
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", lambda *_args, **_kwargs: SimpleNamespace(audit_dir=output_root / "audit"))
+    monkeypatch.setattr(module, "build_split_manifest", fake_build_split_manifest)
+    monkeypatch.setattr(module, "run_extraction", lambda **_kwargs: [smoke_path])
+    monkeypatch.setattr(
+        module,
+        "validate_stage0_cache",
+        lambda *_args, **_kwargs: {
+            "status": "passed",
+            "shards": [
+                {
+                    "path": str(smoke_path),
+                    "model_name": "qwen3-vl-8b",
+                    "dataset_name": "pope",
+                    "source_dataset": "pope",
+                    "subset": "popular",
+                    "split": "popular",
+                    "status": "passed",
+                    "errors": [],
+                    "num_entries": 2,
+                }
+            ],
+            "total_entries": 2,
+            "errors": [],
+        },
+    )
+
+    args = module.parse_args(["--config", str(config_path)])
+
+    assert module.run_orchestration(args, repo_root=repo_root) == 0
+    assert build_calls == [
+        {
+            "dataset_name": "pope",
+            "subset": "popular",
+            "input_records": records_path,
+            "seed": 12345,
+            "group_key": "sample_id",
+            "ratios": [0.25, 0.25, 0.25, 0.25],
+        }
+    ]
+
+
 def _write_normalized_closure_record(
     repo_root: Path,
     *,
@@ -421,6 +543,7 @@ def test_orchestrator_writes_passed_smoke_summary(
     assert summary["audit_outputs"] == [
         str(output_root / "audit" / "dataset_audit.csv"),
         str(output_root / "audit" / "label_balance.csv"),
+        str(output_root / "audit" / "cache_label_balance.csv"),
         str(output_root / "audit" / "object_name_audit.csv"),
         str(output_root / "audit" / "sample_overlap_audit.csv"),
     ]
@@ -671,6 +794,7 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
     assert plan["audit_outputs"] == [
         str(output_root / "audit" / "dataset_audit.csv"),
         str(output_root / "audit" / "label_balance.csv"),
+        str(output_root / "audit" / "cache_label_balance.csv"),
         str(output_root / "audit" / "object_name_audit.csv"),
         str(output_root / "audit" / "sample_overlap_audit.csv"),
     ]
@@ -685,6 +809,64 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
         (
             "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
             "--config configs/v2/stage0/stage0_complete.yaml"
+        )
+    ]
+
+
+def test_orchestrator_dry_run_includes_configured_split_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_dry_split_command")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
+    _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
+    (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
+    config_path = tmp_path / "stage0.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                f"output_root: {output_root}",
+                "device: cpu",
+                "dtype: float16",
+                "models:",
+                "  - qwen3-vl-8b",
+                "datasets:",
+                "  - family: pope",
+                "    subset: popular",
+                "split:",
+                "  seed: 777",
+                "  group_key: sample_id",
+                "  ratios: [0.25, 0.25, 0.25, 0.25]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fail_stage0_write_or_extraction(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("dry-run must not call write-heavy Stage 0 operations")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "write_split_manifest", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "run_extraction", fail_stage0_write_or_extraction)
+    monkeypatch.setattr(module, "validate_stage0_cache", fail_stage0_write_or_extraction)
+
+    args = module.parse_args(["--config", str(config_path), "--dry-run"])
+
+    assert module.run_orchestration(args, repo_root=repo_root) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["split_commands"] == [
+        (
+            "python scripts/v2/stage0_build_splits.py "
+            "--dataset-name pope --subset popular "
+            f"--input-records {records_path} "
+            f"--output {output_root / 'manifests' / 'split_manifest_pope_popular.json'} "
+            "--seed 777 --ratios 0.25 0.25 0.25 0.25 --group-key sample_id --dry-run"
         )
     ]
 
@@ -772,6 +954,91 @@ def test_orchestrator_dry_run_plans_repope_and_dash_b_materialization_without_wr
         "record_count": 2,
         "status": "planned",
     }
+
+
+def test_complete_stage0_audits_only_required_closure_specs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_full_closure_audit")
+    repo_root = tmp_path / "repo"
+    output_root = repo_root / "outputs" / "v2_stage0"
+    image_root = repo_root / "data" / "coco" / "val2014"
+    image_root.mkdir(parents=True)
+    dash_b_root = repo_root / "data" / "dash_b"
+    dash_b_root.mkdir(parents=True)
+    sample_index = 1
+    for dataset_name in ("pope", "repope"):
+        for subset in ("popular", "random", "adversarial"):
+            _write_normalized_closure_record(
+                repo_root,
+                dataset_name=dataset_name,
+                subset=subset,
+                sample_id=f"{dataset_name}-{subset}",
+                image_id=sample_index,
+            )
+            sample_index += 1
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="dash-b",
+        subset="all",
+        sample_id="dash-b-all",
+        image_id=sample_index,
+    )
+    _write_normalized_closure_record(
+        repo_root,
+        dataset_name="dash-b",
+        subset="main",
+        sample_id="dash-b-main",
+        image_id=sample_index + 1,
+    )
+
+    audit_keys: list[tuple[str, str]] = []
+    smoke_paths = [
+        output_root / "cache" / model_name / dataset_name / subset / "shard-00000.pt"
+        for model_name in ("qwen3-vl-8b", "internvl3.5-8b")
+        for dataset_name, subset in module.FULL_CLOSURE_DATASET_SUBSETS
+    ]
+
+    def fake_run_audit(specs: object, **kwargs: object) -> SimpleNamespace:
+        audit_keys[:] = [(spec.dataset_name, spec.subset) for spec in specs]  # type: ignore[union-attr]
+        return SimpleNamespace(audit_dir=kwargs["output_root"] / "audit")
+
+    monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
+    monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(module, "run_audit", fake_run_audit)
+    monkeypatch.setattr(module, "run_extraction", lambda **_kwargs: smoke_paths[:1])
+    monkeypatch.setattr(
+        module,
+        "validate_stage0_cache",
+        lambda *_args, **_kwargs: {
+            "status": "passed",
+            "shards": [
+                {
+                    "path": str(path),
+                    "model_name": path.parent.parent.parent.name,
+                    "dataset_name": path.parent.parent.name,
+                    "source_dataset": path.parent.parent.name,
+                    "subset": path.parent.name,
+                    "split": path.parent.name,
+                    "status": "passed",
+                    "errors": [],
+                    "num_entries": 1,
+                }
+                for path in smoke_paths
+            ],
+            "total_entries": len(smoke_paths),
+            "errors": [],
+        },
+    )
+
+    config_path = tmp_path / "stage0.yaml"
+    _write_complete_stage0_config(config_path, output_root=output_root)
+    args = module.parse_args(["--config", str(config_path)])
+
+    assert module.run_orchestration(args, repo_root=repo_root) == 0
+    assert audit_keys == list(module.FULL_CLOSURE_DATASET_SUBSETS)
+    assert ("dash-b", "main") not in audit_keys
 
 
 def test_orchestrator_writes_failed_summary_for_missing_required_dataset(

@@ -125,6 +125,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def apply_config_defaults(args: argparse.Namespace, *, parser: argparse.ArgumentParser) -> None:
     args.config_model_paths = {}
     args.config_dataset_specs = []
+    args.split_seed = int(stage0_splits.DEFAULT_SEED)
+    args.split_group_key = "image_id"
+    args.split_ratios = list(stage0_splits.DEFAULT_RATIOS)
     if args.config is not None:
         payload = load_stage0_config(args.config)
         if args.output_root is None and payload.get("output_root") is not None:
@@ -141,6 +144,11 @@ def apply_config_defaults(args: argparse.Namespace, *, parser: argparse.Argument
             args.token_index = int(payload["token_index"])  # type: ignore[arg-type]
         if not args.full_run and str(payload.get("mode", "")).strip().lower() == "full":
             args.full_run = True
+
+        split_config = parse_config_split(payload.get("split"), config_path=args.config)
+        args.split_seed = split_config["seed"]
+        args.split_group_key = split_config["group_key"]
+        args.split_ratios = split_config["ratios"]
 
         models, model_paths = parse_config_models(payload.get("models", []), config_path=args.config)
         if args.models is None and models:
@@ -226,6 +234,32 @@ def parse_config_dataset_specs(value: object, *, config_path: Path) -> list[dict
                 }
             )
     return specs
+
+
+def parse_config_split(value: object, *, config_path: Path) -> dict[str, object]:
+    split = {
+        "seed": int(stage0_splits.DEFAULT_SEED),
+        "group_key": "image_id",
+        "ratios": list(stage0_splits.DEFAULT_RATIOS),
+    }
+    if value is None:
+        return split
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{config_path}: split must be a mapping")
+
+    if value.get("seed") is not None:
+        split["seed"] = int(value["seed"])  # type: ignore[arg-type]
+    if value.get("group_key") is not None:
+        group_key = str(value["group_key"]).strip()
+        if not group_key:
+            raise ValueError(f"{config_path}: split.group_key must not be blank")
+        split["group_key"] = group_key
+    if value.get("ratios") is not None:
+        ratios = value["ratios"]
+        if not isinstance(ratios, Sequence) or isinstance(ratios, (str, bytes)):
+            raise ValueError(f"{config_path}: split.ratios must be a sequence")
+        split["ratios"] = list(stage0_splits._validate_ratios([float(ratio) for ratio in ratios]))
+    return split
 
 
 def _required_config_text(
@@ -455,9 +489,21 @@ def audit_output_paths(audit_dir: Path) -> list[str]:
     return [
         str(audit_dir / "dataset_audit.csv"),
         str(audit_dir / "label_balance.csv"),
+        str(audit_dir / "cache_label_balance.csv"),
         str(audit_dir / "object_name_audit.csv"),
         str(audit_dir / "sample_overlap_audit.csv"),
     ]
+
+
+def audit_dataset_specs_for_stage0(
+    args: argparse.Namespace,
+    *,
+    requested_specs: Sequence[DatasetSpec],
+    repo_root: Path,
+) -> list[DatasetSpec]:
+    if args.full_run:
+        return list(requested_specs)
+    return discover_known_datasets(repo_root)
 
 
 def write_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -745,22 +791,30 @@ def split_command(
     *,
     spec: DatasetSpec,
     output: Path,
+    seed: int,
+    ratios: Sequence[float],
+    group_key: str,
 ) -> str:
-    return shlex.join(
-        [
-            "python",
-            "scripts/v2/stage0_build_splits.py",
-            "--dataset-name",
-            spec.dataset_name,
-            "--subset",
-            spec.subset,
-            "--input-records",
-            str(spec.path),
-            "--output",
-            str(output),
-            "--dry-run",
-        ]
-    )
+    parts = [
+        "python",
+        "scripts/v2/stage0_build_splits.py",
+        "--dataset-name",
+        spec.dataset_name,
+        "--subset",
+        spec.subset,
+        "--input-records",
+        str(spec.path),
+        "--output",
+        str(output),
+        "--seed",
+        str(seed),
+        "--ratios",
+        *[str(ratio) for ratio in ratios],
+        "--group-key",
+        group_key,
+        "--dry-run",
+    ]
+    return shlex.join(parts)
 
 
 def split_manifest_index_row(manifest: Mapping[str, object], *, path: Path) -> dict[str, object]:
@@ -955,12 +1009,18 @@ def build_dry_run_split_manifest(
     *,
     spec: DatasetSpec,
     repo_root: Path,
+    seed: int,
+    ratios: Sequence[float],
+    group_key: str,
 ) -> dict[str, object]:
     if spec.path.exists():
         return build_split_manifest(
             dataset_name=spec.dataset_name,
             subset=spec.subset,
             input_records=spec.path,
+            seed=seed,
+            ratios=ratios,
+            group_key=group_key,
         )
     rows = load_materializable_normalized_rows(spec, repo_root=repo_root)
     if rows is None:
@@ -968,12 +1028,18 @@ def build_dry_run_split_manifest(
             dataset_name=spec.dataset_name,
             subset=spec.subset,
             input_records=spec.path,
+            seed=seed,
+            ratios=ratios,
+            group_key=group_key,
         )
     return build_split_manifest_from_rows(
         dataset_name=spec.dataset_name,
         subset=spec.subset,
         input_records=spec.path,
         rows=rows,
+        seed=seed,
+        ratios=ratios,
+        group_key=group_key,
     )
 
 
@@ -983,19 +1049,22 @@ def build_split_manifest_from_rows(
     subset: str,
     input_records: Path,
     rows: Sequence[Mapping[str, object]],
+    seed: int,
+    ratios: Sequence[float],
+    group_key: str,
 ) -> dict[str, object]:
-    ratio_values = stage0_splits._validate_ratios(stage0_splits.DEFAULT_RATIOS)
+    ratio_values = stage0_splits._validate_ratios(ratios)
     stage0_splits._validate_single_source(rows, dataset_name=dataset_name, subset=subset)
-    grouped = stage0_splits._group_rows(rows, group_key="image_id")
+    grouped = stage0_splits._group_rows(rows, group_key=group_key)
     group_to_split = stage0_splits._assign_groups(
         grouped,
         ratios=ratio_values,
-        seed=stage0_splits.DEFAULT_SEED,
+        seed=seed,
     )
     assignments = [
         stage0_splits._assignment_row(
             row,
-            split=group_to_split[stage0_splits._required_text(row.get("image_id"))],
+            split=group_to_split[stage0_splits._required_text(row.get(group_key))],
             dataset_name=dataset_name,
             subset=subset,
         )
@@ -1006,8 +1075,8 @@ def build_split_manifest_from_rows(
     stage0_splits._raise_for_overlap("image_id", image_validation)
     stage0_splits._raise_for_overlap("sample_id", sample_validation)
     return {
-        "seed": int(stage0_splits.DEFAULT_SEED),
-        "group_key": "image_id",
+        "seed": int(seed),
+        "group_key": group_key,
         "split_names": list(stage0_splits.SPLIT_NAMES),
         "ratios": list(ratio_values),
         "dataset_name": dataset_name,
@@ -1049,7 +1118,11 @@ def build_dry_run_plan(
         dataset_specs,
         repo_root=repo_root,
     )
-    audit_dataset_specs = discover_known_datasets(repo_root)
+    audit_dataset_specs = audit_dataset_specs_for_stage0(
+        args,
+        requested_specs=dataset_specs,
+        repo_root=repo_root,
+    )
     validate_dry_run_dataset_specs(
         dataset_specs,
         repo_root=repo_root,
@@ -1073,10 +1146,24 @@ def build_dry_run_plan(
     split_summaries: list[dict[str, object]] = []
     split_index_rows: list[dict[str, object]] = []
     for index, spec in enumerate(dataset_specs):
-        manifest = build_dry_run_split_manifest(spec=spec, repo_root=repo_root)
+        manifest = build_dry_run_split_manifest(
+            spec=spec,
+            repo_root=repo_root,
+            seed=args.split_seed,
+            ratios=args.split_ratios,
+            group_key=args.split_group_key,
+        )
         per_dataset_path = manifests_dir / f"split_manifest_{spec.dataset_name}_{spec.subset}.json"
         split_manifest_paths.append(str(per_dataset_path))
-        split_commands.append(split_command(spec=spec, output=per_dataset_path))
+        split_commands.append(
+            split_command(
+                spec=spec,
+                output=per_dataset_path,
+                seed=args.split_seed,
+                ratios=args.split_ratios,
+                group_key=args.split_group_key,
+            )
+        )
         split_index_rows.append(split_manifest_index_row(manifest, path=per_dataset_path))
         split_summaries.append(
             {
@@ -1189,7 +1276,11 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
         dataset_specs = materialize_missing_normalized_dataset_specs(dataset_specs, repo_root=repo_root)
         required_matrix = required_cache_matrix(model_specs, dataset_specs, repo_root=repo_root)
         summary["required_cache_matrix"] = required_matrix
-        audit_dataset_specs = discover_known_datasets(repo_root)
+        audit_dataset_specs = audit_dataset_specs_for_stage0(
+            args,
+            requested_specs=dataset_specs,
+            repo_root=repo_root,
+        )
         try:
             validate_extraction_ready_dataset_specs(
                 dataset_specs,
@@ -1230,6 +1321,9 @@ def run_orchestration(args: argparse.Namespace, *, repo_root: Path | str = ".") 
                 dataset_name=spec.dataset_name,
                 subset=spec.subset,
                 input_records=spec.path,
+                seed=args.split_seed,
+                ratios=args.split_ratios,
+                group_key=args.split_group_key,
             )
             per_dataset_path = manifests_dir / f"split_manifest_{spec.dataset_name}_{spec.subset}.json"
             write_split_manifest(manifest, per_dataset_path)
