@@ -20,6 +20,7 @@ from sklearn.metrics import (
 )
 
 DEFAULT_BOOTSTRAP_SEED = 20260506
+BOOTSTRAP_CI_METRICS = ("pr_auc", "roc_auc")
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,7 @@ def bootstrap_binary_metrics(
     seed: int = DEFAULT_BOOTSTRAP_SEED,
     metric_fn: Callable[..., Mapping[str, float]] = binary_diagnostic_metrics,
 ) -> dict[str, BootstrapInterval]:
-    """Compute deterministic percentile bootstrap intervals for binary metrics."""
+    """Compute deterministic percentile bootstrap intervals for Stage A CI metrics."""
 
     if num_bootstrap <= 0:
         raise ValueError("num_bootstrap must be positive")
@@ -96,12 +97,14 @@ def bootstrap_binary_metrics(
     point_metrics = dict(metric_fn(labels, score_vector, threshold=threshold))
 
     rng = np.random.default_rng(seed)
-    bootstrap_values: dict[str, list[float]] = {name: [] for name in point_metrics}
+    ci_metric_names = tuple(name for name in BOOTSTRAP_CI_METRICS if name in point_metrics)
+    bootstrap_values: dict[str, list[float]] = {name: [] for name in ci_metric_names}
     for _ in range(num_bootstrap):
         indices = rng.integers(0, labels.shape[0], size=labels.shape[0])
-        sampled = dict(metric_fn(labels[indices], score_vector[indices], threshold=threshold))
+        sampled = _bootstrap_ci_metrics(labels[indices], score_vector[indices])
         for name, value in sampled.items():
-            bootstrap_values.setdefault(name, []).append(float(value))
+            if name in bootstrap_values:
+                bootstrap_values[name].append(float(value))
 
     alpha = (1.0 - confidence) / 2.0
     lower_q = 100.0 * alpha
@@ -173,6 +176,15 @@ def _balanced_accuracy(labels: np.ndarray, predictions: np.ndarray) -> float:
 def _pr_curve_auc(labels: np.ndarray, scores: np.ndarray) -> float:
     precision, recall, _ = precision_recall_curve(labels, scores)
     return float(auc(recall, precision))
+
+
+def _bootstrap_ci_metrics(labels: np.ndarray, scores: np.ndarray) -> dict[str, float]:
+    if np.unique(labels).shape[0] < 2:
+        return {"pr_auc": float("nan"), "roc_auc": float("nan")}
+    return {
+        "pr_auc": _pr_curve_auc(labels, scores),
+        "roc_auc": float(roc_auc_score(labels, scores)),
+    }
 
 
 def _tpr_at_fpr(labels: np.ndarray, scores: np.ndarray, *, target_fpr: float) -> float:
