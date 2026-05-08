@@ -12,16 +12,16 @@ This inventory was taken before any destructive move or delete in the structural
 
 | Path | Proposed action |
 | --- | --- |
-| `scripts/v2/stage0_audit_data.py` | Move to `scripts/stage0_audit_data.py`. |
-| `scripts/v2/stage0_build_splits.py` | Move to `scripts/stage0_build_splits.py`. |
-| `scripts/v2/stage0_extract_full_layer_cache.py` | Move to `scripts/stage0_extract_full_layer_cache.py`. |
-| `scripts/v2/stage0_run.py` | Move to `scripts/stage0_run.py`. |
-| `scripts/v2/stage0_validate_cache.py` | Move to `scripts/stage0_validate_cache.py`. |
-| `configs/v2/stage0/` | Move tracked configs to `configs/stage0/`. |
-| `docs/v2/STAGE0.md` | Move to `docs/STAGE0.md`. |
-| `docs/v2/DESIGN_NOTES.md` | Move to `docs/DESIGN_NOTES.md`. |
-| `tests/v2/` | Move tracked tests to `tests/stage0/`. |
-| `configs/v2/stageA/.gitkeep` | Remove. No Stage A config is created in this pass. |
+| old versioned script directory `stage0_audit_data.py` | Move to `scripts/stage0_audit_data.py`. |
+| old versioned script directory `stage0_build_splits.py` | Move to `scripts/stage0_build_splits.py`. |
+| old versioned script directory `stage0_extract_full_layer_cache.py` | Move to `scripts/stage0_extract_full_layer_cache.py`. |
+| old versioned script directory `stage0_run.py` | Move to `scripts/stage0_run.py`. |
+| old versioned script directory `stage0_validate_cache.py` | Move to `scripts/stage0_validate_cache.py`. |
+| old versioned Stage 0 config directory | Move tracked configs to `configs/stage0/`. |
+| old versioned Stage 0 document | Move to `docs/STAGE0.md`. |
+| old versioned design notes document | Move to `docs/DESIGN_NOTES.md`. |
+| old versioned test directory | Move tracked tests to `tests/stage0/`. |
+| old versioned Stage A config placeholder | Remove. No Stage A config is created in this pass. |
 
 ## Tracked Legacy Runtime Residue
 
@@ -41,7 +41,7 @@ None outside ignored paths. `git ls-files --others --exclude-standard` returned 
 
 | Path | Proposed action |
 | --- | --- |
-| `outputs/v2_stage0/` | Move to `outputs/stage0/` if `outputs/stage0/` is absent or empty. Update path strings and stage labels in JSON metadata and sidecars only. Preserve tensor payloads and scientific metadata. Remove the old directory after a successful move. |
+| old versioned Stage 0 output root | Move to `outputs/stage0/` if `outputs/stage0/` is absent or empty. Update path strings and stage labels in JSON metadata and sidecars only. Preserve tensor payloads and scientific metadata. Remove the old directory after a successful move. |
 | `outputs/round2_2026_04/` | Keep. This is the normalized input used by current Stage 0 configs. |
 
 ## Local V1 Artifacts
@@ -52,10 +52,10 @@ No ignored or untracked local V1 artifact directory was found at max depth 3. On
 
 | Path | Proposed action |
 | --- | --- |
-| `outputs/v2_stage0/audit/` | Move under `outputs/stage0/audit/` as part of output migration. |
-| `outputs/v2_stage0/cache/` | Move under `outputs/stage0/cache/` as part of output migration. |
-| `outputs/v2_stage0/logs/` | Move under `outputs/stage0/logs/` as part of output migration. |
-| `outputs/v2_stage0/manifests/` | Move under `outputs/stage0/manifests/` as part of output migration. Update listed manifest JSON path strings. |
+| old versioned Stage 0 audit output directory | Move under `outputs/stage0/audit/` as part of output migration. |
+| old versioned Stage 0 cache output directory | Move under `outputs/stage0/cache/` as part of output migration. |
+| old versioned Stage 0 log output directory | Move under `outputs/stage0/logs/` as part of output migration. |
+| old versioned Stage 0 manifest output directory | Move under `outputs/stage0/manifests/` as part of output migration. Update listed manifest JSON path strings. |
 
 ## Ignored Temporary Caches
 
@@ -63,10 +63,10 @@ No ignored or untracked local V1 artifact directory was found at max depth 3. On
 | --- | --- |
 | `.pytest_cache/` | Delete after inventory. |
 | `scripts/__pycache__/` | Delete after inventory. |
-| `scripts/v2/__pycache__/` | Delete after inventory. |
+| old versioned script cache directory | Delete after inventory. |
 | `src/mind/**/__pycache__/` | Delete after inventory. |
 | `tests/unit/__pycache__/` | Delete after inventory. |
-| `tests/v2/__pycache__/` | Delete after inventory. |
+| old versioned test cache directory | Delete after inventory. |
 
 ## Ignored Local Non-Output Directories
 

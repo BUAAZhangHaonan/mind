@@ -32,6 +32,7 @@ outputs/stage0/
     dataset_audit.csv
     object_name_audit.csv
     label_balance.csv
+    cache_label_balance.csv
     sample_overlap_audit.csv
   cache/
     <model_name>/
