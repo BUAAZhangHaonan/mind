@@ -232,26 +232,26 @@ def _stream_cache_counts(
     import torch
 
     try:
-        shards = list(iter_cache_shards(stage0_root, cache_manifest))
+        for shard_path, shard in iter_cache_shards(stage0_root, cache_manifest):
+            if not shard_path.exists():
+                issues.append(f"missing cache shard: {shard_path}")
+                continue
+            try:
+                payload = torch.load(shard_path, weights_only=False)
+            except Exception as error:  # pragma: no cover - exact torch error varies.
+                issues.append(f"torch.load failed for {shard_path}: {error}")
+                continue
+            try:
+                for entry in _iter_cache_payload_entries(payload):
+                    row = dict(entry)
+                    _fill_entry_metadata(row, shard)
+                    key = _matrix_key(row)
+                    if key in expected:
+                        counts[key] += 1
+            finally:
+                del payload
     except ValueError as error:
         issues.append(str(error))
-        return counts
-
-    for shard_path, shard in shards:
-        if not shard_path.exists():
-            issues.append(f"missing cache shard: {shard_path}")
-            continue
-        try:
-            payload = torch.load(shard_path, weights_only=False)
-        except Exception as error:  # pragma: no cover - exact torch error varies.
-            issues.append(f"torch.load failed for {shard_path}: {error}")
-            continue
-        for entry in _iter_cache_payload_entries(payload):
-            row = dict(entry)
-            _fill_entry_metadata(row, shard)
-            key = _matrix_key(row)
-            if key in expected:
-                counts[key] += 1
     return counts
 
 
@@ -261,90 +261,189 @@ def _validate_required_shard_payloads(
     expected_keys: Sequence[MatrixKey],
     issues: list[str],
 ) -> dict[str, object]:
-    import torch
-
-    shards_by_key: dict[MatrixKey, list[tuple[Path, Mapping[str, object]]]] = {
+    shards_by_key: dict[MatrixKey, list[tuple[Path, Mapping[str, object], list[str]]]] = {
         key: [] for key in expected_keys
     }
     try:
-        shard_pairs = list(iter_cache_shards(stage0_root, cache_manifest))
+        for shard_path, shard in iter_cache_shards(stage0_root, cache_manifest):
+            key = _matrix_key(shard)
+            if key in shards_by_key:
+                shards_by_key[key].append((shard_path, shard, []))
     except ValueError as error:
         issues.append(str(error))
         return {"status": "failed", "validated": {}}
 
-    for shard_path, shard in shard_pairs:
-        key = _matrix_key(shard)
-        if key in shards_by_key:
-            shards_by_key[key].append((shard_path, shard))
-
     hidden_dims: dict[tuple[str, str], int] = {}
     validated: dict[str, dict[str, object]] = {}
+    has_validation_issues = False
     for key in expected_keys:
-        candidates = shards_by_key.get(key, [])
+        candidates = _required_shard_candidates(stage0_root, key, shards_by_key.get(key, []))
         if not candidates:
             issues.append(f"no shard listed for required cache matrix row: {_format_key(key)}")
+            has_validation_issues = True
             continue
-        shard_path, shard = candidates[0]
-        shard_issues: list[str] = []
-        try:
-            payload = torch.load(shard_path, weights_only=False)
-        except Exception as error:  # pragma: no cover - exact torch error varies.
-            issues.append(f"torch.load failed for required shard {shard_path}: {error}")
-            shard_issues.append(f"torch.load failed: {error}")
-            validated[_format_key(key)] = {"path": str(shard_path), "issues": shard_issues}
-            continue
-
-        if not isinstance(payload, list):
-            shard_issues.append("payload is not a list")
-        elif not payload:
-            shard_issues.append("payload is empty")
-        else:
-            total_layers = _optional_int(shard.get("total_layers"))
-            selected_layers = _int_list(shard.get("selected_layers"))
-            sidecar_hidden_dim = _optional_int(shard.get("hidden_dim"))
-            shard_issues.extend(_layer_metadata_issues(total_layers, selected_layers))
-            for index, entry in enumerate(payload):
-                if not isinstance(entry, Mapping):
-                    shard_issues.append(f"entry {index} is not a dict")
-                    continue
-                entry_issues, observed_hidden_dim = _validate_cache_entry(
-                    entry,
-                    index=index,
-                    total_layers=total_layers,
-                    sidecar_selected_layers=selected_layers,
-                )
-                shard_issues.extend(entry_issues)
-                if observed_hidden_dim is not None:
-                    model_dataset = (key[0], key[1])
-                    expected_hidden_dim = hidden_dims.get(model_dataset)
-                    if expected_hidden_dim is None:
-                        hidden_dims[model_dataset] = observed_hidden_dim
-                    elif expected_hidden_dim != observed_hidden_dim:
-                        shard_issues.append(
-                            f"hidden_dim {observed_hidden_dim} inconsistent for "
-                            f"{model_dataset[0]}/{model_dataset[1]} expected {expected_hidden_dim}"
-                        )
-                    if sidecar_hidden_dim is not None and sidecar_hidden_dim != observed_hidden_dim:
-                        shard_issues.append(
-                            f"sidecar hidden_dim={sidecar_hidden_dim} does not match entry hidden_dim="
-                            f"{observed_hidden_dim}"
-                        )
-
-        if shard_issues:
-            issues.extend(f"{shard_path}: {issue}" for issue in shard_issues)
+        key_issues: list[str] = []
+        shard_summaries: list[dict[str, object]] = []
+        entries_inspected = 0
+        for shard_path, shard, metadata_issues in candidates:
+            shard_issues, shard_entries_inspected = _validate_required_shard_payload(
+                shard_path,
+                shard,
+                metadata_issues=metadata_issues,
+                key=key,
+                hidden_dims=hidden_dims,
+            )
+            entries_inspected += shard_entries_inspected
+            if shard_issues:
+                has_validation_issues = True
+                key_issues.extend(f"{shard_path}: {issue}" for issue in shard_issues)
+            shard_summaries.append(
+                {
+                    "path": str(shard_path),
+                    "num_entries_inspected": shard_entries_inspected,
+                    "issues": shard_issues,
+                }
+            )
+        if key_issues:
+            issues.extend(key_issues)
         validated[_format_key(key)] = {
-            "path": str(shard_path),
-            "num_entries_inspected": len(payload) if isinstance(payload, list) else 0,
-            "issues": shard_issues,
+            "paths": [str(shard_path) for shard_path, _shard, _metadata_issues in candidates],
+            "num_shards_inspected": len(candidates),
+            "num_entries_inspected": entries_inspected,
+            "issues": key_issues,
+            "shards": shard_summaries,
         }
     return {
-        "status": "failed" if any(item["issues"] for item in validated.values()) else "passed",
+        "status": "failed" if has_validation_issues else "passed",
         "validated": validated,
         "hidden_dims": {
             f"{model_name}/{dataset_name}": hidden_dim
             for (model_name, dataset_name), hidden_dim in sorted(hidden_dims.items())
         },
     }
+
+
+def _required_shard_candidates(
+    stage0_root: Path,
+    key: MatrixKey,
+    manifest_candidates: Sequence[tuple[Path, Mapping[str, object], list[str]]],
+) -> list[tuple[Path, Mapping[str, object], list[str]]]:
+    candidates = list(manifest_candidates)
+    seen_paths = {_path_identity(shard_path) for shard_path, _shard, _issues in candidates}
+    cache_dir = stage0_root / "cache" / key[0] / key[1] / key[2]
+    if not cache_dir.is_dir():
+        return candidates
+    for shard_path in sorted(path for path in cache_dir.glob("*.pt") if path.is_file()):
+        path_identity = _path_identity(shard_path)
+        if path_identity in seen_paths:
+            continue
+        sidecar, sidecar_issues = _read_shard_sidecar(Path(str(shard_path) + ".json"))
+        shard = dict(sidecar)
+        shard.setdefault("model_name", key[0])
+        shard.setdefault("dataset_name", key[1])
+        shard.setdefault("source_dataset", key[1])
+        shard.setdefault("subset", key[2])
+        candidates.append((shard_path, shard, sidecar_issues))
+        seen_paths.add(path_identity)
+    return candidates
+
+
+def _validate_required_shard_payload(
+    shard_path: Path,
+    shard: Mapping[str, object],
+    *,
+    metadata_issues: Sequence[str],
+    key: MatrixKey,
+    hidden_dims: dict[tuple[str, str], int],
+) -> tuple[list[str], int]:
+    import torch
+
+    shard_issues = list(metadata_issues)
+    try:
+        payload = torch.load(shard_path, weights_only=False)
+    except Exception as error:  # pragma: no cover - exact torch error varies.
+        return [*shard_issues, f"torch.load failed: {error}"], 0
+
+    try:
+        if not isinstance(payload, list):
+            shard_issues.append("payload is not a list")
+            return shard_issues, 0
+        if not payload:
+            shard_issues.append("payload is empty")
+            return shard_issues, 0
+
+        total_layers = _optional_int(shard.get("total_layers"))
+        selected_layers = _int_list(shard.get("selected_layers"))
+        sidecar_hidden_dim = _optional_int(shard.get("hidden_dim"))
+        shard_issues.extend(_layer_metadata_issues(total_layers, selected_layers))
+        entries_inspected = 0
+        for index, entry in enumerate(payload):
+            if not isinstance(entry, Mapping):
+                shard_issues.append(f"entry {index} is not a dict")
+                continue
+            entries_inspected += 1
+            entry_issues, observed_hidden_dim = _validate_cache_entry(
+                entry,
+                index=index,
+                total_layers=total_layers,
+                sidecar_selected_layers=selected_layers,
+            )
+            shard_issues.extend(entry_issues)
+            if observed_hidden_dim is not None:
+                _validate_hidden_dim(
+                    observed_hidden_dim,
+                    sidecar_hidden_dim=sidecar_hidden_dim,
+                    key=key,
+                    hidden_dims=hidden_dims,
+                    issues=shard_issues,
+                )
+        if entries_inspected == 0:
+            shard_issues.append("payload has no dict entries")
+        return shard_issues, entries_inspected
+    finally:
+        del payload
+
+
+def _validate_hidden_dim(
+    observed_hidden_dim: int,
+    *,
+    sidecar_hidden_dim: int | None,
+    key: MatrixKey,
+    hidden_dims: dict[tuple[str, str], int],
+    issues: list[str],
+) -> None:
+    model_dataset = (key[0], key[1])
+    expected_hidden_dim = hidden_dims.get(model_dataset)
+    if expected_hidden_dim is None:
+        hidden_dims[model_dataset] = observed_hidden_dim
+    elif expected_hidden_dim != observed_hidden_dim:
+        issues.append(
+            f"hidden_dim {observed_hidden_dim} inconsistent for "
+            f"{model_dataset[0]}/{model_dataset[1]} expected {expected_hidden_dim}"
+        )
+    if sidecar_hidden_dim is not None and sidecar_hidden_dim != observed_hidden_dim:
+        issues.append(
+            f"sidecar hidden_dim={sidecar_hidden_dim} does not match entry hidden_dim="
+            f"{observed_hidden_dim}"
+        )
+
+
+def _read_shard_sidecar(path: Path) -> tuple[dict[str, object], list[str]]:
+    if not path.exists():
+        return {}, [f"missing sidecar metadata: {path}"]
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        return {}, [f"sidecar is not valid JSON: {error}"]
+    if not isinstance(payload, dict):
+        return {}, ["sidecar metadata must be a JSON object"]
+    return dict(payload), []
+
+
+def _path_identity(path: Path) -> Path:
+    if path.exists():
+        return path.resolve()
+    return path.absolute()
 
 
 def _validate_streamed_counts(

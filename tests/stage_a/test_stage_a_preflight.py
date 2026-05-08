@@ -152,6 +152,75 @@ def _write_stage0(root: Path) -> None:
         writer.writerows(balance_rows)
 
 
+def _append_cache_shard(
+    stage0_root: Path,
+    *,
+    model_name: str,
+    dataset_name: str,
+    subset: str,
+    entries: list[dict[str, object]],
+    hidden_dim: int = 3,
+    selected_layers: list[int] | None = None,
+) -> Path:
+    selected_layers = [0, 1] if selected_layers is None else selected_layers
+    cache_dir = stage0_root / "cache" / model_name / dataset_name / subset
+    shard_path = cache_dir / "shard-00001.pt"
+    torch.save(entries, shard_path)
+    (cache_dir / "shard-00001.pt.json").write_text(
+        json.dumps(
+            {
+                "total_layers": len(selected_layers),
+                "selected_layers": selected_layers,
+                "num_selected_layers": len(selected_layers),
+                "hidden_dim": hidden_dim,
+                "num_entries": len(entries),
+                "model_name": model_name,
+                "dataset_name": dataset_name,
+                "source_dataset": dataset_name,
+                "subset": subset,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary_path = stage0_root / "manifests" / "stage0_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    for rows, count_field in (
+        (summary["required_cache_matrix"], "expected_num_records"),
+        (summary["completed_cache_matrix"], "cache_num_entries"),
+    ):
+        for row in rows:
+            if (
+                row["model_name"] == model_name
+                and row["dataset_name"] == dataset_name
+                and row["subset"] == subset
+            ):
+                row[count_field] += len(entries)
+    summary_path.write_text(json.dumps(summary) + "\n", encoding="utf-8")
+
+    manifest_path = stage0_root / "manifests" / "cache_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["shards"].append(
+        {
+            "path": str(shard_path),
+            "status": "passed",
+            "model_name": model_name,
+            "dataset_name": dataset_name,
+            "source_dataset": dataset_name,
+            "subset": subset,
+            "num_entries": len(entries),
+            "hidden_dim": hidden_dim,
+            "total_layers": len(selected_layers),
+            "selected_layers": selected_layers,
+            "errors": [],
+        }
+    )
+    manifest["total_entries"] += len(entries)
+    manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    return shard_path
+
+
 def test_stage0_summary_passed_is_accepted(tmp_path: Path) -> None:
     stage0_root = tmp_path / "outputs" / "stage0"
     output_root = tmp_path / "outputs" / "stageA"
@@ -234,3 +303,46 @@ def test_old_path_references_are_not_required(tmp_path: Path) -> None:
 
     assert result["status"] == "passed"
     assert not any("round2" in issue for issue in result["issues"])
+
+
+def test_later_required_cache_shard_with_missing_field_fails(tmp_path: Path) -> None:
+    stage0_root = tmp_path / "outputs" / "stage0"
+    _write_stage0(stage0_root)
+    corrupt_entry = _entry("qwen3-vl-8b", "pope", "popular")
+    corrupt_entry["sample_id"] = "pope-popular-2"
+    del corrupt_entry["image_path"]
+    corrupt_shard = _append_cache_shard(
+        stage0_root,
+        model_name="qwen3-vl-8b",
+        dataset_name="pope",
+        subset="popular",
+        entries=[corrupt_entry],
+    )
+    module = _load_script()
+
+    result = module.run_preflight(stage0_root=stage0_root, output_root=tmp_path / "outputs" / "stageA")
+
+    assert result["status"] == "failed"
+    assert any(str(corrupt_shard) in issue and "image_path" in issue for issue in result["issues"])
+
+
+def test_later_required_cache_shard_hidden_dim_mismatch_fails(tmp_path: Path) -> None:
+    stage0_root = tmp_path / "outputs" / "stage0"
+    _write_stage0(stage0_root)
+    corrupt_entry = _entry("qwen3-vl-8b", "pope", "popular")
+    corrupt_entry["sample_id"] = "pope-popular-2"
+    corrupt_entry["layer_vectors"] = torch.ones((2, 4), dtype=torch.float32)
+    corrupt_shard = _append_cache_shard(
+        stage0_root,
+        model_name="qwen3-vl-8b",
+        dataset_name="pope",
+        subset="popular",
+        entries=[corrupt_entry],
+        hidden_dim=4,
+    )
+    module = _load_script()
+
+    result = module.run_preflight(stage0_root=stage0_root, output_root=tmp_path / "outputs" / "stageA")
+
+    assert result["status"] == "failed"
+    assert any(str(corrupt_shard) in issue and "hidden_dim 4 inconsistent" in issue for issue in result["issues"])
