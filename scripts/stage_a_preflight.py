@@ -273,7 +273,8 @@ def _validate_required_shard_payloads(
         issues.append(str(error))
         return {"status": "failed", "validated": {}}
 
-    hidden_dims: dict[tuple[str, str], int] = {}
+    hidden_dims: dict[str, tuple[int, MatrixKey]] = {}
+    hidden_dims_by_dataset: dict[tuple[str, str], int] = {}
     validated: dict[str, dict[str, object]] = {}
     has_validation_issues = False
     for key in expected_keys:
@@ -292,6 +293,7 @@ def _validate_required_shard_payloads(
                 metadata_issues=metadata_issues,
                 key=key,
                 hidden_dims=hidden_dims,
+                hidden_dims_by_dataset=hidden_dims_by_dataset,
             )
             entries_inspected += shard_entries_inspected
             if shard_issues:
@@ -318,7 +320,11 @@ def _validate_required_shard_payloads(
         "validated": validated,
         "hidden_dims": {
             f"{model_name}/{dataset_name}": hidden_dim
-            for (model_name, dataset_name), hidden_dim in sorted(hidden_dims.items())
+            for (model_name, dataset_name), hidden_dim in sorted(hidden_dims_by_dataset.items())
+        },
+        "model_hidden_dims": {
+            model_name: hidden_dim
+            for model_name, (hidden_dim, _source_key) in sorted(hidden_dims.items())
         },
     }
 
@@ -354,7 +360,8 @@ def _validate_required_shard_payload(
     *,
     metadata_issues: Sequence[str],
     key: MatrixKey,
-    hidden_dims: dict[tuple[str, str], int],
+    hidden_dims: dict[str, tuple[int, MatrixKey]],
+    hidden_dims_by_dataset: dict[tuple[str, str], int],
 ) -> tuple[list[str], int]:
     import torch
 
@@ -395,6 +402,7 @@ def _validate_required_shard_payload(
                     sidecar_hidden_dim=sidecar_hidden_dim,
                     key=key,
                     hidden_dims=hidden_dims,
+                    hidden_dims_by_dataset=hidden_dims_by_dataset,
                     issues=shard_issues,
                 )
         if entries_inspected == 0:
@@ -409,22 +417,25 @@ def _validate_hidden_dim(
     *,
     sidecar_hidden_dim: int | None,
     key: MatrixKey,
-    hidden_dims: dict[tuple[str, str], int],
+    hidden_dims: dict[str, tuple[int, MatrixKey]],
+    hidden_dims_by_dataset: dict[tuple[str, str], int],
     issues: list[str],
 ) -> None:
+    model_name = key[0]
     model_dataset = (key[0], key[1])
-    expected_hidden_dim = hidden_dims.get(model_dataset)
-    if expected_hidden_dim is None:
-        hidden_dims[model_dataset] = observed_hidden_dim
-    elif expected_hidden_dim != observed_hidden_dim:
+    hidden_dims_by_dataset.setdefault(model_dataset, observed_hidden_dim)
+    expected = hidden_dims.get(model_name)
+    if expected is None:
+        hidden_dims[model_name] = (observed_hidden_dim, key)
+    elif expected[0] != observed_hidden_dim:
         issues.append(
             f"hidden_dim {observed_hidden_dim} inconsistent for "
-            f"{model_dataset[0]}/{model_dataset[1]} expected {expected_hidden_dim}"
+            f"{_format_key(key)}; expected {expected[0]} from {_format_key(expected[1])}"
         )
     if sidecar_hidden_dim is not None and sidecar_hidden_dim != observed_hidden_dim:
         issues.append(
             f"sidecar hidden_dim={sidecar_hidden_dim} does not match entry hidden_dim="
-            f"{observed_hidden_dim}"
+            f"{observed_hidden_dim} for {_format_key(key)}"
         )
 
 

@@ -194,6 +194,39 @@ def test_dry_run_summary_overwrites_stale_completed_status(
     assert "dry_run" in payload["run_scope"]["reasons"]
 
 
+def test_runtime_model_failure_overwrites_stale_completed_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script()
+    monkeypatch.setattr(module, "run_preflight", lambda **_: {"status": "passed"})
+    monkeypatch.setattr(module, "build_family_splits", lambda **_: {"assignments": []})
+    monkeypatch.setattr(module, "_write_population_audits", lambda **_: None)
+
+    def fail_model(**_: object) -> dict[str, object]:
+        raise RuntimeError("model execution exploded")
+
+    monkeypatch.setattr(module, "run_model_stage_a", fail_model)
+    summary_path = tmp_path / "stageA" / "manifests" / "stageA_summary.json"
+    summary_path.parent.mkdir(parents=True)
+    summary_path.write_text(
+        json.dumps({"status": "completed", "completed_models": ["qwen3-vl-8b"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="model execution exploded"):
+        module.main(_base_stage_a_args(tmp_path))
+
+    payload = _stage_a_summary(tmp_path)
+    assert payload["status"] == "failed"
+    assert payload["overall_decision"] == "fail"
+    assert payload["completed_models"] == []
+    assert payload["failure_reason"] == (
+        "runtime failure while running qwen3-vl-8b: RuntimeError: model execution exploded"
+    )
+    assert "requested_models_not_completed_or_qwen_gate_skipped" in payload["run_scope"]["reasons"]
+
+
 def test_failed_summary_overwrites_stale_completed_status(tmp_path: Path) -> None:
     module = _load_script()
     summary_path = tmp_path / "manifests" / "stageA_summary.json"

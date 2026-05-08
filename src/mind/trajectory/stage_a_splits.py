@@ -13,6 +13,10 @@ from .splits import DEFAULT_RATIOS, DEFAULT_SEED, SPLIT_NAMES
 from .stage_a_population import PopulationClass, classify_entry
 
 
+STAGE_A_PRIMARY_DATASET = "pope"
+STAGE_A_PRIMARY_SUBSETS = ("popular", "random", "adversarial")
+
+
 def build_pope_family_split(
     entries: Iterable[Mapping[str, object]],
     *,
@@ -23,6 +27,7 @@ def build_pope_family_split(
     """Build one Stage A split across POPE-family subsets by image id."""
 
     rows = [dict(entry) for entry in entries]
+    _validate_stage_a_primary_scope(rows)
     ratio_values = _validate_ratios(ratios)
     grouped = _group_rows(rows, group_key=group_key)
     group_to_split = _assign_groups(grouped, ratios=ratio_values, seed=seed)
@@ -57,6 +62,38 @@ def build_pope_family_split(
         "sample_id_overlap_validation": _overlap_validation(assignments, key="sample_id"),
         "assignments": assignments,
     }
+
+
+def _validate_stage_a_primary_scope(rows: Sequence[Mapping[str, object]]) -> None:
+    invalid_datasets = sorted(
+        {
+            _scope_value(row.get("dataset_name"))
+            for row in rows
+            if _scope_value(row.get("dataset_name")) != STAGE_A_PRIMARY_DATASET
+        }
+    )
+    invalid_subsets = sorted(
+        {
+            _scope_value(row.get("subset"))
+            for row in rows
+            if _scope_value(row.get("subset")) not in STAGE_A_PRIMARY_SUBSETS
+        }
+    )
+    messages = []
+    if invalid_datasets:
+        messages.append(
+            "Stage A primary scope requires dataset_name='pope'; found: "
+            + ", ".join(invalid_datasets)
+        )
+    if invalid_subsets:
+        messages.append(
+            "Stage A primary scope requires subset in "
+            + ", ".join(STAGE_A_PRIMARY_SUBSETS)
+            + "; found: "
+            + ", ".join(invalid_subsets)
+        )
+    if messages:
+        raise ValueError("; ".join(messages))
 
 
 def write_family_split_manifest(manifest: Mapping[str, object], output: Path | str) -> None:
@@ -265,3 +302,7 @@ def _optional_text(value: object | None) -> str | None:
 
 def _required_text(value: object | None) -> str:
     return _optional_text(value) or ""
+
+
+def _scope_value(value: object | None) -> str:
+    return _optional_text(value) or "<blank>"

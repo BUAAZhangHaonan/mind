@@ -140,46 +140,70 @@ def main(argv: list[str] | None = None) -> int:
     skipped_models: dict[str, dict[str, object]] = {}
     gates: dict[str, dict[str, object]] = {}
     qwen_decision: str | None = None
-    for model_name in requested_models:
-        if model_name == "internvl3.5-8b" and qwen_decision == "fail" and not _only_internvl_requested(args.models):
-            reason = "qwen3-vl-8b Stage A decision was fail"
-            _write_not_run(
-                args.output_root,
-                model_name,
-                reason=reason,
-                skip_type="qwen_gate",
+    active_model: str | None = None
+    try:
+        for model_name in requested_models:
+            active_model = model_name
+            if model_name == "internvl3.5-8b" and qwen_decision == "fail" and not _only_internvl_requested(args.models):
+                reason = "qwen3-vl-8b Stage A decision was fail"
+                _write_not_run(
+                    args.output_root,
+                    model_name,
+                    reason=reason,
+                    skip_type="qwen_gate",
+                )
+                skipped_models[model_name] = {"reason": reason, "skip_type": "qwen_gate"}
+                active_model = None
+                continue
+            if model_name == "internvl3.5-8b" and not args.include_internvl_after_qwen_pass and "qwen3-vl-8b" in requested_models:
+                reason = "--include-internvl-after-qwen-pass was not set"
+                _write_not_run(
+                    args.output_root,
+                    model_name,
+                    reason=reason,
+                    skip_type="deferred_until_qwen_pass",
+                )
+                skipped_models[model_name] = {"reason": reason, "skip_type": "deferred_until_qwen_pass"}
+                active_model = None
+                continue
+            model_result = run_model_stage_a(
+                model_name=model_name,
+                stage0_root=args.stage0_root,
+                output_root=args.output_root,
+                subsets=args.subsets,
+                split_manifest=split_manifest,
+                device=args.device,
+                seed=args.seed,
+                bootstrap=args.bootstrap,
+                lstm_epochs=args.lstm_epochs,
+                knn_k=args.knn_k,
+                limit_per_subset=args.limit_per_subset,
+                skip_lstm=args.skip_lstm,
+                save_embeddings=args.save_embeddings,
             )
-            skipped_models[model_name] = {"reason": reason, "skip_type": "qwen_gate"}
-            continue
-        if model_name == "internvl3.5-8b" and not args.include_internvl_after_qwen_pass and "qwen3-vl-8b" in requested_models:
-            reason = "--include-internvl-after-qwen-pass was not set"
-            _write_not_run(
-                args.output_root,
-                model_name,
-                reason=reason,
-                skip_type="deferred_until_qwen_pass",
-            )
-            skipped_models[model_name] = {"reason": reason, "skip_type": "deferred_until_qwen_pass"}
-            continue
-        model_result = run_model_stage_a(
-            model_name=model_name,
-            stage0_root=args.stage0_root,
-            output_root=args.output_root,
-            subsets=args.subsets,
-            split_manifest=split_manifest,
-            device=args.device,
-            seed=args.seed,
-            bootstrap=args.bootstrap,
-            lstm_epochs=args.lstm_epochs,
-            knn_k=args.knn_k,
+            gates[model_name] = model_result
+            completed_models.append(model_name)
+            if model_name == "qwen3-vl-8b":
+                qwen_decision = str(model_result["overall_decision"])
+            active_model = None
+    except Exception as error:
+        failure_reason = _runtime_failure_reason(error, model_name=active_model)
+        _write_stage_a_summary(
+            args.output_root,
+            preflight,
+            gates,
+            completed_models,
+            "fail",
+            dry_run=False,
+            requested_models=requested_models,
+            requested_subsets=args.subsets,
             limit_per_subset=args.limit_per_subset,
             skip_lstm=args.skip_lstm,
-            save_embeddings=args.save_embeddings,
+            skipped_models=skipped_models,
+            failure_reason=failure_reason,
         )
-        gates[model_name] = model_result
-        completed_models.append(model_name)
-        if model_name == "qwen3-vl-8b":
-            qwen_decision = str(model_result["overall_decision"])
+        print(f"Stage A failed: {failure_reason}", file=sys.stderr)
+        raise
 
     if "internvl3.5-8b" not in requested_models:
         reason = "internvl3.5-8b was not requested for this Stage A run"
@@ -1103,6 +1127,7 @@ def _write_stage_a_summary(
     limit_per_subset: int | None = None,
     skip_lstm: bool = False,
     skipped_models: Mapping[str, Mapping[str, object]] | None = None,
+    failure_reason: str | None = None,
 ) -> str:
     path = output_root / "manifests" / "stageA_summary.json"
     current_completed_models = list(completed_models)
@@ -1123,7 +1148,9 @@ def _write_stage_a_summary(
         limit_per_subset=limit_per_subset,
         skip_lstm=skip_lstm,
     )
-    if preflight.get("status") != "passed":
+    if failure_reason is not None:
+        summary_status = "failed"
+    elif preflight.get("status") != "passed":
         summary_status = "failed"
     elif dry_run:
         summary_status = "dry_run"
@@ -1138,6 +1165,8 @@ def _write_stage_a_summary(
     merged_overall = _decision_from_values([str(value) for value in model_decisions.values()])
     if not model_decisions:
         merged_overall = overall
+    if failure_reason is not None:
+        merged_overall = "fail"
     payload = {
         "stage": "stageA",
         "status": summary_status,
@@ -1150,8 +1179,16 @@ def _write_stage_a_summary(
         "full_stage_a_run": run_scope["full_stage_a_run"],
         "run_scope": run_scope,
     }
+    if failure_reason is not None:
+        payload["failure_reason"] = failure_reason
     _write_json(path, payload)
     return str(path)
+
+
+def _runtime_failure_reason(error: BaseException, *, model_name: str | None) -> str:
+    if model_name:
+        return f"runtime failure while running {model_name}: {type(error).__name__}: {error}"
+    return f"runtime failure after Stage A preflight: {type(error).__name__}: {error}"
 
 
 def _stage_a_run_scope(

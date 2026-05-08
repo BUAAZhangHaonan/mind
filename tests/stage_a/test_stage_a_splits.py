@@ -12,6 +12,7 @@ from mind.trajectory.stage_a_splits import build_pope_family_split
 def _row(
     *,
     model_name: str = "qwen3-vl-8b",
+    dataset_name: str = "pope",
     subset: str = "popular",
     sample_id: str,
     image_id: str,
@@ -21,7 +22,7 @@ def _row(
 ) -> dict[str, object]:
     row: dict[str, object] = {
         "model_name": model_name,
-        "dataset_name": "pope",
+        "dataset_name": dataset_name,
         "subset": subset,
         "sample_id": sample_id,
         "image_id": image_id,
@@ -102,6 +103,25 @@ def test_model_specific_entries_are_handled_correctly() -> None:
     assert manifest["counts_per_model"]["qwen3-vl-8b"] == 1
     assert manifest["counts_per_model"]["internvl3.5-8b"] == 2
     assert manifest["sample_id_overlap_validation"]["valid"] is True
+
+
+def test_direct_pope_family_split_rejects_repope() -> None:
+    entries = [
+        _row(dataset_name="repope", sample_id="r-1", image_id="img-1"),
+    ]
+
+    with pytest.raises(ValueError, match="dataset_name='pope'.*repope"):
+        build_pope_family_split(entries, seed=20260506)
+
+
+def test_direct_pope_family_split_rejects_bad_pope_subset() -> None:
+    entries = [
+        _row(subset="popular", sample_id="p-1", image_id="img-1"),
+        _row(subset="other", sample_id="o-1", image_id="img-2"),
+    ]
+
+    with pytest.raises(ValueError, match="subset.*popular, random, adversarial.*other"):
+        build_pope_family_split(entries, seed=20260506)
 
 
 def test_split_builder_rejects_non_pope_dataset_name(tmp_path: Path) -> None:

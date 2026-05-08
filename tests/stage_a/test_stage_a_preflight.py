@@ -221,6 +221,33 @@ def _append_cache_shard(
     return shard_path
 
 
+def _rewrite_cache_shard_hidden_dim(
+    stage0_root: Path,
+    *,
+    model_name: str,
+    dataset_name: str,
+    subset: str,
+    hidden_dim: int,
+) -> Path:
+    shard_path = stage0_root / "cache" / model_name / dataset_name / subset / "shard-00000.pt"
+    entry = _entry(model_name, dataset_name, subset)
+    entry["layer_vectors"] = torch.ones((2, hidden_dim), dtype=torch.float32)
+    torch.save([entry], shard_path)
+
+    sidecar_path = Path(str(shard_path) + ".json")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["hidden_dim"] = hidden_dim
+    sidecar_path.write_text(json.dumps(sidecar) + "\n", encoding="utf-8")
+
+    manifest_path = stage0_root / "manifests" / "cache_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for shard in manifest["shards"]:
+        if shard["path"] == str(shard_path):
+            shard["hidden_dim"] = hidden_dim
+    manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    return shard_path
+
+
 def test_stage0_summary_passed_is_accepted(tmp_path: Path) -> None:
     stage0_root = tmp_path / "outputs" / "stage0"
     output_root = tmp_path / "outputs" / "stageA"
@@ -346,3 +373,27 @@ def test_later_required_cache_shard_hidden_dim_mismatch_fails(tmp_path: Path) ->
 
     assert result["status"] == "failed"
     assert any(str(corrupt_shard) in issue and "hidden_dim 4 inconsistent" in issue for issue in result["issues"])
+
+
+def test_same_model_hidden_dim_mismatch_across_datasets_fails(tmp_path: Path) -> None:
+    stage0_root = tmp_path / "outputs" / "stage0"
+    _write_stage0(stage0_root)
+    for subset in DATASETS["repope"]:
+        _rewrite_cache_shard_hidden_dim(
+            stage0_root,
+            model_name="qwen3-vl-8b",
+            dataset_name="repope",
+            subset=subset,
+            hidden_dim=4,
+        )
+    module = _load_script()
+
+    result = module.run_preflight(stage0_root=stage0_root, output_root=tmp_path / "outputs" / "stageA")
+
+    assert result["status"] == "failed"
+    assert any(
+        "hidden_dim 4 inconsistent" in issue
+        and "qwen3-vl-8b/repope/popular" in issue
+        and "qwen3-vl-8b/pope/popular" in issue
+        for issue in result["issues"]
+    )
