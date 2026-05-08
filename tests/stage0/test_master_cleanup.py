@@ -46,7 +46,7 @@ CONTENT_ALLOWLIST_PREFIXES = (
 )
 
 CONTENT_ALLOWLIST_FILES = {
-    "tests/v2/test_master_cleanup.py",
+    "tests/stage0/test_master_cleanup.py",
 }
 
 

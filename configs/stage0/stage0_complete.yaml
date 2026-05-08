@@ -1,12 +1,11 @@
-name: qwen-internvl-stage0-full
-version: v2
+name: stage0-complete
+version: stage0
 stage: stage0
 mode: full
-output_root: outputs/v2_stage0
+output_root: outputs/stage0
 dtype: float16
 max_new_tokens: 1
 token_index: -1
-smoke_limit: 8
 models:
   - name: qwen3-vl-8b
     config_path: configs/models/qwen3_vl_8b.yaml

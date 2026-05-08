@@ -1,4 +1,4 @@
-"""Column metadata for v2 Stage 0 trajectory audits."""
+"""Column metadata for Stage 0 trajectory audits."""
 
 from __future__ import annotations
 

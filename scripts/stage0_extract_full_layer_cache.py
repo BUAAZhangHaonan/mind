@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract v2 Stage 0 full-layer prefill cache shards."""
+"""Extract Stage 0 full-layer prefill cache shards."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from typing import Iterable, Mapping, Sequence
 import torch
 import yaml
 
-REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
 if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
@@ -46,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--records", type=Path, required=True)
     parser.add_argument("--model-config", type=Path, required=True)
-    parser.add_argument("--output-root", type=Path, default=Path("outputs/v2_stage0/cache"))
+    parser.add_argument("--output-root", type=Path, default=Path("outputs/stage0/cache"))
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--subset", required=True)
     parser.add_argument("--split", default=None)
@@ -205,7 +205,7 @@ def get_git_commit() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            cwd=Path(__file__).resolve().parents[2],
+            cwd=Path(__file__).resolve().parents[1],
             check=True,
             capture_output=True,
             text=True,
@@ -246,7 +246,7 @@ def build_sidecar_metadata(
     image_root: Path | None,
 ) -> dict[str, object]:
     return {
-        "stage": "v2_stage0",
+        "stage": "stage0",
         "cache_type": "full_layer_prefill",
         "model_name": model_config.name,
         "model_id": model_config.model_id,
@@ -263,7 +263,7 @@ def build_sidecar_metadata(
         "max_new_tokens": int(max_new_tokens),
         "dtype": str(dtype).removeprefix("torch."),
         "num_entries": int(num_entries),
-        "script": str(Path(__file__).resolve().relative_to(Path(__file__).resolve().parents[2])),
+        "script": str(Path(__file__).resolve().relative_to(Path(__file__).resolve().parents[1])),
         "git_commit": get_git_commit(),
         "created_at_utc": utc_now_iso(),
         "records_path": str(records_path),

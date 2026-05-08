@@ -435,7 +435,7 @@ def test_cli_writes_cache_label_balance_from_synthetic_cache_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_audit_data.py", "stage0_audit_data_cache_balance")
+    module = _load_script("scripts/stage0_audit_data.py", "stage0_audit_data_cache_balance")
     dataset_path = tmp_path / "pope" / "popular.jsonl"
     cache_root = tmp_path / "cache"
     _write_jsonl(
@@ -493,7 +493,7 @@ def test_cli_writes_cache_label_balance_from_synthetic_cache_shards(
     )
 
     assert exit_code == 0
-    cache_label_balance_path = Path("outputs/v2_stage0/audit/cache_label_balance.csv")
+    cache_label_balance_path = Path("outputs/stage0/audit/cache_label_balance.csv")
     with cache_label_balance_path.open(newline="", encoding="utf-8") as handle:
         assert next(csv.reader(handle)) == CACHE_LABEL_BALANCE_COLUMNS
     rows = _read_csv(cache_label_balance_path)
@@ -731,7 +731,7 @@ def test_known_discovery_audits_raw_only_dash_b_assets(tmp_path: Path, monkeypat
 
     result = run_audit(
         [by_key[("dash-b", "all")]],
-        output_root=tmp_path / "outputs" / "v2_stage0",
+        output_root=tmp_path / "outputs" / "stage0",
         cache_root=None,
     )
 
@@ -745,7 +745,7 @@ def test_cli_dry_run_reads_and_reports_without_writing_audit_outputs(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_audit_data.py", "stage0_audit_data_dry")
+    module = _load_script("scripts/stage0_audit_data.py", "stage0_audit_data_dry")
     dataset_path = tmp_path / "data" / "pope" / "popular.jsonl"
     output_root = tmp_path / "outputs"
     _write_jsonl(

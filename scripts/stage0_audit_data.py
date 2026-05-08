@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit v2 Stage 0 datasets and optional cache shards."""
+"""Audit Stage 0 datasets and optional cache shards."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 
-REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
 if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
@@ -20,7 +20,7 @@ import mind.trajectory.audit as audit_module
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", type=Path, default=Path("outputs/v2_stage0"))
+    parser.add_argument("--output-root", type=Path, default=Path("outputs/stage0"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cache-root", type=Path, default=None)
     parser.add_argument(

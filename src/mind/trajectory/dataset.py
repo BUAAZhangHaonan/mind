@@ -1,4 +1,4 @@
-"""Dataset discovery and normalization for v2 Stage 0 audits."""
+"""Dataset discovery and normalization for Stage 0 audits."""
 
 from __future__ import annotations
 

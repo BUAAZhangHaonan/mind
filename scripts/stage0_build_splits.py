@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build v2 Stage 0 grouped split manifest."""
+"""Build Stage 0 grouped split manifest."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 
-REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
 if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("outputs/v2_stage0/manifests/split_manifest.json"),
+        default=Path("outputs/stage0/manifests/split_manifest.json"),
     )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument(

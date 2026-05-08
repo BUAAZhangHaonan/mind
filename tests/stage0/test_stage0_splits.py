@@ -139,7 +139,7 @@ def test_build_split_manifest_rejects_mismatched_dataset_source(tmp_path: Path) 
 
 
 def test_cli_main_writes_manifest(tmp_path: Path) -> None:
-    script_path = Path("scripts/v2/stage0_build_splits.py")
+    script_path = Path("scripts/stage0_build_splits.py")
     spec = importlib.util.spec_from_file_location("stage0_build_splits", script_path)
     assert spec is not None
     assert spec.loader is not None
@@ -191,7 +191,7 @@ def test_cli_dry_run_builds_manifest_without_writing_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    script_path = Path("scripts/v2/stage0_build_splits.py")
+    script_path = Path("scripts/stage0_build_splits.py")
     spec = importlib.util.spec_from_file_location("stage0_build_splits_dry", script_path)
     assert spec is not None
     assert spec.loader is not None

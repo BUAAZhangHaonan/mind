@@ -1,6 +1,6 @@
-# MIND v2 Stage 0
+# MIND Stage 0
 
-Stage 0 is the data audit, split, and cache entry point for the MIND v2 pipeline. It prepares audited records, deterministic grouped splits, full-layer hidden-state cache shards, manifests, and one run log under `outputs/v2_stage0`. Stage 0 is complete only when POPE, RePOPE, and DASH-B are cached for both primary models.
+Stage 0 is the data audit, split, and cache entry point for the MIND pipeline. It prepares audited records, deterministic grouped splits, full-layer hidden-state cache shards, manifests, and one run log under `outputs/stage0`. Stage 0 is complete only when POPE, RePOPE, and DASH-B are cached for both primary models.
 
 ## What Stage 0 Does
 
@@ -9,25 +9,25 @@ Stage 0 is the data audit, split, and cache entry point for the MIND v2 pipeline
 - Audits dataset fields, object names, label balance, and sample overlap before cache work starts.
 - Creates deterministic grouped splits by `image_id`.
 - Extracts pre-generation full-layer hidden states for each configured model and record.
-- Writes audit CSVs, cache shards, cache sidecars, manifests, and a run log under `outputs/v2_stage0`.
+- Writes audit CSVs, cache shards, cache sidecars, manifests, and a run log under `outputs/stage0`.
 
 ## What Stage 0 Does Not Do
 
 - Stage A is not started. Stage 0 does not implement Stage A, Stage B, Stage C, Stage D, or Stage E training.
-- It does not use v1 drift, manifold, or wavelet features as the v2 main path.
+- It does not use drift, manifold, or wavelet features as the main path.
 - It does not sample 16 layers or choose a layer subset.
-- It does not depend on the v1 MIND path for the v2 main path.
+- It does not depend on the old MIND path for the main path.
 
 ## Branch Migration Status
 
-The v1 work is frozen on branch `v1` and tag `v1-freeze-before-v2` at commit `81e3444`. Both refs are pushed to `origin`. `master` is the v2 Stage 0 line.
+The old work is frozen outside `master`. The current branch is the Stage 0 line and keeps no old runtime modules.
 
 ## Output Contract
 
 Each Stage 0 run writes exactly this output surface:
 
 ```text
-outputs/v2_stage0/
+outputs/stage0/
   audit/
     dataset_audit.csv
     object_name_audit.csv
@@ -97,8 +97,8 @@ The ratio order is `encoder_train`, `bank`, `cal`, `test`. All rows with the sam
 This is the smoke command:
 
 ```bash
-conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py \
-  --output-root outputs/v2_stage0 \
+conda run --no-capture-output -n mind-py311 python scripts/stage0_run.py \
+  --output-root outputs/stage0 \
   --models qwen3-vl-8b internvl3.5-8b \
   --datasets pope \
   --subsets popular \
@@ -112,12 +112,12 @@ conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py \
 This is the config-driven full-run command:
 
 ```bash
-HF_HUB_DISABLE_XET=1 conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py \
-  --config configs/v2/stage0/stage0_complete.yaml \
+HF_HUB_DISABLE_XET=1 conda run --no-capture-output -n mind-py311 python scripts/stage0_run.py \
+  --config configs/stage0/stage0_complete.yaml \
   --device cuda:0
 ```
 
-The complete config must include both primary models, POPE popular/random/adversarial, RePOPE popular/random/adversarial, and DASH-B all. DASH-B and RePOPE are required, not optional. For long runs, mount the command in `tmux` and keep output under `outputs/v2_stage0/logs`.
+The complete config must include both primary models, POPE popular/random/adversarial, RePOPE popular/random/adversarial, and DASH-B all. DASH-B and RePOPE are required, not optional. For long runs, mount the command in `tmux` and keep output under `outputs/stage0/logs`.
 
 ## Stage 0 Completion Gate
 
@@ -127,5 +127,5 @@ The complete config must include both primary models, POPE popular/random/advers
 - Splits have no `image_id` leakage across split groups.
 - Cache manifests match audited row counts for each model and dataset.
 - Cache tensors retain full-layer hidden states with no 16-layer sampling.
-- Stage 0 output lives only under `outputs/v2_stage0`.
+- Stage 0 output lives only under `outputs/stage0`.
 - Stage A remains not started until this gate is satisfied.

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mind"
 version = "0.1.0"
-description = "MIND v2 Stage 0 tooling for multimodal hallucination trajectory research."
+description = "MIND Stage 0 tooling for multimodal hallucination trajectory research."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 authors = [{ name = "MIND Contributors" }]

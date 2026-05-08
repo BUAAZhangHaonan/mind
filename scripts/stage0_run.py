@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run v2 Stage 0 audit, split, smoke extraction, and cache validation."""
+"""Run Stage 0 audit, split, smoke extraction, and cache validation."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Iterable, Mapping, Sequence
 
 import yaml
 
-REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
 if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
@@ -64,7 +64,7 @@ DATASET_IMAGE_ROOTS = {
 }
 PRIMARY_STAGE0_MODELS = ("qwen3-vl-8b", "internvl3.5-8b")
 POPE_FULL_RUN_SUBSETS = ("popular", "random", "adversarial")
-COMPLETE_STAGE0_CONFIG = Path("configs/v2/stage0/stage0_complete.yaml")
+COMPLETE_STAGE0_CONFIG = Path("configs/stage0/stage0_complete.yaml")
 FULL_CLOSURE_DATASET_SUBSETS = (
     ("pope", "popular"),
     ("pope", "random"),
@@ -162,7 +162,7 @@ def apply_config_defaults(args: argparse.Namespace, *, parser: argparse.Argument
             args.subsets = _unique([str(spec["subset"]) for spec in dataset_specs])
 
     if args.output_root is None:
-        args.output_root = Path("outputs/v2_stage0")
+        args.output_root = Path("outputs/stage0")
     if args.smoke_limit is None:
         args.smoke_limit = 8
     if args.device is None:
@@ -760,7 +760,7 @@ def full_run_command(args: argparse.Namespace) -> str:
             "-n",
             "mind-py311",
             "python",
-            "scripts/v2/stage0_run.py",
+            "scripts/stage0_run.py",
             "--config",
             str(COMPLETE_STAGE0_CONFIG),
         ]
@@ -775,7 +775,7 @@ def audit_command(
 ) -> str:
     parts = [
         "python",
-        "scripts/v2/stage0_audit_data.py",
+        "scripts/stage0_audit_data.py",
         "--output-root",
         str(output_root),
         "--dry-run",
@@ -797,7 +797,7 @@ def split_command(
 ) -> str:
     parts = [
         "python",
-        "scripts/v2/stage0_build_splits.py",
+        "scripts/stage0_build_splits.py",
         "--dataset-name",
         spec.dataset_name,
         "--subset",
@@ -926,7 +926,7 @@ def extraction_dry_run_command(
 ) -> str:
     parts = [
         "python",
-        "scripts/v2/stage0_extract_full_layer_cache.py",
+        "scripts/stage0_extract_full_layer_cache.py",
         "--records",
         str(spec.path),
         "--model-config",

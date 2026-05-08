@@ -1,4 +1,4 @@
-"""Small utilities for v2 Stage 0 dataset auditing."""
+"""Small utilities for Stage 0 dataset auditing."""
 
 from __future__ import annotations
 

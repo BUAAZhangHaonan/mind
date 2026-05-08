@@ -1,4 +1,4 @@
-"""Deterministic grouped split construction for v2 Stage 0."""
+"""Deterministic grouped split construction for Stage 0."""
 
 from __future__ import annotations
 

@@ -36,7 +36,7 @@ def _load_stage0_run(name: str, monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.setitem(sys.modules, "mind.models", models_package)
     monkeypatch.setitem(sys.modules, "mind.models.types", model_types)
     monkeypatch.setitem(sys.modules, "stage0_extract_full_layer_cache", extractor)
-    return _load_script("scripts/v2/stage0_run.py", name)
+    return _load_script("scripts/stage0_run.py", name)
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -212,7 +212,7 @@ def _pope_cache_entry(**overrides: object) -> dict[str, object]:
 
 def _pope_sidecar(**overrides: object) -> dict[str, object]:
     sidecar: dict[str, object] = {
-        "stage": "v2_stage0",
+        "stage": "stage0",
         "cache_type": "full_layer_hidden_states",
         "model_name": "tiny-model",
         "model_id": "org/tiny-model",
@@ -368,7 +368,7 @@ def test_top_level_split_manifest_indexes_every_requested_dataset_subset(
 ) -> None:
     module = _load_stage0_run("stage0_run_split_index", monkeypatch)
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     for subset in ("popular", "random"):
         _write_jsonl(
             repo_root
@@ -649,7 +649,7 @@ def test_full_run_rejects_pope_only_closure_request_before_extraction(
 ) -> None:
     module = _load_stage0_run("stage0_run_pope_only_full_closure", monkeypatch)
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     for subset in ("popular", "random", "adversarial"):
         _write_matrix_records_with_count(repo_root, dataset_name="pope", subset=subset, count=1)
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
@@ -704,7 +704,7 @@ def test_stage0_summary_fails_when_cache_matrix_entry_is_missing(
 ) -> None:
     module = _load_stage0_run("stage0_run_missing_cache_matrix", monkeypatch)
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     models = ("qwen3-vl-8b", "internvl3.5-8b")
     datasets = ("pope", "repope")
     subsets = ("popular",)
@@ -772,7 +772,7 @@ def test_stage0_summary_fails_when_cache_entry_count_is_short(
 ) -> None:
     module = _load_stage0_run("stage0_run_short_cache_count", monkeypatch)
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     models = ("qwen3-vl-8b",)
     datasets = ("pope",)
     subsets = ("popular",)
@@ -842,7 +842,7 @@ def test_stage0_summary_passes_when_cache_matrix_entries_all_validate(
 ) -> None:
     module = _load_stage0_run("stage0_run_complete_cache_matrix", monkeypatch)
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     models = ("qwen3-vl-8b", "internvl3.5-8b")
     datasets = ("pope", "repope")
     subsets = ("popular",)

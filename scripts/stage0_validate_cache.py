@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate v2 Stage 0 cache shards and sidecar metadata."""
+"""Validate Stage 0 cache shards and sidecar metadata."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 import sys
 
-REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
 if repo_src_path in sys.path:
     sys.path.remove(repo_src_path)
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("outputs/v2_stage0/manifests/cache_manifest.json"),
+        default=Path("outputs/stage0/manifests/cache_manifest.json"),
     )
     parser.add_argument("--dataset-name", default=None)
     parser.add_argument("--split", default=None)

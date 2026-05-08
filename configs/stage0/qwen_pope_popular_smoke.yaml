@@ -1,8 +1,8 @@
 name: qwen-pope-popular-smoke
-version: v2
+version: stage0
 stage: stage0
 mode: smoke
-output_root: outputs/v2_stage0
+output_root: outputs/stage0
 dtype: float16
 max_new_tokens: 1
 token_index: -1

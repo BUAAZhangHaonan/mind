@@ -1,4 +1,4 @@
-"""v2 Stage 0 cache validation."""
+"""Stage 0 cache validation."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ DuplicateKey = tuple[str, str, str, str]
 
 
 class CacheValidationError(ValueError):
-    """Raised when a v2 Stage 0 cache fails validation."""
+    """Raised when a Stage 0 cache fails validation."""
 
     def __init__(self, manifest: Mapping[str, object]) -> None:
         self.manifest = manifest
@@ -74,7 +74,7 @@ def validate_stage0_cache(
     model_name: str | None = None,
     raise_on_error: bool = True,
 ) -> dict[str, object]:
-    """Validate all ``*.pt`` shards under a v2 Stage 0 cache root.
+    """Validate all ``*.pt`` shards under a Stage 0 cache root.
 
     The validator accepts only the list-of-dicts Stage 0 shard format. It
     writes a manifest when ``output`` is supplied, then raises by default if

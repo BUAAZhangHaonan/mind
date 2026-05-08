@@ -9,7 +9,7 @@ MODEL_ID ?= Qwen/Qwen3-VL-8B-Instruct
 SMOKE_MODELS ?= qwen3-vl-8b
 SMOKE_DATASETS ?= pope
 SMOKE_SUBSETS ?= popular
-SMOKE_OUTPUT_ROOT ?= outputs/v2_stage0
+SMOKE_OUTPUT_ROOT ?= outputs/stage0
 
 .PHONY: help env install verify-env verify-model test plan-smoke clean
 
@@ -31,10 +31,10 @@ verify-model:
 	HF_ENDPOINT=$(HF_ENDPOINT) PYTHONPATH=$(PROJECT_PYTHONPATH)$${PYTHONPATH:+:$${PYTHONPATH}} $(PYTHON) scripts/verify_env.py --model-id $(MODEL_ID)
 
 test:
-	PYTHONWARNINGS=ignore $(PYTHON) -m pytest -q tests/unit tests/v2
+	PYTHONWARNINGS=ignore $(PYTHON) -m pytest -q tests/unit tests/stage0
 
 plan-smoke:
-	$(PYTHON) scripts/v2/stage0_run.py --models $(SMOKE_MODELS) --datasets $(SMOKE_DATASETS) --subsets $(SMOKE_SUBSETS) --output-root $(SMOKE_OUTPUT_ROOT) --dry-run
+	$(PYTHON) scripts/stage0_run.py --models $(SMOKE_MODELS) --datasets $(SMOKE_DATASETS) --subsets $(SMOKE_SUBSETS) --output-root $(SMOKE_OUTPUT_ROOT) --dry-run
 
 clean:
 	rm -rf .pytest_cache htmlcov src/*.egg-info

@@ -16,7 +16,7 @@ def _cache_api() -> tuple[object, type[Exception]]:
 
 
 def _load_script() -> ModuleType:
-    script_path = Path("scripts/v2/stage0_validate_cache.py")
+    script_path = Path("scripts/stage0_validate_cache.py")
     spec = importlib.util.spec_from_file_location("stage0_validate_cache", script_path)
     assert spec is not None
     assert spec.loader is not None
@@ -53,7 +53,7 @@ def _base_entry(**overrides: object) -> dict[str, object]:
 
 def _base_sidecar(**overrides: object) -> dict[str, object]:
     sidecar: dict[str, object] = {
-        "stage": "v2_stage0",
+        "stage": "stage0",
         "cache_type": "full_layer_hidden_states",
         "model_name": "tiny-model",
         "model_id": "org/tiny-model",

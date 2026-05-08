@@ -76,9 +76,9 @@ def _write_complete_stage0_config(path: Path, *, output_root: Path) -> None:
 
 
 def test_stage0_complete_config_sets_split_options() -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_complete_split_config")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_complete_split_config")
 
-    args = module.parse_args(["--config", "configs/v2/stage0/stage0_complete.yaml", "--dry-run"])
+    args = module.parse_args(["--config", "configs/stage0/stage0_complete.yaml", "--dry-run"])
 
     assert args.split_seed == 20260506
     assert args.split_group_key == "image_id"
@@ -86,12 +86,12 @@ def test_stage0_complete_config_sets_split_options() -> None:
 
 
 def test_parse_args_preserves_default_split_options_without_config() -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_default_split_config")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_default_split_config")
 
     args = module.parse_args(
         [
             "--output-root",
-            "outputs/v2_stage0",
+            "outputs/stage0",
             "--models",
             "qwen3-vl-8b",
             "--datasets",
@@ -110,9 +110,9 @@ def test_orchestrator_passes_configured_split_options_to_dataset_manifests(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_split_config_flow")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_split_config_flow")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
@@ -235,7 +235,7 @@ def test_extractor_uses_full_layer_range_from_loaded_model_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_script(
-        "scripts/v2/stage0_extract_full_layer_cache.py",
+        "scripts/stage0_extract_full_layer_cache.py",
         "stage0_extract_full_layer_cache",
     )
     records_path = tmp_path / "records.jsonl"
@@ -322,7 +322,7 @@ def test_extractor_uses_full_layer_range_from_loaded_model_config(
     save_kwargs = captured["save_kwargs"]  # type: ignore[assignment]
     assert save_kwargs["cast_all_floating_tensors"] is False  # type: ignore[index]
     metadata = save_kwargs["metadata"]  # type: ignore[index]
-    assert metadata["stage"] == "v2_stage0"
+    assert metadata["stage"] == "stage0"
     assert metadata["cache_type"] == "full_layer_prefill"
     assert metadata["total_layers"] == 4
     assert metadata["selected_layers"] == [0, 1, 2, 3]
@@ -337,7 +337,7 @@ def test_extractor_dry_run_resolves_layers_without_loading_model(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     module = _load_script(
-        "scripts/v2/stage0_extract_full_layer_cache.py",
+        "scripts/stage0_extract_full_layer_cache.py",
         "stage0_extract_full_layer_cache_dry",
     )
     records_path = tmp_path / "records.jsonl"
@@ -389,7 +389,7 @@ def test_extractor_validates_records_before_loading_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_script(
-        "scripts/v2/stage0_extract_full_layer_cache.py",
+        "scripts/stage0_extract_full_layer_cache.py",
         "stage0_extract_full_layer_cache_validate_first",
     )
     records_path = tmp_path / "raw-pope.jsonl"
@@ -436,9 +436,9 @@ def test_orchestrator_writes_passed_smoke_summary(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run")
+    module = _load_script("scripts/stage0_run.py", "stage0_run")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     image_root = repo_root / "data" / "coco" / "val2014"
@@ -503,8 +503,8 @@ def test_orchestrator_writes_passed_smoke_summary(
     assert extraction_calls[0]["image_root"] == image_root
     captured = capsys.readouterr()
     expected_full_run_command = (
-        "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
-        "--config configs/v2/stage0/stage0_complete.yaml"
+        "conda run --no-capture-output -n mind-py311 python scripts/stage0_run.py "
+        "--config configs/stage0/stage0_complete.yaml"
     )
     assert captured.out == (
         "Smoke Stage 0 passed. Full-run command:\n"
@@ -577,7 +577,7 @@ def test_cache_label_balance_summary_uses_cache_schema_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_cache_label_schema")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_cache_label_schema")
     dataset_path = tmp_path / "pope" / "popular.jsonl"
     cache_root = tmp_path / "cache"
     _write_jsonl(
@@ -639,9 +639,9 @@ def test_orchestrator_audits_discovered_specs_but_extracts_requested_specs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_audit_scope")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_audit_scope")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
@@ -743,9 +743,9 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_dry")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_dry")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
@@ -807,8 +807,8 @@ def test_orchestrator_dry_run_resolves_plan_without_stage0_writes(
     assert "stage0_extract_full_layer_cache.py" in plan["extraction_commands"][0]
     assert plan["summary"]["next_recommended_commands"] == [
         (
-            "conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py "
-            "--config configs/v2/stage0/stage0_complete.yaml"
+            "conda run --no-capture-output -n mind-py311 python scripts/stage0_run.py "
+            "--config configs/stage0/stage0_complete.yaml"
         )
     ]
 
@@ -818,9 +818,9 @@ def test_orchestrator_dry_run_includes_configured_split_command(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_dry_split_command")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_dry_split_command")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1), _record("sample-002", 2)])
     (repo_root / "data" / "coco" / "val2014").mkdir(parents=True)
@@ -862,7 +862,7 @@ def test_orchestrator_dry_run_includes_configured_split_command(
     plan = json.loads(capsys.readouterr().out)
     assert plan["split_commands"] == [
         (
-            "python scripts/v2/stage0_build_splits.py "
+            "python scripts/stage0_build_splits.py "
             "--dataset-name pope --subset popular "
             f"--input-records {records_path} "
             f"--output {output_root / 'manifests' / 'split_manifest_pope_popular.json'} "
@@ -876,9 +876,9 @@ def test_orchestrator_dry_run_plans_repope_and_dash_b_materialization_without_wr
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_dry_materialization")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_dry_materialization")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     image_root = repo_root / "data" / "coco" / "val2014"
     image_root.mkdir(parents=True)
     (image_root / "COCO_val2014_000000310196.jpg").write_bytes(b"")
@@ -960,9 +960,9 @@ def test_complete_stage0_audits_only_required_closure_specs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_full_closure_audit")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_full_closure_audit")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     image_root = repo_root / "data" / "coco" / "val2014"
     image_root.mkdir(parents=True)
     dash_b_root = repo_root / "data" / "dash_b"
@@ -1045,9 +1045,9 @@ def test_orchestrator_writes_failed_summary_for_missing_required_dataset(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_failure")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_failure")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
 
     monkeypatch.setattr(module, "run_environment_check", lambda *_args, **_kwargs: "env ok")
     monkeypatch.setattr(module, "get_git_commit", lambda: "deadbeef")
@@ -1081,9 +1081,9 @@ def test_orchestrator_fails_before_extraction_when_pope_image_root_is_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_missing_image_root")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_missing_image_root")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     records_path = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope" / "popular.jsonl"
     _write_jsonl(records_path, [_record("sample-001", 1)])
 
@@ -1123,9 +1123,9 @@ def test_full_run_materializes_raw_random_before_stage0_outputs(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_raw_random")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_raw_random")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
     _write_normalized_closure_record(
         repo_root,
@@ -1218,9 +1218,9 @@ def test_full_run_fails_on_missing_random_before_stage0_outputs(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module = _load_script("scripts/v2/stage0_run.py", "stage0_run_missing_random")
+    module = _load_script("scripts/stage0_run.py", "stage0_run_missing_random")
     repo_root = tmp_path / "repo"
-    output_root = repo_root / "outputs" / "v2_stage0"
+    output_root = repo_root / "outputs" / "stage0"
     normalized_root = repo_root / "outputs" / "round2_2026_04" / "normalized" / "pope"
     _write_normalized_closure_record(
         repo_root,

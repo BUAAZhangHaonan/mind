@@ -1,4 +1,4 @@
-"""v2 Stage 0 dataset and cache audit tables."""
+"""Stage 0 dataset and cache audit tables."""
 
 from __future__ import annotations
 

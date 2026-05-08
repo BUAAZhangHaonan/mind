@@ -1,8 +1,8 @@
 # MIND
 
-`master` is the MIND v2 Stage 0 line.
+`master` is the MIND Stage 0 line.
 
-MIND v2 starts from audited multimodal records, deterministic grouped splits, and full-layer hidden-state cache shards. The old v1 research path is preserved on the local branch `v1` and tag `v1-freeze-before-v2` at commit `81e3444`; it is not the main path on `master`.
+MIND starts from audited multimodal records, deterministic grouped splits, and full-layer hidden-state cache shards. The old research path is preserved off `master`; the current branch keeps only the Stage 0 runtime surface.
 
 ## Scope
 
@@ -15,9 +15,9 @@ MIND v2 starts from audited multimodal records, deterministic grouped splits, an
 
 ```text
 configs/models/
-configs/v2/
-docs/v2/
-scripts/v2/
+configs/stage0/
+docs/
+scripts/
 scripts/verify_env.py
 src/mind/cache/
 src/mind/config/
@@ -27,7 +27,7 @@ src/mind/extractors/
 src/mind/models/
 src/mind/trajectory/
 src/mind/utils/
-tests/v2/
+tests/stage0/
 ```
 
 ## Environment
@@ -55,11 +55,11 @@ make plan-smoke
 Run Stage 0 directly:
 
 ```bash
-conda run --no-capture-output -n mind-py311 python scripts/v2/stage0_run.py \
+conda run --no-capture-output -n mind-py311 python scripts/stage0_run.py \
   --models qwen3-vl-8b \
   --datasets pope \
   --subsets popular \
   --smoke-limit 8
 ```
 
-Stage 0 writes under `outputs/v2_stage0` by default. Existing output artifacts are retained as artifacts, not as active master code.
+Stage 0 writes under `outputs/stage0` by default. Existing output artifacts are retained as artifacts, not as active master code.

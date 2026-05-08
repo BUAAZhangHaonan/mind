@@ -16,7 +16,7 @@ env/
 .conda/
 .worktrees/
 
-/outputs/v2_stage0/
+/outputs/stage0/
 /outputs/
 /artifacts/
 /data/
