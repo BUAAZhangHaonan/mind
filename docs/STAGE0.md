@@ -13,7 +13,7 @@ Stage 0 is the data audit, split, and cache entry point for the MIND pipeline. I
 
 ## What Stage 0 Does Not Do
 
-- Stage A is not started. Stage 0 does not implement Stage A, Stage B, Stage C, Stage D, or Stage E training.
+- Stage 0 does not implement Stage A, Stage B, Stage C, Stage D, or Stage E training.
 - It does not use drift, manifold, or wavelet features as the main path.
 - It does not sample 16 layers or choose a layer subset.
 - It does not depend on the old MIND path for the main path.
@@ -80,7 +80,7 @@ Stage 0 extracts pre-generation hidden states with:
 - `token_index: -1`
 - all model layers retained
 
-Each cache row must preserve dataset identity, source row identity, image group, prompt text, answer label, object name, split group, and model identity. Stage A will consume the full-layer hidden states as its primary input, but Stage A work has not started.
+Each cache row must preserve dataset identity, source row identity, image group, prompt text, answer label, object name, split group, and model identity. Stage A consumes the full-layer hidden states as its primary input.
 
 ## Split Contract
 
@@ -129,4 +129,4 @@ The complete config must include both primary models, POPE popular/random/advers
 - Cache manifests match audited row counts for each model and dataset.
 - Cache tensors retain full-layer hidden states with no 16-layer sampling.
 - Stage 0 output lives only under `outputs/stage0`.
-- Stage A remains not started until this gate is satisfied.
+- Stage A starts only after this gate is satisfied.
