@@ -1,0 +1,108 @@
+experiment_name: wavelet_course_repope_qwen3_vl_8b
+seed: 20260506
+stage0_root: outputs/stage0
+output_root: outputs/wavelet_course
+model_name: qwen3-vl-8b
+dataset_name: repope
+subsets:
+  - popular
+  - random
+  - adversarial
+expected_num_layers: 36
+expected_hidden_dim: 4096
+group_key: image_id
+split_ratios:
+  train: 0.60
+  validation: 0.20
+  test: 0.20
+require_positive_in_each_split: true
+allow_cpu: false
+allow_no_xgboost: true
+device: cuda:0
+
+teacher_bagua:
+  enabled: true
+  feature_dir: features
+  feature_shape_json: features/teacher_bagua_feature_shape.json
+  window_size: 4
+  stride: 4
+  num_features_per_window: 28
+  lstm_hidden_dim: 64
+  max_train_samples:
+  epochs: 10
+  batch_size: 16
+  learning_rate: 0.001
+  configs:
+    - name: teacher_bagua_haar_l1_lstm
+      wavelet: haar
+      level: 1
+      threshold: universal_soft
+    - name: teacher_bagua_db2_l1_lstm
+      wavelet: db2
+      level: 1
+      threshold: universal_soft
+    - name: teacher_bagua_db4_l1_lstm
+      wavelet: db4
+      level: 1
+      threshold: universal_soft
+
+ours_wavelet:
+  enabled: true
+  feature_dir: features
+  feature_shape_json: features/ours_wavelet_feature_shape.json
+  max_feature_dim: 512
+  trace_names:
+    - norm_trace
+    - delta_norm_trace
+    - cos_prev_trace
+    - cos_final_trace
+    - yes_no_margin_trace
+    - yes_no_entropy_trace
+  token_id_source: local_tokenizer_or_explicit_config_required
+  configs:
+    - name: ours_db2_swt_l2
+      transform: swt
+      wavelet: db2
+      level: 2
+    - name: ours_db2_swt_l3
+      transform: swt
+      wavelet: db2
+      level: 3
+    - name: ours_sym4_swt_l2
+      transform: swt
+      wavelet: sym4
+      level: 2
+baselines:
+  - final_hidden_logreg
+  - mean_layer_hidden_logreg
+  - norm_traj_logreg
+  - sphere_traj_meanpool_logreg
+
+classifiers:
+  logreg:
+    max_iter: 5000
+    class_weight: balanced
+  xgboost:
+    enabled: true
+    max_depth: [2, 3]
+    learning_rate: [0.03, 0.1]
+    n_estimators: [100, 300]
+    eval_metric: aucpr
+
+metrics:
+  selection_metric: pr_auc
+  threshold_source: validation_best_f1
+  reported:
+    - pr_auc
+    - average_precision
+    - roc_auc
+    - f1
+    - precision
+    - recall
+    - balanced_accuracy
+    - tpr_at_1pct_fpr
+    - fpr_at_95pct_tpr
+
+quick:
+  teacher_max_train_samples: 8
+  epochs: 3
