@@ -198,3 +198,23 @@ The tables below report block winners and pairwise win rate from the same paired
 ## Conclusion
 
 The strongest block-level pr_auc row is block B, Teacher on B_global_window_stat28_sequence_lstm_projected__lstm_projected_lr0p001. 20 non-success rows remain part of the paired report.
+
+<!-- domain-baseline-comparison:start -->
+## Domain Baselines on the Same RePOPE Split
+
+这些补充结果只写在小波课程 v2 输出目录中。
+
+- domain_baselines_csv: outputs/wavelet_course_v2/reports/domain_baselines.csv
+- domain_baseline_summary: outputs/wavelet_course_v2/reports/domain_baseline_comparison.md
+- official_halp_cache: outputs/wavelet_course_v2/halp_cache/qwen3-vl-8b/repope/primary
+- official_halp_policy: train on train split, choose probe and threshold on validation split, report test metrics.
+- included_domain_methods: official HALP and linear probe only; MIND and HALP-like are not included.
+- best_halp_official: halp_official_mlp, PR-AUC=0.538175, F1=0.520000
+- best_linear_probe: linear_probe_final_hidden_logreg, PR-AUC=0.541455, F1=0.500000
+
+### Current Wavelet V2 Best Rows
+
+- best_teacher_bagua: B_global_window_stat28_sequence_lstm_projected__lstm_projected_lr0p001::Teacher::lstm_projected_lr0p001, PR-AUC=0.668540, F1=0.571429
+- best_ours_wavelet: E_win9_s9_window_stat28_static_pooled_rf::Ours::rf, PR-AUC=0.549437, F1=0.390244
+
+<!-- domain-baseline-comparison:end -->

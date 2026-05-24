@@ -21,6 +21,22 @@ allow_cpu: false
 allow_no_xgboost: true
 device: cuda:0
 feature_memmap_min_bytes: 536870912
+domain_baselines:
+  output_scope: wavelet_course_v2_reports
+  logreg_max_iter: 20000
+  halp_readout_cache_path: outputs/wavelet_course_v2/halp_cache/qwen3-vl-8b/repope/primary
+  halp_hidden_dims: 512,256,128
+  halp_epochs: 50
+  halp_quick_epochs: 5
+  halp_batch_size: 32
+  halp_learning_rate: 0.001
+  halp_dropout: 0.3
+halp_cache:
+  output_dir: outputs/wavelet_course_v2/halp_cache/qwen3-vl-8b/repope/primary
+  model_config: configs/models/qwen3_vl_8b.yaml
+  shard_size: 128
+  batch_size: 1
+  max_new_tokens: 1
 paired_wavelet_v2:
   enabled: true
   run_id: paired_wavelet_v2
