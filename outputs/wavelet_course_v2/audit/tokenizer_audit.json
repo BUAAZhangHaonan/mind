@@ -1,0 +1,94 @@
+{
+  "yes_token_id": 7414,
+  "no_token_id": 902,
+  "chosen_yes_token": " Yes",
+  "chosen_no_token": " no",
+  "yes_no_trace_source": "final_broadcast",
+  "token_id_source": "local_tokenizer_json",
+  "tokenizer_candidate_table": [
+    {
+      "label": "yes",
+      "candidate": "yes",
+      "token_id": 9693,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "yes",
+      "candidate": "Yes",
+      "token_id": 9454,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "yes",
+      "candidate": "YES",
+      "token_id": 14004,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "yes",
+      "candidate": " yes",
+      "token_id": 9834,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "yes",
+      "candidate": " Yes",
+      "token_id": 7414,
+      "selected": true,
+      "source": "encode"
+    },
+    {
+      "label": "yes",
+      "candidate": " YES",
+      "token_id": 14080,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "no",
+      "candidate": "no",
+      "token_id": 2152,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "no",
+      "candidate": "No",
+      "token_id": 2753,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "no",
+      "candidate": "NO",
+      "token_id": 8996,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "no",
+      "candidate": " no",
+      "token_id": 902,
+      "selected": true,
+      "source": "encode"
+    },
+    {
+      "label": "no",
+      "candidate": " No",
+      "token_id": 2308,
+      "selected": false,
+      "source": "encode"
+    },
+    {
+      "label": "no",
+      "candidate": " NO",
+      "token_id": 5664,
+      "selected": false,
+      "source": "encode"
+    }
+  ]
+}

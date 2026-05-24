@@ -1,0 +1,52 @@
+{
+  "status": "success",
+  "training_started": true,
+  "quick_run": false,
+  "run_id": "paired_wavelet_v2",
+  "configured_grid_rows": 114,
+  "configured_grid_pair_ids": 57,
+  "configured_base_grid_rows": 94,
+  "configured_base_grid_pair_ids": 47,
+  "configured_grid_blocks": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "configured_sample_grid_rows": 7986,
+  "configured_sample_grid_row_order_hash": "c9075b79b2c9daab3fa0acae1d4977495ef33c0acfac4ba778984f5be2cad0ca",
+  "configured_sample_grid_path": "outputs/wavelet_course_v2/audit/configured_sample_grid.csv",
+  "selected_run_grid_rows": 114,
+  "selected_run_grid_pair_ids": 57,
+  "selected_run_grid_blocks": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "pair_rows": 114,
+  "pair_ids": 57,
+  "sample_grid_rows": 7986,
+  "sample_grid_row_order_hash": "c9075b79b2c9daab3fa0acae1d4977495ef33c0acfac4ba778984f5be2cad0ca",
+  "sample_grid_path": "outputs/wavelet_course_v2/audit/selected_sample_grid.csv",
+  "metrics_long_rows": 114,
+  "success_rows": 94,
+  "failure_rows": 20,
+  "metrics_ledger": "outputs/wavelet_course_v2/reports/metrics_ledger.csv",
+  "feature_shape_manifest": "outputs/wavelet_course_v2/features/feature_shape_manifest.csv",
+  "training_curves_dir": "outputs/wavelet_course_v2/reports/training_curves",
+  "report_paths": {
+    "metrics_long": "outputs/wavelet_course_v2/reports/metrics_long.csv",
+    "metrics_wide_paired": "outputs/wavelet_course_v2/reports/metrics_wide_paired.csv",
+    "best_by_block": "outputs/wavelet_course_v2/reports/best_by_block.csv",
+    "pairwise_winrate": "outputs/wavelet_course_v2/reports/pairwise_winrate.csv",
+    "failure_report": "outputs/wavelet_course_v2/reports/failure_report.csv",
+    "summary": "outputs/wavelet_course_v2/reports/summary.md",
+    "metrics_ledger": "outputs/wavelet_course_v2/reports/metrics_ledger.csv"
+  },
+  "elapsed_seconds": 29147.927866552956,
+  "runner_module": "mind.wavelet_course.paired_runner",
+  "runner_function": "run_paired_wavelet_experiment"
+}

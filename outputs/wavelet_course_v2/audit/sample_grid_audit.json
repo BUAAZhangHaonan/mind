@@ -1,0 +1,9 @@
+{
+  "valid": true,
+  "sample_grid_path": "outputs/wavelet_course_v2/audit/sample_grid.csv",
+  "configured_sample_grid_path": "outputs/wavelet_course_v2/audit/configured_sample_grid.csv",
+  "num_rows": 7986,
+  "configured_num_rows": 7986,
+  "row_order_hash": "c9075b79b2c9daab3fa0acae1d4977495ef33c0acfac4ba778984f5be2cad0ca",
+  "configured_row_order_hash": "c9075b79b2c9daab3fa0acae1d4977495ef33c0acfac4ba778984f5be2cad0ca"
+}

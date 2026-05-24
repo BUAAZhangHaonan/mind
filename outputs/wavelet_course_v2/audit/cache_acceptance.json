@@ -1,0 +1,31 @@
+{
+  "accepted": true,
+  "num_entries": 8185,
+  "model_name": "qwen3-vl-8b",
+  "dataset_name": "repope",
+  "expected_num_layers": 36,
+  "expected_hidden_dim": 4096,
+  "subsets": {
+    "adversarial": 2684,
+    "popular": 2727,
+    "random": 2774
+  },
+  "split_validation": {
+    "valid": true,
+    "split_source": "constructed:split_manifest_not_train_validation_test",
+    "counts": {
+      "train": {
+        "neg": 4603,
+        "pos": 192
+      },
+      "validation": {
+        "neg": 1531,
+        "pos": 48
+      },
+      "test": {
+        "neg": 1574,
+        "pos": 38
+      }
+    }
+  }
+}

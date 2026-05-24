@@ -1,0 +1,29 @@
+{
+  "device": "cuda:0,1",
+  "device_type": "cuda",
+  "cuda_ordinal": 0,
+  "cuda_primary_ordinal": 0,
+  "cuda_ordinals": [
+    0,
+    1
+  ],
+  "cuda_device_count": 2,
+  "gpu_name": "NVIDIA A100 80GB PCIe",
+  "memory_free_bytes": 84635156480,
+  "memory_total_bytes": 85094825984,
+  "cuda_devices": [
+    {
+      "cuda_ordinal": 0,
+      "gpu_name": "NVIDIA A100 80GB PCIe",
+      "memory_free_bytes": 84635156480,
+      "memory_total_bytes": 85094825984
+    },
+    {
+      "cuda_ordinal": 1,
+      "gpu_name": "NVIDIA A100 80GB PCIe",
+      "memory_free_bytes": 84635156480,
+      "memory_total_bytes": 85094825984
+    }
+  ],
+  "data_parallel": true
+}
