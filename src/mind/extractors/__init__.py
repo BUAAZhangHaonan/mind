@@ -14,18 +14,22 @@ from .prefill import (
 )
 from .readouts import (
     build_prefill_readout_entry,
+    compact_halp_readout_entry,
     extract_prefill_readout_entry,
     extract_prefill_readout_entries,
+    extract_halp_readout_entries,
     stack_prefill_hidden_states,
 )
 
 __all__ = [
     "build_prefill_cache_entry",
     "build_prefill_readout_entry",
+    "compact_halp_readout_entry",
     "cleanup_prefill_cache_shard",
     "estimate_prefill_cache_tensor_bytes",
     "extract_prefill_entry",
     "extract_prefill_entries",
+    "extract_halp_readout_entries",
     "extract_prefill_readout_entry",
     "extract_prefill_readout_entries",
     "extract_prefill_vectors",

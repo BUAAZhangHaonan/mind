@@ -289,6 +289,28 @@ def compact_prefill_readout_entry(entry: dict[str, object]) -> dict[str, object]
     return compact_entry
 
 
+def compact_halp_readout_entry(entry: dict[str, object]) -> dict[str, object]:
+    """Compact a prefill readout entry to the fields used by official HALP."""
+
+    full_hidden_states = torch.as_tensor(entry["full_hidden_states"])
+    query_token_index = int(entry["query_token_index"])
+    vision_token_span = entry.get("vision_token_span")
+    if vision_token_span is None:
+        raise ValueError(f"Missing vision token span for sample {entry['sample_id']}")
+    vision_stop = int(vision_token_span[1])
+    total_layers = int(full_hidden_states.shape[0])
+    compact_entry = {key: value for key, value in entry.items() if key != "full_hidden_states"}
+    compact_entry.update(
+        {
+            "readout_format": "compact_halp_cache_v1",
+            "total_layers": total_layers,
+            "query_hidden_states": full_hidden_states[:, query_token_index, :].clone(),
+            "vision_token_hidden_states": full_hidden_states[:, vision_stop, :].clone(),
+        }
+    )
+    return compact_entry
+
+
 def extract_prefill_readout_entries(
     *,
     model: Any,
@@ -362,6 +384,87 @@ def extract_prefill_readout_entries(
                 vision_token_span=vision_token_span,
                 object_token_index=object_token_index,
                 object_token_id=object_token_id,
+                first_token_logits=generation_output.scores[0][batch_index],
+                vision_features=_resolve_vision_features(
+                    wrapper,
+                    model,
+                    processor,
+                    model_inputs=model_inputs,
+                    batch_index=batch_index,
+                ),
+            )
+        )
+    return entries
+
+
+def extract_halp_readout_entries(
+    *,
+    model: Any,
+    processor: Any,
+    wrapper: Any,
+    records: Sequence[HallucinationRecord],
+    device: str,
+    max_new_tokens: int = 1,
+) -> list[dict[str, object]]:
+    """Extract official HALP readout fields without GLSim object-token context."""
+
+    model_inputs = wrapper.prepare_batch_inputs(
+        processor,
+        questions=[record.question for record in records],
+        image_paths=[record.image_path for record in records],
+        device=device,
+    )
+    generation_output = run_generation_with_prefill_request(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        model_inputs=model_inputs,
+        max_new_tokens=max_new_tokens,
+    )
+    if not generation_output.scores:
+        raise ValueError("Generation output did not include token scores.")
+    prefill_hidden_states = resolve_prefill_hidden_states(
+        model=model,
+        processor=processor,
+        wrapper=wrapper,
+        model_inputs=model_inputs,
+        generation_output=generation_output,
+    )
+
+    entries: list[dict[str, object]] = []
+    for batch_index, record in enumerate(records):
+        query_token_index = _resolve_query_token_index(
+            wrapper,
+            processor,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+        )
+        vision_token_span = _resolve_vision_token_span(
+            wrapper,
+            model,
+            processor,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+        )
+        full_hidden_states = stack_prefill_hidden_states(
+            prefill_hidden_states,
+            batch_index=batch_index,
+        )
+        answer_text = wrapper.decode_generation(
+            processor,
+            generated_ids=generation_output.sequences[batch_index : batch_index + 1],
+            prompt_input_ids=model_inputs["input_ids"][batch_index : batch_index + 1],
+        )
+        entries.append(
+            build_prefill_readout_entry(
+                record=record,
+                answer_text=answer_text,
+                parsed_answer=parse_yes_no_answer(answer_text),
+                full_hidden_states=full_hidden_states,
+                query_token_index=query_token_index,
+                vision_token_span=vision_token_span,
+                object_token_index=None,
+                object_token_id=None,
                 first_token_logits=generation_output.scores[0][batch_index],
                 vision_features=_resolve_vision_features(
                     wrapper,
