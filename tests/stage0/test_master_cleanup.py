@@ -47,6 +47,7 @@ CONTENT_ALLOWLIST_PREFIXES = (
     "legacy/",
     "src/mind/wavelet_course/",
     "tests/wavelet_course/",
+    "wavelet_course_assignment_final/",
 )
 
 CONTENT_ALLOWLIST_FILES = {

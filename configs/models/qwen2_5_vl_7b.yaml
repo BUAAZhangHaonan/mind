@@ -1,0 +1,11 @@
+name: qwen2.5-vl-7b
+model_id: /home/team/lvshuyang/Models/Qwen2.5-VL-7B-Instruct
+local_path: /home/team/lvshuyang/Models/Qwen2.5-VL-7B-Instruct
+model_id_or_family_name: qwen2_5_vl
+family: qwen2_5_vl
+dtype: float16
+trust_remote_code: false
+attn_implementation: eager
+deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
+thinking: {supported: false, disabled_by_default: true, disable_argument: null}
+policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}

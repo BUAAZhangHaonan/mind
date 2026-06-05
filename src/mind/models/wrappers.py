@@ -8,7 +8,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import types
-from typing import Any
+from typing import Any, ClassVar, Mapping, Sequence
 
 from PIL import Image
 from huggingface_hub import snapshot_download
@@ -172,6 +172,36 @@ def _module_dtype(module: Any, fallback: torch.dtype = torch.float32) -> torch.d
         return fallback
 
 
+def _lookup_config_value(config: Any, path: Sequence[str]) -> Any:
+    current = config
+    for key in path:
+        if isinstance(current, Mapping):
+            current = current.get(key)
+        else:
+            current = getattr(current, key, None)
+        if current is None:
+            return None
+    return current
+
+
+def _resolve_positive_config_int(
+    config: Any,
+    paths: Sequence[Sequence[str]],
+    *,
+    label: str,
+) -> int:
+    for path in paths:
+        value = _lookup_config_value(config, path)
+        try:
+            resolved = int(value)
+        except (TypeError, ValueError):
+            continue
+        if resolved > 0:
+            return resolved
+    checked = ", ".join(".".join(path) for path in paths)
+    raise ValueError(f"Could not resolve {label}; checked {checked}")
+
+
 def _normalize_molmo_past_key_values(
     past_key_values: Any,
 ) -> Any:
@@ -200,6 +230,7 @@ class BaseModelWrapper:
     """Base wrapper that normalizes model loading and prompt shape."""
 
     config: ModelConfig
+    default_prompt_template_id: ClassVar[str] = "single_image_raw_question_v1"
 
     def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
         kwargs: dict[str, Any] = {
@@ -209,8 +240,13 @@ class BaseModelWrapper:
         if self.config.attn_implementation is not None:
             kwargs["attn_implementation"] = self.config.attn_implementation
         if device.startswith("cuda"):
-            kwargs["device_map"] = "auto"
+            kwargs["device_map"] = {"": device} if ":" in device else "auto"
+        if Path(self.model_id_or_path()).expanduser().exists():
+            kwargs["local_files_only"] = True
         return kwargs
+
+    def model_id_or_path(self) -> str:
+        return self.config.local_path or self.config.model_id
 
     def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
         raise NotImplementedError
@@ -232,6 +268,101 @@ class BaseModelWrapper:
         device: str,
     ) -> Any:
         raise NotImplementedError
+
+    def prompt_template_id(self) -> str:
+        return self.config.prompt_template_id or self.default_prompt_template_id
+
+    def prompt_template_text(self) -> str:
+        return self.config.prompt_template_text or "Single-image prompt receives the normalized question text unchanged."
+
+    def chat_template_kwargs(self) -> dict[str, Any]:
+        disable_argument = None
+        if isinstance(self.config.thinking, Mapping):
+            disable_argument = self.config.thinking.get("disable_argument")
+        if disable_argument == "enable_thinking=false":
+            return {"enable_thinking": False}
+        return {}
+
+    def deterministic_generation_kwargs(self, *, max_new_tokens: int | None = None) -> dict[str, Any]:
+        configured = self.config.deterministic_generation or {}
+        resolved_max_new_tokens = (
+            int(max_new_tokens)
+            if max_new_tokens is not None
+            else int(configured.get("max_new_tokens", 1))
+        )
+        return {
+            "max_new_tokens": resolved_max_new_tokens,
+            "do_sample": bool(configured.get("do_sample", False)),
+            "temperature": configured.get("temperature", 0),
+            "return_dict_in_generate": True,
+            "output_scores": True,
+            "output_hidden_states": True,
+        }
+
+    def disable_thinking_kwargs(self) -> dict[str, Any]:
+        return self.chat_template_kwargs()
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        raise NotImplementedError(f"{type(self).__name__} does not implement asset smoke input preparation")
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        hidden_state_steps = getattr(generation_output, "hidden_states", None)
+        if hidden_state_steps:
+            prefill_hidden_states = hidden_state_steps[0]
+            if prefill_hidden_states is not None:
+                return prefill_hidden_states
+        return self.extract_prefill_hidden_states(
+            model,
+            processor,
+            model_inputs=model_inputs,
+        )
+
+    def resolve_total_layers(self, model_or_config: Any) -> int:
+        config = getattr(model_or_config, "config", model_or_config)
+        return _resolve_positive_config_int(
+            config,
+            (
+                ("num_hidden_layers",),
+                ("text_config", "num_hidden_layers"),
+                ("llm_config", "num_hidden_layers"),
+                ("language_config", "num_hidden_layers"),
+            ),
+            label="total_layers",
+        )
+
+    def resolve_hidden_dim(self, model_or_config: Any) -> int:
+        config = getattr(model_or_config, "config", model_or_config)
+        return _resolve_positive_config_int(
+            config,
+            (
+                ("hidden_size",),
+                ("text_config", "hidden_size"),
+                ("llm_config", "hidden_size"),
+                ("language_config", "hidden_size"),
+            ),
+            label="hidden_dim",
+        )
+
+    def resolve_hidden_state_index_offset(self, hidden_states: Sequence[torch.Tensor] | None = None) -> int:
+        del hidden_states
+        configured = self.config.hidden_state_index_offset
+        if configured in (0, 1, "0", "1"):
+            return int(configured)
+        raise ValueError("hidden_state_index_offset must be explicitly configured as 0 or 1")
 
     def parse_yes_no_response(self, text: str) -> int | None:
         cleaned = text.replace("<think>", " ").replace("</think>", " ").strip()
@@ -315,11 +446,7 @@ class BaseModelWrapper:
         del processor
         return model.generate(
             **model_inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            return_dict_in_generate=True,
-            output_scores=True,
-            output_hidden_states=True,
+            **self.deterministic_generation_kwargs(max_new_tokens=max_new_tokens),
         )
 
     def decode_generation(
@@ -341,8 +468,9 @@ class BaseModelWrapper:
     def load_processor(self):
         return configure_left_padding(
             AutoProcessor.from_pretrained(
-                self.config.model_id,
+                self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
+                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
             )
         )
 
@@ -381,6 +509,7 @@ class QwenWrapper(BaseModelWrapper):
                 ],
                 tokenize=False,
                 add_generation_prompt=True,
+                **self.chat_template_kwargs(),
             )
             for question in questions
         ]
@@ -411,8 +540,40 @@ class QwenWrapper(BaseModelWrapper):
             messages,
             tokenize=False,
             add_generation_prompt=True,
+            **self.chat_template_kwargs(),
         )
         batch = processor(text=[prompt], return_tensors="pt")
+        return self._move_batch_to_device(batch, device)
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        del image_paths
+        prompts = [
+            processor.apply_chat_template(
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": question,
+                            }
+                        ],
+                    }
+                ],
+                tokenize=False,
+                add_generation_prompt=True,
+                **self.chat_template_kwargs(),
+            )
+            for question in questions
+        ]
+        batch = processor(text=prompts, return_tensors="pt", padding=True)
         return self._move_batch_to_device(batch, device)
 
     def load_bundle(
@@ -423,11 +584,11 @@ class QwenWrapper(BaseModelWrapper):
         device: str = "cuda",
     ) -> LoadedModelBundle:
         processor = processor_factory.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             trust_remote_code=self.config.trust_remote_code,
         )
         model = model_factory.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
         return LoadedModelBundle(processor=processor, model=model)
@@ -532,6 +693,38 @@ class QwenVLWrapper(QwenWrapper):
                     messages,
                     tokenize=False,
                     add_generation_prompt=True,
+                    **self.chat_template_kwargs(),
+                )
+            )
+            images.append(Image.open(image_path).convert("RGB"))
+        batch = processor(text=prompts, images=images, return_tensors="pt", padding=True)
+        return self._move_batch_to_device(batch, device)
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        prompts = []
+        images = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError(f"{type(self).__name__} requires an image path.")
+            messages = self.build_messages(
+                question=question,
+                image_path=image_path,
+            )
+            prompts.append(
+                processor.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    **self.chat_template_kwargs(),
                 )
             )
             images.append(Image.open(image_path).convert("RGB"))
@@ -554,6 +747,7 @@ class QwenVLWrapper(QwenWrapper):
             messages,
             tokenize=False,
             add_generation_prompt=True,
+            **self.chat_template_kwargs(),
         )
         if image_path is None:
             raise ValueError("QwenVLWrapper requires an image path.")
@@ -577,7 +771,7 @@ class QwenVLWrapper(QwenWrapper):
 
     def load_model(self, *, device: str = "cuda"):
         return AutoModelForImageTextToText.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
 
@@ -586,8 +780,9 @@ class QwenTextWrapper(QwenWrapper):
     def load_processor(self):
         return configure_left_padding(
             AutoTokenizer.from_pretrained(
-                self.config.model_id,
+                self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
+                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
             )
         )
 
@@ -599,11 +794,11 @@ class QwenTextWrapper(QwenWrapper):
         device: str = "cuda",
     ) -> LoadedModelBundle:
         processor = processor_factory.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             trust_remote_code=self.config.trust_remote_code,
         )
         model = model_factory.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
         return LoadedModelBundle(processor=processor, model=model)
@@ -614,7 +809,7 @@ class QwenTextWrapper(QwenWrapper):
 
     def load_model(self, *, device: str = "cuda"):
         return AutoModelForCausalLM.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
 
@@ -754,7 +949,7 @@ class MolmoWrapper(BaseModelWrapper):
 
     def load_processor(self):
         preprocessing_module, image_module, snapshot_path = load_molmo_processing_modules(
-            self.config.model_id
+            self.model_id_or_path()
         )
         image_processor = image_module.MolmoImageProcessor.from_pretrained(snapshot_path)
         tokenizer = AutoTokenizer.from_pretrained(
@@ -790,6 +985,32 @@ class MolmoWrapper(BaseModelWrapper):
                 processor.process(
                     images=[image],
                     text=self.format_yes_no_question(question),
+                )
+            )
+        batch = self._move_batch_to_device(collate_tensor_dicts(processed_inputs), device)
+        if isinstance(batch, dict) and "images" in batch:
+            batch["images"] = batch["images"].to(dtype=resolve_torch_dtype(self.config.dtype))
+        return batch
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        processed_inputs: list[dict[str, torch.Tensor]] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("MolmoWrapper requires an image path.")
+            image = Image.open(image_path).convert("RGB")
+            processed_inputs.append(
+                processor.process(
+                    images=[image],
+                    text=question,
                 )
             )
         batch = self._move_batch_to_device(collate_tensor_dicts(processed_inputs), device)
@@ -836,9 +1057,15 @@ class MolmoWrapper(BaseModelWrapper):
         model_inputs: Any,
         max_new_tokens: int,
     ) -> Any:
+        generation_kwargs = self.deterministic_generation_kwargs(max_new_tokens=max_new_tokens)
         return model.generate_from_batch(
             model_inputs,
-            GenerationConfig(max_new_tokens=max_new_tokens, use_cache=True),
+            GenerationConfig(
+                max_new_tokens=generation_kwargs["max_new_tokens"],
+                do_sample=generation_kwargs["do_sample"],
+                temperature=generation_kwargs["temperature"],
+                use_cache=True,
+            ),
             tokenizer=processor.tokenizer,
             return_dict_in_generate=True,
             output_scores=True,
@@ -847,7 +1074,7 @@ class MolmoWrapper(BaseModelWrapper):
 
     def load_model(self, *, device: str = "cuda"):
         model = AutoModelForCausalLM.from_pretrained(
-            self.config.model_id,
+            self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
         prepare_inputs_for_generation = getattr(model, "prepare_inputs_for_generation", None)

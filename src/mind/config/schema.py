@@ -12,6 +12,14 @@ class ModelConfig(BaseModel):
     dtype: str = "float16"
     attn_implementation: str | None = None
     trust_remote_code: bool = True
+    local_path: str | None = None
+    model_id_or_family_name: str | None = None
+    deterministic_generation: dict[str, object] | None = None
+    thinking: dict[str, object] | None = None
+    policy: dict[str, object] | None = None
+    prompt_template_id: str | None = None
+    prompt_template_text: str | None = None
+    hidden_state_index_offset: int | str | None = None
 
 
 class DatasetConfig(BaseModel):
