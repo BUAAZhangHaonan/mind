@@ -1,0 +1,4 @@
+dataset_name,subset,model_name,source_cache_path,num_samples,num_positive,num_negative,positive_rate,split_strategy
+repope,adversarial,qwen3-vl-8b,outputs/stage0/cache/qwen3-vl-8b/repope/adversarial/,2684,137,2478,0.052390,grouped by image_id into train/validation/test
+repope,popular,qwen3-vl-8b,outputs/stage0/cache/qwen3-vl-8b/repope/popular/,2727,92,2562,0.034665,grouped by image_id into train/validation/test
+repope,random,qwen3-vl-8b,outputs/stage0/cache/qwen3-vl-8b/repope/random/,2774,49,2668,0.018035,grouped by image_id into train/validation/test

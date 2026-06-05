@@ -1,0 +1,7 @@
+block,metric,num_pairs,num_both_success,num_teacher_success_ours_fail,num_ours_success_teacher_fail,num_both_fail,ours_wins_by_pr_auc,teacher_wins_by_pr_auc,mean_delta_pr_auc,median_delta_pr_auc,mean_delta_f1,median_delta_f1,total_pairs,comparable_pairs,ours_wins,teacher_wins,ties,not_comparable_pairs,ours_winrate,teacher_winrate,tie_rate
+A,pr_auc,19,16,0,0,3,12,4,0.04741007495400166,0.034918168671252775,,,19,16,12,4,0,3,0.750000,0.250000,0.000000
+B,pr_auc,12,8,0,0,4,0,8,-0.27536947006139695,-0.2521492058552777,,,12,8,0,8,0,4,0.000000,1.000000,0.000000
+C,pr_auc,13,13,0,0,0,5,8,-0.026870520562408316,-0.1114581556328838,,,13,13,5,8,0,0,0.384615,0.615385,0.000000
+D,pr_auc,4,4,0,0,0,0,4,-0.024231163006846017,-0.018615410306556182,,,4,4,0,4,0,0,0.000000,1.000000,0.000000
+E,pr_auc,9,6,0,0,3,5,1,0.1707120426882783,0.1767296466945513,,,9,6,5,1,0,3,0.833333,0.166667,0.000000
+overall,pr_auc,57,47,0,0,10,22,25,-0.018433270732684495,-0.0021482194805898525,,,57,47,22,25,0,10,0.468085,0.531915,0.000000

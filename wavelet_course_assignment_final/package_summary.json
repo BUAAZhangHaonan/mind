@@ -1,0 +1,13 @@
+{
+  "primary_population": 7986,
+  "positive_count": 278,
+  "positive_rate": 0.03481091910843977,
+  "v1_teacher_best_pr_auc": 0.0291171116783654,
+  "v1_ours_best_pr_auc": 0.3975736136921212,
+  "v2_best_teacher_pr_auc": 0.6685401150358344,
+  "v2_best_ours_pr_auc": 0.5494370394400006,
+  "best_paired_delta_pr_auc": 0.3240690199008669,
+  "ours_win_rate": 0.468085,
+  "teacher_win_rate": 0.531915,
+  "full_runtime_seconds": 29147.927866552956
+}

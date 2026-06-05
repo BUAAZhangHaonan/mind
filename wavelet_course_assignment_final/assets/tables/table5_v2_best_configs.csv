@@ -1,0 +1,4 @@
+Category,Config,PR-AUC,F1,Interpretation
+Best Teacher,B_global_window_stat28_sequence_lstm_projected__lstm_projected_lr0p001,0.6685,0.5714,全层 114688 维统计特征加大投影 LSTM，预测性能最高。
+Best Ours,E_win9_s9_window_stat28_static_pooled_rf,0.5494,0.3902,语义轨迹加 28 统计特征和 RF，在 Ours 中最强。
+Best Paired Delta,E_global_window_stat28_static_pooled_rf,Teacher 0.2031; Ours 0.5271; delta +0.3241,Teacher 0.1961; Ours 0.4815,同样的 28 特征作用在语义轨迹上更有意义。

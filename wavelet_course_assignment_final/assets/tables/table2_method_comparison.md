@@ -1,0 +1,4 @@
+| method | input shape | signal meaning | wavelet axis | advantage | limitation |
+| --- | --- | --- | --- | --- | --- |
+| Teacher-Bagua | $4096 \times 36$ | hidden dimensions as pseudo sensors | 36 transformer layers as pseudo time | 保留原始高维 hidden-state 信息 | hidden dimension index 没有物理局部连续性 |
+| Ours-Wavelet | $K \times 36$ | layer-wise semantic traces | 36 transformer layers as computation depth | 信号轴有语义，维度低，解释更清楚 | 压缩后会丢失部分原始 hidden 信息 |

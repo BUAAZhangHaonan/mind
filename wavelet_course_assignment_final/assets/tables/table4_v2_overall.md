@@ -1,0 +1,13 @@
+| Item | Value |
+| --- | --- |
+| pair_ids | 57 |
+| paired rows | 114 |
+| success rows | 94 |
+| failure rows | 20 |
+| both-success pairs | 47 |
+| both-failure pairs | 10 |
+| Ours wins | 22 |
+| Teacher wins | 25 |
+| Ours win rate | 46.8% |
+| Teacher win rate | 53.2% |
+| full runtime | 8h 5m 47s |
