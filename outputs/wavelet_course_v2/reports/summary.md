@@ -207,10 +207,17 @@ The strongest block-level pr_auc row is block B, Teacher on B_global_window_stat
 - domain_baselines_csv: outputs/wavelet_course_v2/reports/domain_baselines.csv
 - domain_baseline_summary: outputs/wavelet_course_v2/reports/domain_baseline_comparison.md
 - official_halp_cache: outputs/wavelet_course_v2/halp_cache/qwen3-vl-8b/repope/primary
-- official_halp_policy: train on train split, choose probe and threshold on validation split, report test metrics.
+- course_grouped_halp_policy: course-grouped HALP uses the course image_id grouped train/validation/test split; validation selects probe and threshold; test reports metrics.
+- official_row_halp_policy: official-row HALP uses the legacy HALP row-stratified train/eval split; eval selects probe and reports metrics; threshold=0.5.
 - included_domain_methods: official HALP and linear probe only; MIND and HALP-like are not included.
-- best_halp_official: halp_official_mlp, PR-AUC=0.538175, F1=0.520000
-- best_linear_probe: linear_probe_final_hidden_logreg, PR-AUC=0.541455, F1=0.500000
+- best_halp_official_mlp: halp_official_mlp, PR-AUC=0.541768, F1=0.542056
+- best_halp_official_row_protocol: halp_official_row_protocol, PR-AUC=0.886468, F1=0.800000
+- best_linear_probe: linear_probe_final_hidden_logreg, PR-AUC=0.552712, F1=0.565217
+
+### Official HALP Rows
+
+- halp_official_mlp: protocol=course-grouped, selected_probe=query_token_layer_27, threshold=0.384702, selection_metric=validation_roc_auc_then_pr_auc, PR-AUC=0.541768, F1=0.542056
+- halp_official_row_protocol: protocol=official-row, selected_probe=query_token_layer_35, threshold=0.500000, selection_metric=eval_roc_auc_then_pr_auc, PR-AUC=0.886468, F1=0.800000
 
 ### Current Wavelet V2 Best Rows
 
@@ -218,3 +225,31 @@ The strongest block-level pr_auc row is block B, Teacher on B_global_window_stat
 - best_ours_wavelet: E_win9_s9_window_stat28_static_pooled_rf::Ours::rf, PR-AUC=0.549437, F1=0.390244
 
 <!-- domain-baseline-comparison:end -->
+
+<!-- spatial-hidden-wavelet:start -->
+## Spatial Hidden-Dim Wavelet Supplement
+
+这个补充实验不是原 v2 paired grid 的一部分。它检验另一种轴定义：把每一层的 4096 hidden dimensions 当成一条 layer-local spatial signal，先做 1D-DWT 去噪重构，再对每层提取 28 个统计特征。这样每条样本形成 `36 x 28` 的层序列，直接输入 `lstm_projected`，不再做滑窗。
+
+- config: `F_spatial_dwt_db2_l2_universal_soft_stat28_sequence_lstm_projected`
+- wavelet: `db2`
+- level: `2`
+- threshold: `universal_soft`
+- feature_shape: `7986x36x28`
+- train/validation/test shapes: `4795x36x28`, `1579x36x28`, `1612x36x28`
+- positives: train `192`, validation `48`, test `38`
+- test PR-AUC: `0.047196`
+- test average precision: `0.050670`
+- test ROC-AUC: `0.756746`
+- test F1: `0.000000`
+- best_epoch: `9`
+- epochs_ran: `29`
+- early_stopped: `True`
+- feature_seconds: `365.957`
+- train_eval_seconds: `18.841`
+- metrics: `outputs/wavelet_course_v2/reports/spatial_hidden_wavelet_metrics.csv`
+- summary: `outputs/wavelet_course_v2/reports/spatial_hidden_wavelet_summary.md`
+
+Interpretation: this result is a useful negative control. It avoids the old `(9, 114688)` Teacher-Bagua feature explosion and preserves the 36-layer time axis, but treating the arbitrary hidden-dimension index as a spatial signal still does not give a strong hallucination detector on the grouped RePOPE test split.
+
+<!-- spatial-hidden-wavelet:end -->

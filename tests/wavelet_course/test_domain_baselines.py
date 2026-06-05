@@ -86,6 +86,35 @@ def _readout_entry(primary: dict[str, object], *, include_identity_label: bool =
     return readout
 
 
+def _official_halp_row_entries() -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    labels = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1]
+    for index, object_label in enumerate(labels):
+        is_hallucination = object_label == 0
+        value = 4.0 if is_hallucination else -4.0
+        entry = _entry(
+            f"row-{index:02d}",
+            "train",
+            with_halp=False,
+            label=object_label,
+        )
+        entry["image_id"] = f"row-image-{index:02d}"
+        entry["parsed_answer"] = 1 if is_hallucination else 0
+        entry.update(_constant_halp_fields(value))
+        entries.append(entry)
+    return entries
+
+
+def _constant_halp_fields(value: float) -> dict[str, object]:
+    return {
+        "vision_features": torch.full((2, 5), value, dtype=torch.float32),
+        "query_hidden_states": torch.full((3, 5), value, dtype=torch.float32),
+        "vision_token_hidden_states": torch.full((3, 5), value, dtype=torch.float32),
+        "query_token_index": 1,
+        "vision_token_span": [0, 2],
+    }
+
+
 def _load_domain_script() -> ModuleType:
     script_path = Path("scripts/wavelet_course_domain_baselines.py")
     spec = importlib.util.spec_from_file_location("wavelet_course_domain_baselines", script_path)
@@ -157,6 +186,63 @@ def test_official_halp_runs_when_required_cache_fields_exist(tmp_path: Path) -> 
     assert result_rows
     assert (tmp_path / "halp_selection.csv").exists()
     assert (tmp_path / "halp_results.csv").exists()
+
+
+def test_official_halp_row_protocol_recomputes_object_hallucination_labels(tmp_path: Path) -> None:
+    from mind.wavelet_course.domain_baselines import run_official_halp_row_protocol
+
+    entries = _official_halp_row_entries()
+    wrong_course_labels = np.zeros(len(entries), dtype=np.int64)
+
+    row, selection_rows, result_rows = run_official_halp_row_protocol(
+        entries,
+        labels=wrong_course_labels,
+        output_dir=tmp_path,
+        seed=13,
+        device="cpu",
+        hidden_dims=(4,),
+        epochs=1,
+        batch_size=4,
+        test_size=0.25,
+    )
+
+    assert row["status"] == "success"
+    assert row["train_pos"] > 0
+    assert row["test_pos"] > 0
+    assert row["best_val_threshold"] == 0.5
+    assert row["selection_metric"] == "eval_roc_auc_then_pr_auc"
+    assert {result["label"] for result in result_rows} == {0, 1}
+    assert selection_rows
+
+
+def test_official_halp_row_protocol_uses_11_probes_and_old_selection_rule(tmp_path: Path) -> None:
+    from mind.wavelet_course.domain_baselines import run_official_halp_row_protocol
+
+    entries = _official_halp_row_entries()
+
+    row, selection_rows, result_rows = run_official_halp_row_protocol(
+        entries,
+        output_dir=tmp_path,
+        seed=13,
+        device="cpu",
+        hidden_dims=(4,),
+        epochs=1,
+        batch_size=4,
+        test_size=0.25,
+        layer_indices=[0, 1, 2, 1, 0],
+    )
+
+    assert row["status"] == "success"
+    assert row["num_halp_candidates"] == 11
+    assert len(selection_rows) == 11
+    assert sum(1 for item in selection_rows if item["selected"]) == 1
+    expected = sorted(
+        selection_rows,
+        key=lambda item: (item["eval_roc_auc"], item["eval_pr_auc"], item["probe_name"]),
+        reverse=True,
+    )[0]["probe_name"]
+    assert row["selected_probe"] == expected
+    assert all(result["prediction"] in {0, 1} for result in result_rows)
 
 
 def test_compact_official_halp_cache_without_full_hidden_states_is_accepted(tmp_path: Path) -> None:
@@ -355,9 +441,43 @@ def test_run_domain_baselines_contains_only_halp_and_linear_probe(tmp_path: Path
     )
 
     families = {row["method_family"] for row in result["rows"]}
+    names = {row["baseline_name"] for row in result["rows"]}
     assert families == {"halp_official", "linear_probe"}
+    assert {"halp_official_mlp", "halp_official_row_protocol"}.issubset(names)
     assert "mind_stage_a" not in families
     assert "halp_like" not in families
+
+
+def test_best_rows_keeps_course_grouped_and_row_protocol_halp_separate() -> None:
+    from mind.wavelet_course.domain_baselines import best_rows_by_family
+
+    rows = [
+        {
+            "baseline_name": "halp_official_mlp",
+            "method_family": "halp_official",
+            "status": "success",
+            "test_pr_auc": 0.538,
+        },
+        {
+            "baseline_name": "halp_official_row_protocol",
+            "method_family": "halp_official",
+            "status": "success",
+            "test_pr_auc": 0.904,
+        },
+        {
+            "baseline_name": "linear_probe_final_hidden_logreg",
+            "method_family": "linear_probe",
+            "status": "success",
+            "test_pr_auc": 0.541,
+        },
+    ]
+
+    rank_names = {row["rank_name"] for row in best_rows_by_family(rows)}
+
+    assert "best_halp_official" not in rank_names
+    assert "best_halp_official_mlp" in rank_names
+    assert "best_halp_official_row_protocol" in rank_names
+    assert "best_linear_probe" in rank_names
 
 
 def test_single_class_train_returns_explicit_failure_row() -> None:
@@ -414,19 +534,43 @@ def test_summary_section_points_to_wavelet_course_outputs(tmp_path: Path) -> Non
     summary_path = tmp_path / "outputs" / "wavelet_course_v2" / "reports" / "summary.md"
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text("# Existing Summary\n", encoding="utf-8")
-    row = {
-        "baseline_name": "linear_probe_final_hidden_logreg",
-        "method_family": "linear_probe",
-        "status": "success",
-        "test_pr_auc": 0.5,
-        "test_f1": 0.4,
-    }
+    rows = [
+        {
+            "baseline_name": "halp_official_mlp",
+            "method_family": "halp_official",
+            "source": "halp_official",
+            "status": "success",
+            "selected_probe": "query_token_layer_27",
+            "best_val_threshold": 0.65,
+            "selection_metric": "validation_roc_auc_then_pr_auc",
+            "test_pr_auc": 0.538,
+            "test_f1": 0.52,
+        },
+        {
+            "baseline_name": "halp_official_row_protocol",
+            "method_family": "halp_official",
+            "source": "halp_official_legacy_row_protocol",
+            "status": "success",
+            "selected_probe": "query_token_layer_35",
+            "best_val_threshold": 0.5,
+            "selection_metric": "eval_roc_auc_then_pr_auc",
+            "test_pr_auc": 0.904,
+            "test_f1": 0.796,
+        },
+        {
+            "baseline_name": "linear_probe_final_hidden_logreg",
+            "method_family": "linear_probe",
+            "status": "success",
+            "test_pr_auc": 0.5,
+            "test_f1": 0.4,
+        },
+    ]
 
     script.append_domain_section(
         summary_path,
         domain_csv=summary_path.parent / "domain_baselines.csv",
         domain_summary=summary_path.parent / "domain_baseline_comparison.md",
-        rows=[row],
+        rows=rows,
         paired_metrics_long=summary_path.parent / "metrics_long.csv",
     )
 
@@ -434,5 +578,12 @@ def test_summary_section_points_to_wavelet_course_outputs(tmp_path: Path) -> Non
     assert "outputs/wavelet_course_v2/reports/domain_baselines.csv" in text
     assert "outputs/stageA" not in text
     assert "best_linear_probe" in text
+    assert "- best_halp_official:" not in text
+    assert "- best_halp_official_mlp:" in text
+    assert "- best_halp_official_row_protocol:" in text
+    assert "course_grouped_halp_policy" in text
+    assert "official_row_halp_policy" in text
+    assert "halp_official_mlp: protocol=course-grouped" in text
+    assert "halp_official_row_protocol: protocol=official-row" in text
     assert "best_mind_stage_a" not in text
     assert "best_halp_like" not in text

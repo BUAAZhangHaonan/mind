@@ -101,6 +101,18 @@ HALP_SELECTION_FIELDS = (
     "selected",
 )
 
+HALP_ROW_SELECTION_FIELDS = (
+    "probe_name",
+    "feature_shape",
+    "eval_pr_auc",
+    "eval_average_precision",
+    "eval_roc_auc",
+    "eval_f1",
+    "eval_precision",
+    "eval_recall",
+    "selected",
+)
+
 HALP_RESULT_FIELDS = (
     "sample_id",
     "image_id",
@@ -158,7 +170,31 @@ def run_domain_baselines(
         batch_size=int(halp_batch_size),
         epochs=int(halp_epochs),
     )
-    rows: list[dict[str, Any]] = [halp_row]
+    halp_row_protocol_row, row_protocol_selection_rows, row_protocol_result_rows = run_official_halp_row_protocol(
+        entries,
+        output_dir=output_path,
+        seed=13,
+        device=device,
+        hidden_dims=tuple(int(dim) for dim in halp_hidden_dims),
+        dropout=float(halp_dropout),
+        learning_rate=float(halp_learning_rate),
+        batch_size=int(halp_batch_size),
+        epochs=int(halp_epochs),
+    )
+    if row_protocol_selection_rows:
+        write_csv_rows(
+            output_path / "halp_official_row_selection.csv",
+            row_protocol_selection_rows,
+            HALP_ROW_SELECTION_FIELDS,
+        )
+    else:
+        write_csv_rows(output_path / "halp_official_row_selection.csv", [], HALP_ROW_SELECTION_FIELDS)
+    if row_protocol_result_rows:
+        write_csv_rows(output_path / "halp_official_row_results.csv", row_protocol_result_rows, HALP_RESULT_FIELDS)
+    else:
+        write_csv_rows(output_path / "halp_official_row_results.csv", [], HALP_RESULT_FIELDS)
+
+    rows: list[dict[str, Any]] = [halp_row, halp_row_protocol_row]
 
     for baseline_name, builder in (
         ("linear_probe_final_hidden_logreg", final_hidden_logreg),
@@ -179,7 +215,7 @@ def run_domain_baselines(
             )
         )
 
-    rows = [{**common, **row} for row in rows]
+    rows = [{**row, **common} for row in rows]
     csv_path = output_path / "domain_baselines.csv"
     summary_path = output_path / "domain_baseline_comparison.md"
     write_domain_baselines_csv(rows, csv_path)
@@ -194,6 +230,8 @@ def run_domain_baselines(
         "rows": rows,
         "halp_selection_rows": selection_rows,
         "halp_result_rows": result_rows,
+        "halp_row_protocol_selection_rows": row_protocol_selection_rows,
+        "halp_row_protocol_result_rows": row_protocol_result_rows,
         "csv_path": str(csv_path),
         "summary_path": str(summary_path),
         "best_rows": best_rows_by_family(rows),
@@ -382,6 +420,136 @@ def run_official_halp(
     return row, selection_rows, result_rows
 
 
+def run_official_halp_row_protocol(
+    entries: Sequence[Mapping[str, Any]],
+    labels: Sequence[int] | np.ndarray | None = None,
+    *,
+    output_dir: Path | str | None = None,
+    seed: int = 13,
+    device: str = "cpu",
+    hidden_dims: Sequence[int] = (512, 256, 128),
+    dropout: float = 0.3,
+    learning_rate: float = 1e-3,
+    batch_size: int = 32,
+    epochs: int = 50,
+    test_size: float = 0.2,
+    layer_indices: Sequence[int] | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run the old MIND official HALP row-split protocol.
+
+    This mirrors the legacy ``run_halp.py --split-strategy row`` protocol:
+    object-hallucination labels are recomputed from each entry's
+    ``label``/``parsed_answer`` fields, rows are split with a stratified
+    train/eval split, all 11 HALP probes are trained on train and evaluated on
+    the same eval split, the best probe is selected by ``(roc_auc, pr_auc,
+    probe_name)``, and predictions use the fixed threshold 0.5.
+    """
+
+    del output_dir
+    total_start = time.perf_counter()
+    if labels is not None:
+        _as_labels(labels, expected_size=len(entries))
+    missing = missing_official_halp_fields(entries)
+    split_counts = _empty_row_protocol_counts()
+    if missing:
+        return (
+            _row_protocol_failure_row(
+                failure_reason="missing_official_halp_fields: " + ",".join(missing),
+                split_counts=split_counts,
+                total_seconds=time.perf_counter() - total_start,
+            ),
+            [],
+            [],
+        )
+
+    object_labels = _object_hallucination_labels(entries)
+    train_indices, eval_indices = _stratified_row_indices(
+        object_labels,
+        test_size=float(test_size),
+        random_state=int(seed),
+    )
+    split_counts = _row_protocol_counts(object_labels, train_indices=train_indices, eval_indices=eval_indices)
+    probe_names = _resolve_halp_probe_names_for_row_protocol(entries, layer_indices=layer_indices)
+    selection_rows: list[dict[str, Any]] = []
+    candidate_payloads: list[dict[str, Any]] = []
+    feature_start = time.perf_counter()
+    for probe_name in probe_names:
+        features = build_halp_feature_matrix(entries, probe_name)
+        train_x = features[train_indices]
+        train_y = object_labels[train_indices]
+        eval_x = features[eval_indices]
+        eval_y = object_labels[eval_indices]
+        _require_two_classes(train_y, name="HALP row protocol train_y")
+        model = _fit_halp_probe(
+            train_x,
+            train_y,
+            input_dim=features.shape[1],
+            hidden_dims=hidden_dims,
+            dropout=dropout,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            epochs=epochs,
+            seed=seed,
+            device=device,
+        )
+        eval_scores = _score_halp_probe(model, eval_x, device=device)
+        eval_metrics = binary_metrics(eval_y, eval_scores, threshold=0.5)
+        selection_row = {
+            "probe_name": probe_name,
+            "feature_shape": "x".join(str(int(dim)) for dim in features.shape),
+            "eval_pr_auc": eval_metrics["pr_auc"],
+            "eval_average_precision": eval_metrics["average_precision"],
+            "eval_roc_auc": eval_metrics["roc_auc"],
+            "eval_f1": eval_metrics["f1"],
+            "eval_precision": eval_metrics["precision"],
+            "eval_recall": eval_metrics["recall"],
+            "selected": False,
+        }
+        selection_rows.append(selection_row)
+        candidate_payloads.append(
+            {
+                "probe_name": probe_name,
+                "feature_shape": features.shape,
+                "eval_scores": eval_scores,
+                "eval_y": eval_y,
+                "selection_row": selection_row,
+            }
+        )
+    feature_seconds = time.perf_counter() - feature_start
+
+    selected = max(
+        candidate_payloads,
+        key=lambda payload: (
+            _metric_value(payload["selection_row"]["eval_roc_auc"]),
+            _metric_value(payload["selection_row"]["eval_pr_auc"]),
+            str(payload["probe_name"]),
+        ),
+    )
+    for row in selection_rows:
+        row["selected"] = row["probe_name"] == selected["probe_name"]
+
+    evaluation = {"threshold": 0.5, "test": binary_metrics(selected["eval_y"], selected["eval_scores"], threshold=0.5)}
+    result_rows = _halp_row_protocol_result_rows(
+        entries,
+        object_labels,
+        eval_indices=eval_indices,
+        eval_scores=selected["eval_scores"],
+        selected_probe=str(selected["probe_name"]),
+    )
+    row = _row_protocol_success_row(
+        split_counts=split_counts,
+        feature_shape=selected["feature_shape"],
+        evaluation=evaluation,
+        feature_seconds=feature_seconds,
+        train_eval_seconds=time.perf_counter() - total_start - feature_seconds,
+        total_seconds=time.perf_counter() - total_start,
+        selected_probe=str(selected["probe_name"]),
+        layer_indices=_resolve_halp_layer_indices_for_row_protocol(entries, layer_indices=layer_indices),
+        num_candidates=len(probe_names),
+    )
+    return row, selection_rows, result_rows
+
+
 def write_domain_baselines_csv(rows: Sequence[Mapping[str, Any]], output: Path | str) -> Path:
     path = Path(output)
     write_csv_rows(path, rows, DOMAIN_BASELINE_FIELDS)
@@ -484,7 +652,16 @@ def merge_halp_readout_cache(
 
 def best_rows_by_family(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
-    for family in ("halp_official", "linear_probe"):
+    for baseline_name in ("halp_official_mlp", "halp_official_row_protocol"):
+        candidates = [
+            dict(row)
+            for row in rows
+            if row.get("baseline_name") == baseline_name and row.get("status") == "success"
+        ]
+        best = _best_by_metric(candidates, "test_pr_auc")
+        if best is not None:
+            result.append({"rank_name": f"best_{baseline_name}", **best})
+    for family in ("linear_probe",):
         candidates = [
             dict(row)
             for row in rows
@@ -516,7 +693,11 @@ def write_domain_baseline_summary(
     lines = [
         "# Domain Baseline Comparison",
         "",
-        "这些结果使用小波课程 v2 的同一份 RePOPE primary population 和同一份 grouped split。",
+        (
+            "这些结果使用小波课程 v2 的同一份 RePOPE readout cache。"
+            "HALP 的两个协议分开报告：course-grouped 行使用课程 image_id grouped "
+            "train/validation/test split；official-row 行使用 HALP 旧 row-stratified train/eval split。"
+        ),
         "",
         f"- model: {model_name}",
         f"- dataset: {dataset_name}",
@@ -530,7 +711,8 @@ def write_domain_baseline_summary(
         "",
         "## Baselines",
         "",
-        "- Official HALP: MLP probe over `vision_only`, `vision_token_layer_*`, and `query_token_layer_*` features.",
+        "- `halp_official_mlp`: course-grouped HALP; validation selects probe and threshold; test reports metrics.",
+        "- `halp_official_row_protocol`: old official row protocol; eval selects probe and reports metrics; threshold=0.5.",
         "- Linear probe: balanced logistic regression on final hidden state and mean-layer hidden state.",
         "",
         "## Best Rows",
@@ -553,16 +735,37 @@ def write_domain_baseline_summary(
     halp_rows = [row for row in rows if row.get("method_family") == "halp_official"]
     if halp_rows:
         for row in halp_rows:
+            baseline_name = str(row.get("baseline_name", ""))
+            source = str(row.get("source", ""))
+            is_row_protocol = (
+                baseline_name == "halp_official_row_protocol"
+                or source == "halp_official_legacy_row_protocol"
+            )
+            protocol = "official-row" if is_row_protocol else "course-grouped"
             if row.get("status") == "success":
                 lines.append(
-                    "- success: selected_probe={probe}, candidates={count}, layer_indices={layers}".format(
+                    (
+                        "- {name}: protocol={protocol}, selected_probe={probe}, threshold={threshold}, "
+                        "selection_metric={metric}, candidates={count}, layer_indices={layers}, PR-AUC={pr_auc}"
+                    ).format(
+                        name=baseline_name,
+                        protocol=protocol,
                         probe=row.get("selected_probe", ""),
+                        threshold=_fmt(row.get("best_val_threshold")),
+                        metric=row.get("selection_metric", ""),
                         count=row.get("num_halp_candidates", ""),
                         layers=row.get("halp_layer_indices", ""),
+                        pr_auc=_fmt(row.get("test_pr_auc")),
                     )
                 )
             else:
-                lines.append(f"- failure: {row.get('failure_reason')}")
+                lines.append(
+                    "- {name}: protocol={protocol}, failure_reason={reason}".format(
+                        name=baseline_name,
+                        protocol=protocol,
+                        reason=row.get("failure_reason"),
+                    )
+                )
     else:
         lines.append("- No official HALP row was produced.")
     lines.extend(["", "## All Successful Rows", ""])
@@ -814,6 +1017,7 @@ def _fit_halp_probe(
         raise ValueError("HALP dropout must be in [0, 1)")
 
     torch.manual_seed(int(seed))
+    np.random.seed(int(seed))
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(int(seed))
     target = torch.device(device)
@@ -822,14 +1026,11 @@ def _fit_halp_probe(
     dataset = TensorDataset(features, labels)
     effective_batch = max(2, min(int(batch_size), len(dataset)))
     drop_last = len(dataset) > effective_batch and len(dataset) % effective_batch == 1
-    generator = torch.Generator()
-    generator.manual_seed(int(seed))
     loader = DataLoader(
         dataset,
         batch_size=effective_batch,
         shuffle=True,
         drop_last=drop_last,
-        generator=generator,
         pin_memory=target.type == "cuda",
     )
 
@@ -926,6 +1127,232 @@ def _halp_result_rows(
             }
         )
     return rows
+
+
+def _halp_row_protocol_result_rows(
+    entries: Sequence[Mapping[str, Any]],
+    labels: np.ndarray,
+    *,
+    eval_indices: np.ndarray,
+    eval_scores: np.ndarray,
+    selected_probe: str,
+) -> list[dict[str, Any]]:
+    scores = np.asarray(eval_scores, dtype=np.float64)
+    if scores.shape[0] != eval_indices.shape[0]:
+        raise ValueError("HALP row protocol eval score count must match eval split size")
+    rows: list[dict[str, Any]] = []
+    for local_index, entry_index in enumerate(eval_indices):
+        entry = entries[int(entry_index)]
+        score = float(scores[local_index])
+        rows.append(
+            {
+                "sample_id": str(entry.get("sample_id", "")),
+                "image_id": str(entry.get("image_id", "")),
+                "subset": str(entry.get("subset", "")),
+                "object_name": str(entry.get("object_name", "")),
+                "label": int(labels[int(entry_index)]),
+                "score": score,
+                "prediction": int(score >= 0.5),
+                "selected_probe": selected_probe,
+            }
+        )
+    return rows
+
+
+def _object_hallucination_labels(entries: Sequence[Mapping[str, Any]]) -> np.ndarray:
+    if not entries:
+        raise ValueError("entries must not be empty")
+    labels: list[int] = []
+    for index, entry in enumerate(entries):
+        if "label" not in entry or entry["label"] is None:
+            raise ValueError(f"entry {index} missing label")
+        ground_truth = int(_normalise_compare_scalar(entry["label"], field=f"entry[{index}].label"))
+        answer = entry.get("parsed_answer")
+        answer_label = None if answer is None else int(_normalise_compare_scalar(answer, field=f"entry[{index}].parsed_answer"))
+        labels.append(int(answer_label == 1 and ground_truth == 0))
+    result = np.asarray(labels, dtype=np.int64)
+    if not set(np.unique(result).tolist()).issubset({0, 1}):
+        raise ValueError("object hallucination labels must be binary")
+    return result
+
+
+def _stratified_row_indices(
+    labels: np.ndarray,
+    *,
+    test_size: float,
+    random_state: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    from sklearn.model_selection import train_test_split
+
+    _require_two_classes(labels, name="HALP row protocol labels")
+    indices = np.arange(labels.shape[0], dtype=np.int64)
+    train_indices, eval_indices = train_test_split(
+        indices,
+        test_size=float(test_size),
+        random_state=int(random_state),
+        stratify=labels,
+    )
+    train_indices = np.asarray(train_indices, dtype=np.int64)
+    eval_indices = np.asarray(eval_indices, dtype=np.int64)
+    _require_two_classes(labels[train_indices], name="HALP row protocol train_y")
+    _require_two_classes(labels[eval_indices], name="HALP row protocol eval_y")
+    return train_indices, eval_indices
+
+
+def _resolve_halp_layer_indices_for_row_protocol(
+    entries: Sequence[Mapping[str, Any]],
+    *,
+    layer_indices: Sequence[int] | None,
+) -> list[int]:
+    if layer_indices is None:
+        return resolve_halp_layer_indices(_resolve_total_layers(entries[0]))
+    total_layers = _resolve_total_layers(entries[0])
+    resolved: list[int] = []
+    for raw_index in layer_indices:
+        index = int(raw_index)
+        if index < 0 or index >= total_layers:
+            raise ValueError(f"HALP row protocol layer index {index} out of range for {total_layers} layers")
+        resolved.append(index)
+    if not resolved:
+        raise ValueError("HALP row protocol layer_indices must not be empty")
+    return resolved
+
+
+def _resolve_halp_probe_names_for_row_protocol(
+    entries: Sequence[Mapping[str, Any]],
+    *,
+    layer_indices: Sequence[int] | None,
+) -> list[str]:
+    selected_layers = _resolve_halp_layer_indices_for_row_protocol(entries, layer_indices=layer_indices)
+    probe_names = ["vision_only"]
+    for layer_index in selected_layers:
+        probe_names.append(f"vision_token_layer_{layer_index}")
+        probe_names.append(f"query_token_layer_{layer_index}")
+    return probe_names
+
+
+def _empty_row_protocol_counts() -> dict[str, int]:
+    return {
+        "train_samples": 0,
+        "validation_samples": 0,
+        "test_samples": 0,
+        "train_pos": 0,
+        "validation_pos": 0,
+        "test_pos": 0,
+    }
+
+
+def _row_protocol_counts(
+    labels: np.ndarray,
+    *,
+    train_indices: np.ndarray,
+    eval_indices: np.ndarray,
+) -> dict[str, int]:
+    return {
+        "train_samples": int(train_indices.shape[0]),
+        "validation_samples": 0,
+        "test_samples": int(eval_indices.shape[0]),
+        "train_pos": int(labels[train_indices].sum()),
+        "validation_pos": 0,
+        "test_pos": int(labels[eval_indices].sum()),
+    }
+
+
+def _row_protocol_success_row(
+    *,
+    split_counts: Mapping[str, int],
+    feature_shape: Sequence[int],
+    evaluation: Mapping[str, Any],
+    feature_seconds: float,
+    train_eval_seconds: float,
+    total_seconds: float,
+    selected_probe: str,
+    layer_indices: Sequence[int],
+    num_candidates: int,
+) -> dict[str, Any]:
+    row = _row_protocol_base_row(split_counts)
+    row.update(
+        {
+            "baseline_name": "halp_official_row_protocol",
+            "method_family": "halp_official",
+            "source": "halp_official_legacy_row_protocol",
+            "representation": "official_halp_probe_family",
+            "readout": "halp_probe",
+            "classifier": "halp_mlp",
+            "status": "success",
+            "failure_reason": "",
+            "feature_shape": "x".join(str(int(dim)) for dim in feature_shape),
+            "best_val_threshold": 0.5,
+            "feature_seconds": float(feature_seconds),
+            "train_eval_seconds": float(train_eval_seconds),
+            "total_seconds": float(total_seconds),
+            "selected_probe": selected_probe,
+            "halp_layer_indices": ",".join(str(index) for index in layer_indices),
+            "num_halp_candidates": int(num_candidates),
+            "selection_metric": "eval_roc_auc_then_pr_auc",
+        }
+    )
+    for metric in METRIC_NAMES:
+        row[f"test_{metric}"] = dict(evaluation["test"]).get(metric, float("nan"))
+    return row
+
+
+def _row_protocol_failure_row(
+    *,
+    failure_reason: str,
+    split_counts: Mapping[str, int],
+    total_seconds: float,
+) -> dict[str, Any]:
+    row = _row_protocol_base_row(split_counts)
+    row.update(
+        {
+            "baseline_name": "halp_official_row_protocol",
+            "method_family": "halp_official",
+            "source": "halp_official_legacy_row_protocol",
+            "representation": "official_halp_probe_family",
+            "readout": "halp_probe",
+            "classifier": "halp_mlp",
+            "status": "failure",
+            "failure_reason": str(failure_reason),
+            "feature_shape": "",
+            "best_val_threshold": float("nan"),
+            "feature_seconds": float("nan"),
+            "train_eval_seconds": float("nan"),
+            "total_seconds": float(total_seconds),
+            "selected_probe": "",
+            "halp_layer_indices": "",
+            "num_halp_candidates": "",
+            "selection_metric": "",
+        }
+    )
+    for metric in METRIC_NAMES:
+        row[f"test_{metric}"] = float("nan")
+    return row
+
+
+def _row_protocol_base_row(split_counts: Mapping[str, int]) -> dict[str, Any]:
+    return {
+        "model_name": "",
+        "dataset_name": "",
+        "subset_scope": "",
+        "seed": "",
+        "quick_run": "",
+        "baseline_name": "",
+        "method_family": "",
+        "source": "",
+        "representation": "",
+        "readout": "",
+        "classifier": "",
+        "train_samples": int(split_counts.get("train_samples", 0)),
+        "validation_samples": int(split_counts.get("validation_samples", 0)),
+        "test_samples": int(split_counts.get("test_samples", 0)),
+        "train_pos": int(split_counts.get("train_pos", 0)),
+        "validation_pos": int(split_counts.get("validation_pos", 0)),
+        "test_pos": int(split_counts.get("test_pos", 0)),
+        "best_epoch": "",
+        "early_stopped": "",
+        "converged": "",
+    }
 
 
 def _write_empty_halp_detail_files(output_dir: Path) -> None:

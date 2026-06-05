@@ -280,24 +280,84 @@ def build_domain_section(
         f"- domain_baselines_csv: {domain_csv}",
         f"- domain_baseline_summary: {domain_summary}",
         f"- official_halp_cache: {halp_cache_path or 'not_configured'}",
-        "- official_halp_policy: train on train split, choose probe and threshold on validation split, report test metrics.",
+        (
+            "- course_grouped_halp_policy: course-grouped HALP uses the course image_id grouped "
+            "train/validation/test split; validation selects probe and threshold; test reports metrics."
+        ),
+        (
+            "- official_row_halp_policy: official-row HALP uses the legacy HALP row-stratified "
+            "train/eval split; eval selects probe and reports metrics; threshold=0.5."
+        ),
         "- included_domain_methods: official HALP and linear probe only; MIND and HALP-like are not included.",
     ]
-    for family in ("halp_official", "linear_probe"):
-        row = best.get(family)
+    for rank_name, label in (
+        ("halp_official_mlp", "best_halp_official_mlp"),
+        ("halp_official_row_protocol", "best_halp_official_row_protocol"),
+        ("linear_probe", "best_linear_probe"),
+    ):
+        row = best.get(rank_name)
         if row is None:
-            failures = [item for item in rows if item.get("method_family") == family and item.get("status") == "failure"]
+            if rank_name == "linear_probe":
+                failures = [
+                    item
+                    for item in rows
+                    if item.get("method_family") == "linear_probe" and item.get("status") == "failure"
+                ]
+            else:
+                failures = [
+                    item
+                    for item in rows
+                    if item.get("baseline_name") == rank_name and item.get("status") == "failure"
+                ]
             reason = failures[0].get("failure_reason", "") if failures else "no successful row"
-            lines.append(f"- best_{family}: unavailable ({reason})")
+            lines.append(f"- {label}: unavailable ({reason})")
         else:
             lines.append(
-                "- best_{family}: {name}, PR-AUC={pr_auc}, F1={f1}".format(
-                    family=family,
+                "- {label}: {name}, PR-AUC={pr_auc}, F1={f1}".format(
+                    label=label,
                     name=row.get("baseline_name", ""),
                     pr_auc=_fmt(row.get("test_pr_auc")),
                     f1=_fmt(row.get("test_f1")),
                 )
             )
+    lines.extend(["", "### Official HALP Rows", ""])
+    halp_rows = [row for row in rows if row.get("method_family") == "halp_official"]
+    if halp_rows:
+        for row in halp_rows:
+            baseline_name = str(row.get("baseline_name", ""))
+            source = str(row.get("source", ""))
+            is_row_protocol = (
+                baseline_name == "halp_official_row_protocol"
+                or source == "halp_official_legacy_row_protocol"
+            )
+            protocol = "official-row" if is_row_protocol else "course-grouped"
+            if row.get("status") == "success":
+                line_template = (
+                    "- {name}: protocol={protocol}, selected_probe={probe}, threshold={threshold}, "
+                    "selection_metric={metric}, PR-AUC={pr_auc}, F1={f1}"
+                )
+                lines.append(
+                    line_template.format(
+                        name=baseline_name,
+                        protocol=protocol,
+                        probe=row.get("selected_probe", ""),
+                        threshold=_fmt(row.get("best_val_threshold")),
+                        metric=row.get("selection_metric", ""),
+                        pr_auc=_fmt(row.get("test_pr_auc")),
+                        f1=_fmt(row.get("test_f1")),
+                    )
+                )
+            else:
+                lines.append(
+                    "- {name}: protocol={protocol}, status={status}, failure_reason={reason}".format(
+                        name=baseline_name,
+                        protocol=protocol,
+                        status=row.get("status", ""),
+                        reason=row.get("failure_reason", ""),
+                    )
+                )
+    else:
+        lines.append("- No halp_official rows were produced.")
     if paired_best:
         lines.extend(["", "### Current Wavelet V2 Best Rows", ""])
         for family, row in paired_best.items():
@@ -315,13 +375,19 @@ def build_domain_section(
 
 def best_by_family(rows: Sequence[Mapping[str, object]]) -> dict[str, Mapping[str, object]]:
     result: dict[str, Mapping[str, object]] = {}
+    for baseline_name in ("halp_official_mlp", "halp_official_row_protocol"):
+        for row in rows:
+            if row.get("status") != "success" or row.get("baseline_name") != baseline_name:
+                continue
+            current = result.get(baseline_name)
+            if current is None or _metric(row.get("test_pr_auc")) > _metric(current.get("test_pr_auc")):
+                result[baseline_name] = row
     for row in rows:
-        if row.get("status") != "success":
+        if row.get("status") != "success" or row.get("method_family") != "linear_probe":
             continue
-        family = str(row.get("method_family", ""))
-        current = result.get(family)
+        current = result.get("linear_probe")
         if current is None or _metric(row.get("test_pr_auc")) > _metric(current.get("test_pr_auc")):
-            result[family] = row
+            result["linear_probe"] = row
     return result
 
 
