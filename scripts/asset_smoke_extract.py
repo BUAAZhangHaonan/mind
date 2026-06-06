@@ -63,6 +63,10 @@ REPORT_FIELDS = (
 )
 
 
+class SmokeOutputValidationError(ValueError):
+    """Raised when a loaded model returns smoke output that violates the contract."""
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", type=Path, required=True)
@@ -109,7 +113,11 @@ def run_smoke(
         reason = "required smoke dataset file missing before model loading: " + ", ".join(str(path) for path in missing_paths)
         for alias in REQUIRED_MODEL_ALIASES:
             audit = audit_results[alias]
-            status = AssetStatus.BLOCKED.value if audit.status == AssetStatus.VERIFIED else audit.status.value
+            status = (
+                AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value
+                if audit.status == AssetStatus.VERIFIED
+                else audit.status.value
+            )
             row_reason = reason if audit.status == AssetStatus.VERIFIED else f"{audit.reason}; {reason}"
             for dataset in datasets:
                 dataset_name, subset = DATASET_SPECS[dataset]
@@ -130,6 +138,8 @@ def run_smoke(
                 dataset_name, subset = DATASET_SPECS[dataset]
                 rows.append(_report_row(asset.alias, dataset_name, subset, audit.status.value, audit.reason))
             continue
+        model_rows: list[dict[str, object]] = []
+        smoke_output_observed = False
         try:
             model_config = merge_asset_model_config(load_yaml_config(asset.model_config_path, ModelConfig), asset)
             wrapper = create_model_wrapper(model_config)
@@ -153,6 +163,7 @@ def run_smoke(
                     dataset_name=dataset_name,
                     subset=subset,
                 )
+                smoke_output_observed = True
                 repeat_entries, _ = extract_entries(
                     model=model,
                     processor=processor,
@@ -217,7 +228,7 @@ def run_smoke(
                     metadata=metadata,
                 )
                 merge_top_level_sidecar_metadata(shard_path, metadata)
-                rows.append(
+                model_rows.append(
                     _report_row(
                         asset.alias,
                         dataset_name,
@@ -244,10 +255,14 @@ def run_smoke(
                 raise ValueError(str(canary.get("reason", "image sensitivity canary failed")))
         except ImportError as error:
             reason = f"missing dependency while loading model: {error}"
-            rows.extend(_blocked_model_rows(asset.alias, datasets, reason, AssetStatus.BLOCKED.value))
+            model_rows = _blocked_model_rows(asset.alias, datasets, reason, AssetStatus.BLOCKED.value)
+        except SmokeOutputValidationError as error:
+            reason = f"smoke output validation failed: {error}"
+            model_rows = _blocked_model_rows(asset.alias, datasets, reason, AssetStatus.FAILED_VALIDATION.value)
         except Exception as error:
             reason = f"smoke extraction failed: {type(error).__name__}: {error}"
-            rows.extend(_blocked_model_rows(asset.alias, datasets, reason, AssetStatus.FAILED_VALIDATION.value))
+            status = AssetStatus.FAILED_VALIDATION.value if smoke_output_observed else AssetStatus.BLOCKED.value
+            model_rows = _blocked_model_rows(asset.alias, datasets, reason, status)
         finally:
             try:
                 del model
@@ -257,6 +272,7 @@ def run_smoke(
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+        rows.extend(model_rows)
     write_smoke_outputs(output_root, rows, checksums)
     write_summary_from_rows(output_root, rows, datasets=datasets, smoke_limit=smoke_limit)
     return 0
@@ -314,6 +330,8 @@ def resolve_record_image_path(record: HallucinationRecord, *, dataset_name: str)
     image_path = Path(record.image_path)
     if image_path.is_absolute():
         return record
+    if image_path.is_file():
+        return record
     root = DATASET_IMAGE_ROOTS[dataset_name]
     return replace(record, image_path=str(root / image_path))
 
@@ -356,7 +374,7 @@ def extract_entries(
             )
             hidden_state_count = len(hidden_states)
             if hidden_state_count != total_layers + offset:
-                raise ValueError(
+                raise SmokeOutputValidationError(
                     "hidden_state_index_offset mismatch: "
                     f"hidden_states={hidden_state_count} total_layers={total_layers} offset={offset}"
                 )
@@ -364,6 +382,13 @@ def extract_entries(
                 processor,
                 model_inputs=model_inputs,
                 batch_index=0,
+            )
+            first_token_logits = wrapper.resolve_prefill_logits(
+                model,
+                processor,
+                model_inputs=model_inputs,
+                batch_index=0,
+                token_index=token_index,
             )
             layer_vectors = torch.stack(
                 [
@@ -377,9 +402,8 @@ def extract_entries(
                 generated_ids=generation_output.sequences[0:1],
                 prompt_input_ids=model_inputs["input_ids"][0:1],
             )
-            first_token_logits = generation_output.scores[0][0].detach().cpu()
             if not torch.isfinite(first_token_logits).all().item():
-                raise ValueError(f"first_token_logits contain non-finite values for sample_id={record.sample_id}")
+                raise SmokeOutputValidationError(f"first_token_logits contain non-finite values for sample_id={record.sample_id}")
             entries.append(
                 {
                     "sample_id": record.sample_id,
@@ -496,6 +520,7 @@ def write_summary_from_rows(output_root: Path, rows: Sequence[Mapping[str, objec
     severity = {
         AssetStatus.FAILED_VALIDATION.value: 5,
         AssetStatus.BLOCKED.value: 4,
+        AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value: 4,
         AssetStatus.UNSUPPORTED_BY_POLICY.value: 3,
         AssetStatus.UNSUPPORTED_BY_WRAPPER.value: 3,
         AssetStatus.VERIFIED.value: 1,
@@ -504,13 +529,20 @@ def write_summary_from_rows(output_root: Path, rows: Sequence[Mapping[str, objec
     reasons: dict[str, str] = {}
     for alias in REQUIRED_MODEL_ALIASES:
         alias_rows = [row for row in rows if row.get("model_alias") == alias]
+        actual_datasets = {str(row.get("dataset")) for row in alias_rows}
+        expected_datasets = {DATASET_SPECS[dataset][0] for dataset in datasets}
         status = (
             AssetStatus.VERIFIED.value
-            if alias_rows and all(row.get("status") == AssetStatus.VERIFIED.value for row in alias_rows)
+            if (
+                alias_rows
+                and actual_datasets == expected_datasets
+                and len(alias_rows) == len(expected_datasets)
+                and all(row.get("status") == AssetStatus.VERIFIED.value for row in alias_rows)
+            )
             else max(
                 (str(row.get("status", AssetStatus.BLOCKED.value)) for row in alias_rows),
                 key=lambda value: severity.get(value, 0),
-                default=AssetStatus.BLOCKED.value,
+                default=AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value,
             )
         )
         statuses[alias] = status

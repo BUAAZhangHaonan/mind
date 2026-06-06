@@ -62,3 +62,43 @@ def test_partial_smoke_failure_summary_uses_worst_status(tmp_path: Path) -> None
 
     assert summary["final_status"] == "blocked"
     assert summary["num_failed_validation"] == len(REQUIRED_MODEL_ALIASES)
+
+
+def test_validation_contract_failure_marks_every_model_failed() -> None:
+    module_path = Path("scripts/asset_validate_hidden_states.py")
+    spec = importlib.util.spec_from_file_location("asset_validate_hidden_states", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    rows = module._contract_failure_rows("smoke report contract failed: duplicate")
+    statuses, reasons = module.aggregate_model_statuses(rows)
+
+    assert set(statuses) == set(REQUIRED_MODEL_ALIASES)
+    assert all(status == AssetStatus.FAILED_VALIDATION.value for status in statuses.values())
+    assert all("duplicate" in reason for reason in reasons.values())
+
+
+def test_validation_checks_determinism_and_canary_statuses() -> None:
+    module_path = Path("scripts/asset_validate_hidden_states.py")
+    spec = importlib.util.spec_from_file_location("asset_validate_hidden_states", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    key = "qwen3-vl-8b/pope/popular"
+    valid = {
+        "determinism": {key: {"status": "verified"}},
+        "image_sensitivity_canary": {"qwen3-vl-8b": {"status": "verified"}},
+    }
+
+    assert module.validate_checksum_statuses(valid, key=key, model_alias="qwen3-vl-8b").status == "verified"
+    bad_determinism = {
+        "determinism": {key: {"status": "failed_validation"}},
+        "image_sensitivity_canary": {"qwen3-vl-8b": {"status": "verified"}},
+    }
+    assert module.validate_checksum_statuses(bad_determinism, key=key, model_alias="qwen3-vl-8b").status == "failed_validation"
+    bad_canary = {
+        "determinism": {key: {"status": "verified"}},
+        "image_sensitivity_canary": {"qwen3-vl-8b": {"status": "failed_validation"}},
+    }
+    assert module.validate_checksum_statuses(bad_canary, key=key, model_alias="qwen3-vl-8b").status == "failed_validation"

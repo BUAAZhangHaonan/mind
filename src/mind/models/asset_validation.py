@@ -22,6 +22,7 @@ class AssetStatus(str, Enum):
     UNSUPPORTED_BY_POLICY = "unsupported_by_policy"
     UNSUPPORTED_BY_WRAPPER = "unsupported_by_wrapper"
     FAILED_VALIDATION = "failed_validation"
+    NOT_ATTEMPTED_DUE_TO_DEPENDENCY = "not_attempted_due_to_dependency"
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,6 @@ SUPPORTED_WRAPPER_FAMILIES = {
     "qwen_vl": "AutoModelForImageTextToText",
     "llava_onevision": "AutoModelForImageTextToText",
     "qwen3_vl": "AutoModelForImageTextToText",
-    "internvl": "AutoModelForCausalLM",
     "molmo": "AutoModelForCausalLM",
 }
 
@@ -116,6 +116,14 @@ SINGLE_IMAGE_VLM_FAMILIES = SUPPORTED_WRAPPER_FAMILIES.keys() | {
     "phi4mm",
     "phi3_v",
     "llava_v15",
+    "internvl",
+}
+
+UNSUPPORTED_LOCAL_WRAPPER_REASONS = {
+    "internvl3.5-8b": (
+        "local InternVL asset uses the custom InternVL chat/tokenizer path; "
+        "the Experiment 1 wrapper only supports HF-style image-text processor inputs"
+    ),
 }
 
 
@@ -215,6 +223,12 @@ def audit_asset_metadata(asset: AssetModel) -> AssetAuditResult:
         return _replace_audit(result, status=AssetStatus.UNSUPPORTED_BY_POLICY, reason="family is not registered as a single-image VLM")
     if not _deterministic_generation_is_valid(asset):
         return _replace_audit(result, status=AssetStatus.UNSUPPORTED_BY_POLICY, reason="deterministic yes/no generation contract is not satisfied")
+    if asset.alias in UNSUPPORTED_LOCAL_WRAPPER_REASONS:
+        return _replace_audit(
+            result,
+            status=AssetStatus.UNSUPPORTED_BY_WRAPPER,
+            reason=UNSUPPORTED_LOCAL_WRAPPER_REASONS[asset.alias],
+        )
     if asset.family not in SUPPORTED_WRAPPER_FAMILIES:
         return _replace_audit(result, status=AssetStatus.UNSUPPORTED_BY_WRAPPER, reason=f"no Experiment 1 wrapper is implemented for family={asset.family}")
     if total_layers is None:
@@ -293,7 +307,6 @@ def validate_hidden_state_entries(
             expected_layers=expected_layers,
             total_layers=total_layers,
             hidden_dim=hidden_dim,
-            token_index=token_index,
             prompt_template_id=prompt_template_id,
         )
         if result.status != "verified":
@@ -332,10 +345,35 @@ def validate_smoke_report_contract(
     datasets: Sequence[str],
 ) -> ValidationResult:
     expected = {(alias, dataset) for alias in REQUIRED_MODEL_ALIASES for dataset in datasets}
-    actual = {(str(row.get("model_alias")), str(row.get("dataset"))) for row in rows}
+    actual: set[tuple[str, str]] = set()
+    duplicates: list[tuple[str, str]] = []
+    unknown_aliases: set[str] = set()
+    unknown_statuses: set[str] = set()
+    allowed_statuses = {status.value for status in AssetStatus}
+    for row in rows:
+        alias = str(row.get("model_alias"))
+        dataset = str(row.get("dataset"))
+        pair = (alias, dataset)
+        if pair in actual:
+            duplicates.append(pair)
+        actual.add(pair)
+        if alias not in REQUIRED_MODEL_ALIASES:
+            unknown_aliases.add(alias)
+        status = str(row.get("status"))
+        if status not in allowed_statuses:
+            unknown_statuses.add(status)
     missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if duplicates:
+        return ValidationResult("failed_validation", "smoke report contains duplicate model/dataset pairs", {"duplicates": duplicates})
+    if unknown_aliases:
+        return ValidationResult("failed_validation", "smoke report contains unknown model aliases", {"unknown_aliases": sorted(unknown_aliases)})
+    if unknown_statuses:
+        return ValidationResult("failed_validation", "smoke report contains unknown statuses", {"unknown_statuses": sorted(unknown_statuses)})
     if missing:
         return ValidationResult("failed_validation", "smoke report is missing model/dataset pairs", {"missing": missing})
+    if extra:
+        return ValidationResult("failed_validation", "smoke report contains unexpected model/dataset pairs", {"extra": extra})
     return ValidationResult("verified")
 
 
@@ -348,16 +386,17 @@ def build_completion_summary(
     tests_run: Sequence[str],
     git_commit: str,
 ) -> dict[str, object]:
-    verified = sorted(alias for alias, status in model_statuses.items() if status == AssetStatus.VERIFIED.value)
-    blocked = sorted(alias for alias, status in model_statuses.items() if status == AssetStatus.BLOCKED.value)
-    unsupported = sorted(
-        alias
-        for alias, status in model_statuses.items()
-        if status in {AssetStatus.UNSUPPORTED_BY_POLICY.value, AssetStatus.UNSUPPORTED_BY_WRAPPER.value}
-    )
-    failed = sorted(alias for alias, status in model_statuses.items() if status == AssetStatus.FAILED_VALIDATION.value)
-    unsupported_policy = sorted(alias for alias, status in model_statuses.items() if status == AssetStatus.UNSUPPORTED_BY_POLICY.value)
-    unsupported_wrapper = sorted(alias for alias, status in model_statuses.items() if status == AssetStatus.UNSUPPORTED_BY_WRAPPER.value)
+    normalized_statuses = {
+        alias: str(model_statuses.get(alias, AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value))
+        for alias in REQUIRED_MODEL_ALIASES
+    }
+    verified = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.VERIFIED.value)
+    blocked = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.BLOCKED.value)
+    unsupported_policy = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.UNSUPPORTED_BY_POLICY.value)
+    unsupported_wrapper = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.UNSUPPORTED_BY_WRAPPER.value)
+    unsupported = sorted(unsupported_policy + unsupported_wrapper)
+    failed = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.FAILED_VALIDATION.value)
+    not_attempted = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value)
     return {
         "final_status": "passed" if len(verified) == len(REQUIRED_MODEL_ALIASES) else "blocked",
         "total_models_requested": len(REQUIRED_MODEL_ALIASES),
@@ -366,19 +405,28 @@ def build_completion_summary(
         "num_unsupported_by_policy": len(unsupported_policy),
         "num_unsupported_by_wrapper": len(unsupported_wrapper),
         "num_failed_validation": len(failed),
+        "num_not_attempted_due_to_dependency": len(not_attempted),
+        "model_statuses": normalized_statuses,
         "verified_models": verified,
         "blocked_models": blocked,
+        "unsupported_by_policy_models": unsupported_policy,
+        "unsupported_by_wrapper_models": unsupported_wrapper,
         "unsupported_models": unsupported,
         "failed_models": failed,
+        "not_attempted_due_to_dependency_models": not_attempted,
         "blocked_reasons": {alias: model_reasons.get(alias, "") for alias in blocked},
         "unsupported_reasons": {alias: model_reasons.get(alias, "") for alias in unsupported},
+        "unsupported_by_policy_reasons": {alias: model_reasons.get(alias, "") for alias in unsupported_policy},
+        "unsupported_by_wrapper_reasons": {alias: model_reasons.get(alias, "") for alias in unsupported_wrapper},
         "failed_reasons": {alias: model_reasons.get(alias, "") for alias in failed},
+        "not_attempted_due_to_dependency_reasons": {alias: model_reasons.get(alias, "") for alias in not_attempted},
         "smoke_datasets_used": list(smoke_datasets),
         "smoke_limit": int(smoke_limit),
         "tests_run": list(tests_run),
         "git_commit": git_commit,
         "stageA_started": False,
         "full_cache_extraction_started": False,
+        "training_started": False,
     }
 
 
@@ -398,7 +446,6 @@ def _validate_entry(
     expected_layers: list[int],
     total_layers: int,
     hidden_dim: int,
-    token_index: int,
     prompt_template_id: str,
 ) -> ValidationResult:
     if "layer_vectors" not in entry:
@@ -415,8 +462,12 @@ def _validate_entry(
         return ValidationResult("failed_validation", f"entry {index}: hidden_dim mismatch")
     if not torch.isfinite(layer_vectors).all().item():
         return ValidationResult("failed_validation", f"entry {index}: layer_vectors must be finite")
-    if int(entry.get("token_index", token_index)) != token_index:
-        return ValidationResult("failed_validation", f"entry {index}: token_index mismatch")
+    try:
+        entry_token_index = int(entry["token_index"])
+    except (KeyError, TypeError, ValueError) as error:
+        return ValidationResult("failed_validation", f"entry {index}: token_index missing or invalid: {error}")
+    if entry_token_index < 0:
+        return ValidationResult("failed_validation", f"entry {index}: token_index must be non-negative")
     if str(entry.get("prompt_template_id")) != prompt_template_id:
         return ValidationResult("failed_validation", f"entry {index}: prompt_template_id mismatch")
     first_token_logits = _require_tensor(entry, "first_token_logits")

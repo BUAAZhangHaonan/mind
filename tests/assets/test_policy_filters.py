@@ -86,3 +86,17 @@ def test_missing_processor_or_tokenizer_metadata_triggers_blocked(tmp_path: Path
 
     assert result.status == AssetStatus.BLOCKED
     assert "processor/tokenizer" in result.reason
+
+
+def test_local_custom_internvl_asset_is_unsupported_by_wrapper(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(
+        '{"model_type":"internvl_chat","llm_config":{"num_hidden_layers":2,"hidden_size":4}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "processor_config.json").write_text("{}", encoding="utf-8")
+
+    result = audit_asset_metadata(_asset(tmp_path, alias="internvl3.5-8b", family="internvl"))
+
+    assert result.status == AssetStatus.UNSUPPORTED_BY_WRAPPER
+    assert "custom InternVL" in result.reason

@@ -2,6 +2,8 @@
 
 `master` contains the completed Stage 0 line and the Stage A representation acid test.
 
+For local model asset registry and smoke validation details, see `docs/ASSET_REGISTRY.md`.
+
 MIND starts from audited multimodal records, deterministic grouped splits, and full-layer hidden-state cache shards. Stage A uses those cached tensors to test representation hypotheses only. It does not validate the final MIND detector.
 
 ## Scope

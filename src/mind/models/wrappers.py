@@ -414,16 +414,48 @@ class BaseModelWrapper:
         *,
         model_inputs: Any,
     ) -> Any:
-        del processor
-        outputs = model(
-            **model_inputs,
-            return_dict=True,
-            output_hidden_states=True,
+        outputs = self.extract_prefill_outputs(
+            model,
+            processor,
+            model_inputs=model_inputs,
         )
         hidden_states = getattr(outputs, "hidden_states", None)
         if not hidden_states:
             raise ValueError("Forward output did not include hidden states.")
         return hidden_states
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+        )
+
+    def resolve_prefill_logits(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+        token_index: int,
+    ) -> torch.Tensor:
+        outputs = self.extract_prefill_outputs(
+            model,
+            processor,
+            model_inputs=model_inputs,
+        )
+        logits = getattr(outputs, "logits", None)
+        if logits is None:
+            raise ValueError("Forward output did not include logits.")
+        return logits[batch_index, token_index, :].detach().cpu()
 
     def _move_batch_to_device(self, batch: Any, device: str) -> Any:
         if hasattr(batch, "to"):

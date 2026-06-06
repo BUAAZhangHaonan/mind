@@ -58,6 +58,17 @@ def test_valid_full_layer_shard_passes() -> None:
     assert result.status == "verified"
 
 
+def test_valid_shard_allows_per_entry_token_index_variation() -> None:
+    first = _entry()
+    second = _entry()
+    second["sample_id"] = "s1"
+    second["token_index"] = 9
+
+    result = validate_hidden_state_entries([first, second], _sidecar())
+
+    assert result.status == "verified"
+
+
 @pytest.mark.parametrize(
     "mutator, reason",
     [
