@@ -28,6 +28,11 @@ BATCH2_TARGET_ALIASES = (
     "phi-3.5-vision-instruct",
     "phi-4-multimodal-instruct",
 )
+BATCH3_TARGET_ALIASES = (
+    "glm-4.6v-flash",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -171,6 +176,40 @@ def run_audit(*, registry_path: Path, output_root: Path, load_model: bool = Fals
     ]
     _write_csv(output_root / "wrapper_batch2_asset_inspection.csv", batch2_rows, batch2_fields)
     _write_json(output_root / "wrapper_batch2_asset_inspection.json", batch2_rows)
+    batch3_rows = build_wrapper_batch3_inspection(registry.models)
+    batch3_fields = [
+        "alias",
+        "local_path",
+        "config_json_path",
+        "model_type",
+        "architectures",
+        "auto_map",
+        "tokenizer_files",
+        "processor_files",
+        "image_processor_files",
+        "chat_template_available",
+        "image_processor_available",
+        "generation_config_available",
+        "generation_config",
+        "hidden_size_candidates",
+        "layer_count_candidates",
+        "moe_indicators",
+        "thinking_indicators",
+        "thinking_disable_evidence",
+        "required_trust_remote_code",
+        "candidate_model_class",
+        "candidate_processor_class",
+        "image_only_inference_supported",
+        "audio_video_paths",
+        "deterministic_generation_enforceable",
+        "remote_code_custom_chat",
+        "output_hidden_states_support",
+        "generation_api_support",
+        "status",
+        "reason",
+    ]
+    _write_csv(output_root / "wrapper_batch3_asset_inspection.csv", batch3_rows, batch3_fields)
+    _write_json(output_root / "wrapper_batch3_asset_inspection.json", batch3_rows)
     return results
 
 
@@ -180,6 +219,10 @@ def build_wrapper_batch1_inspection(models: list[object]) -> list[dict[str, obje
 
 def build_wrapper_batch2_inspection(models: list[object]) -> list[dict[str, object]]:
     return [_inspect_batch2_asset(model) for model in models if getattr(model, "alias", "") in BATCH2_TARGET_ALIASES]
+
+
+def build_wrapper_batch3_inspection(models: list[object]) -> list[dict[str, object]]:
+    return [_inspect_batch3_asset(model) for model in models if getattr(model, "alias", "") in BATCH3_TARGET_ALIASES]
 
 
 def _inspect_batch1_asset(model: object) -> dict[str, object]:
@@ -302,6 +345,59 @@ def _inspect_batch2_asset(model: object) -> dict[str, object]:
     return row
 
 
+def _inspect_batch3_asset(model: object) -> dict[str, object]:
+    row = _inspect_batch2_asset(model)
+    alias = str(row["alias"])
+    local_path = Path(str(row["local_path"]))
+    row["generation_config"] = {}
+    row["thinking_disable_evidence"] = ""
+    row["remote_code_custom_chat"] = False
+    row["output_hidden_states_support"] = "unknown"
+    row["generation_api_support"] = "unknown"
+    if local_path.is_dir():
+        generation_config_path = local_path / "generation_config.json"
+        if generation_config_path.is_file():
+            row["generation_config"] = json.loads(generation_config_path.read_text(encoding="utf-8"))
+    if row["status"] != "inspected":
+        return row
+
+    config = json.loads((local_path / "config.json").read_text(encoding="utf-8"))
+    family = str(getattr(model, "family", ""))
+    row["image_only_inference_supported"] = False
+    row["audio_video_paths"] = "unknown"
+    row["deterministic_generation_enforceable"] = True
+    if family == "glm4v":
+        row["image_only_inference_supported"] = bool(
+            config.get("model_type") == "glm4v"
+            and "vision_config" in config
+            and _candidate_processor_class(local_path, alias).lower().startswith("glm")
+        )
+        row["audio_video_paths"] = "video_optional_audio_not_required"
+        row["thinking_disable_evidence"] = "chat_template.jinja supports enable_thinking=false, appends /nothink, and emits empty think block"
+        row["remote_code_custom_chat"] = False
+        row["output_hidden_states_support"] = "forward_resolved_by_wrapper"
+        row["generation_api_support"] = "native_generate_deterministic_override"
+    elif family == "minicpmv":
+        row["image_only_inference_supported"] = bool(
+            config.get("model_type") == "minicpmv"
+            and "vision_config" in config
+            and _candidate_processor_class(local_path, alias) == "MiniCPMVProcessor"
+        )
+        row["audio_video_paths"] = "video_optional_audio_not_required"
+        row["remote_code_custom_chat"] = True
+        row["output_hidden_states_support"] = "forward_resolved_by_wrapper"
+        row["generation_api_support"] = "custom_generate_deterministic_override"
+        if alias == "minicpm-v-4_5":
+            row["thinking_disable_evidence"] = "tokenizer chat template supports enable_thinking=false and emits empty think block"
+        else:
+            row["thinking_disable_evidence"] = "no thinking markers detected"
+        custom_chat = config.get("custom_chat_api")
+        if isinstance(custom_chat, dict) and custom_chat.get("returns_hidden_states") is False:
+            row["status"] = AssetStatus.UNSUPPORTED_BY_WRAPPER.value
+            row["reason"] = "MiniCPM custom chat API does not expose hidden-state access"
+    return row
+
+
 def _candidate_config_values(config: dict[str, object], *paths: tuple[str, ...]) -> dict[str, object]:
     values: dict[str, object] = {}
     for path in paths:
@@ -344,6 +440,10 @@ def _thinking_indicator_files(path: Path) -> list[str]:
 
 
 def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
+    if alias == "glm-4.6v-flash":
+        return "Glm4vForConditionalGeneration"
+    if alias in {"minicpm-v-2_6", "minicpm-v-4_5"}:
+        return "MiniCPMV"
     if alias in {"gemma-3-4b-it", "gemma-3-12b-it"}:
         return "Gemma3ForConditionalGeneration"
     if alias == "phi-3.5-vision-instruct":

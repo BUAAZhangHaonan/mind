@@ -6,8 +6,10 @@ from mind.config import ModelConfig
 
 from .wrappers import (
     Gemma3Wrapper,
+    Glm4vWrapper,
     InternVLWrapper,
     LlavaOnevisionWrapper,
+    MiniCPMVWrapper,
     MolmoWrapper,
     Phi35VisionWrapper,
     Phi4MultimodalWrapper,
@@ -20,6 +22,8 @@ from .wrappers import (
 
 def create_model_wrapper(config: ModelConfig):
     family = config.family.lower()
+    if family == "glm4v":
+        return Glm4vWrapper(config)
     if family == "internvl":
         return InternVLWrapper(config)
     if family in {"llava_onevision", "llava-onevision"}:
@@ -32,6 +36,8 @@ def create_model_wrapper(config: ModelConfig):
         return Phi35VisionWrapper(config)
     if family == "phi4mm":
         return Phi4MultimodalWrapper(config)
+    if family == "minicpmv":
+        return MiniCPMVWrapper(config)
     if family in {"qwen2_5_vl", "qwen2.5_vl"}:
         return Qwen25VLWrapper(config)
     if family in {"qwen3_5", "qwen3.5"}:

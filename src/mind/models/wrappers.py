@@ -24,6 +24,7 @@ from transformers import (
     AutoTokenizer,
     GenerationConfig,
 )
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.modeling_utils import PreTrainedModel
 
 from mind.config import ModelConfig
@@ -512,13 +513,14 @@ class BaseModelWrapper:
 
     def load_processor(self):
         require_local_model_path(self.model_id_or_path())
-        return configure_left_padding(
+        processor = configure_left_padding(
             AutoProcessor.from_pretrained(
                 self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
                 local_files_only=True,
             )
         )
+        return processor
 
     def load_model(self, *, device: str = "cuda"):
         raise NotImplementedError
@@ -899,6 +901,302 @@ class Qwen35VLWrapper(QwenVLWrapper):
             self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
+
+
+class Glm4vWrapper(QwenVLWrapper):
+    """GLM-4.6V single-image wrapper with thinking disabled in the chat template."""
+
+    def expected_model_class_name(self) -> str:
+        return "Glm4vForConditionalGeneration"
+
+    def expected_processor_class_name(self) -> str:
+        return "Glm46VProcessor"
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("Glm4vWrapper requires an image path.")
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": str(Path(image_path))},
+                    {"type": "text", "text": question},
+                ],
+            }
+        ]
+
+    def load_processor(self):
+        from transformers import Glm46VProcessor
+
+        local_path = require_local_model_path(self.model_id_or_path())
+        return configure_left_padding(
+            Glm46VProcessor.from_pretrained(
+                local_path,
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=True,
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import Glm4vForConditionalGeneration
+
+        return Glm4vForConditionalGeneration.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        ).eval()
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+
+class MiniCPMVWrapper(BaseModelWrapper):
+    """MiniCPM-V local remote-code wrapper using explicit forward hidden states."""
+
+    def deterministic_generation_kwargs(self, *, max_new_tokens: int | None = None) -> dict[str, Any]:
+        kwargs = super().deterministic_generation_kwargs(max_new_tokens=max_new_tokens)
+        kwargs["use_cache"] = False
+        return kwargs
+
+    def expected_model_class_name(self) -> str:
+        return "MiniCPMV"
+
+    def expected_processor_class_name(self) -> str:
+        return "MiniCPMVProcessor"
+
+    def load_processor(self):
+        require_local_model_path(self.model_id_or_path())
+        return configure_left_padding(
+            AutoProcessor.from_pretrained(
+                self.model_id_or_path(),
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=True,
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        local_path = require_local_model_path(self.model_id_or_path())
+        self.ensure_minicpm_remote_class_contract(local_path)
+        model = AutoModel.from_pretrained(
+            local_path,
+            **self.model_load_kwargs(device=device),
+        )
+        return model.eval()
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("MiniCPMVWrapper requires an image path.")
+        return [{"role": "user", "content": [Image.open(image_path).convert("RGB"), question]}]
+
+    def build_prompt(self, processor: Any, question: str) -> str:
+        self.configure_minicpm_tokenizer(processor.tokenizer)
+        kwargs = self.disable_thinking_kwargs()
+        return str(
+            processor.tokenizer.apply_chat_template(
+                [{"role": "user", "content": f"(<image>./</image>)\n{question}"}],
+                tokenize=False,
+                add_generation_prompt=True,
+                **kwargs,
+            )
+        )
+
+    def disable_thinking_kwargs(self) -> dict[str, Any]:
+        if self.config.thinking.get("supported") is True:
+            return {"enable_thinking": False}
+        return {}
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        return self.prepare_asset_batch_inputs(
+            processor,
+            questions=[self.format_yes_no_question(question) for question in questions],
+            image_paths=image_paths,
+            device=device,
+        )
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        prompts: list[str] = []
+        image_batches: list[list[Image.Image]] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("MiniCPMVWrapper requires an image path.")
+            prompts.append(self.build_prompt(processor, question))
+            image_batches.append([Image.open(image_path).convert("RGB")])
+        batch = processor(
+            prompts,
+            image_batches,
+            return_tensors="pt",
+        )
+        self._ensure_position_ids(batch)
+        return self._move_batch_to_device(batch, device)
+
+    def generate(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        max_new_tokens: int,
+    ) -> Any:
+        inputs = self._minicpm_generation_inputs(model_inputs)
+        generation_kwargs = self.deterministic_generation_kwargs(max_new_tokens=max_new_tokens)
+        generation_kwargs.pop("max_new_tokens", None)
+        return model.generate(
+            **inputs,
+            tokenizer=processor.tokenizer,
+            max_new_tokens=max_new_tokens,
+            **generation_kwargs,
+        )
+
+    def decode_generation(
+        self,
+        processor: Any,
+        *,
+        generated_ids: Any,
+        prompt_input_ids: Any,
+    ) -> str:
+        prompt_length = int(prompt_input_ids.shape[-1])
+        continuation = generated_ids[:, prompt_length:] if int(generated_ids.shape[-1]) > prompt_length else generated_ids
+        decoded = processor.batch_decode(
+            continuation,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        )
+        return str(decoded[0]).strip()
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        data = self._minicpm_forward_data(model_inputs)
+        return model(
+            data=data,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+    def _ensure_position_ids(self, batch: Any) -> None:
+        if _model_inputs_has(batch, "position_ids"):
+            return
+        attention_mask = _model_inputs_get(batch, "attention_mask")
+        if attention_mask is None:
+            return
+        position_ids = attention_mask.long().cumsum(dim=-1) - 1
+        position_ids = position_ids.masked_fill(attention_mask == 0, 0)
+        batch["position_ids"] = position_ids
+
+    def configure_minicpm_tokenizer(self, tokenizer: Any) -> None:
+        special_tokens = {
+            "im_start": "<image>",
+            "im_end": "</image>",
+            "ref_start": "<ref>",
+            "ref_end": "</ref>",
+            "box_start": "<box>",
+            "box_end": "</box>",
+            "quad_start": "<quad>",
+            "quad_end": "</quad>",
+            "slice_start": "<slice>",
+            "slice_end": "</slice>",
+            "im_id_start": "<image_id>",
+            "im_id_end": "</image_id>",
+        }
+        for name, token in special_tokens.items():
+            setattr(tokenizer, name, token)
+        token_id_attrs = {
+            "im_start_id": "<image>",
+            "im_end_id": "</image>",
+            "slice_start_id": "<slice>",
+            "slice_end_id": "</slice>",
+            "im_id_start_id": "<image_id>",
+            "im_id_end_id": "</image_id>",
+            "newline_id": "\n",
+        }
+        for name, token in token_id_attrs.items():
+            setattr(tokenizer, name, int(tokenizer.convert_tokens_to_ids(token)))
+        tokenizer.bos_id = int(tokenizer.bos_token_id)
+        tokenizer.eos_id = int(tokenizer.eos_token_id)
+        tokenizer.unk_id = int(tokenizer.unk_token_id)
+
+    def ensure_minicpm_remote_class_contract(self, local_path: Path) -> None:
+        model_class = get_class_from_dynamic_module(
+            "modeling_minicpmv.MiniCPMV",
+            str(local_path),
+            local_files_only=True,
+        )
+        if not hasattr(model_class, "all_tied_weights_keys"):
+            model_class.all_tied_weights_keys = {}
+
+    def _minicpm_generation_inputs(self, model_inputs: Any) -> dict[str, Any]:
+        keys = ("input_ids", "pixel_values", "tgt_sizes", "image_bound", "attention_mask", "temporal_ids")
+        return {
+            key: _model_inputs_get(model_inputs, key)
+            for key in keys
+            if _model_inputs_get(model_inputs, key) is not None
+        }
+
+    def _minicpm_forward_data(self, model_inputs: Any) -> dict[str, Any]:
+        keys = ("input_ids", "pixel_values", "tgt_sizes", "image_bound", "position_ids", "temporal_ids")
+        data = {
+            key: _model_inputs_get(model_inputs, key)
+            for key in keys
+            if _model_inputs_get(model_inputs, key) is not None
+        }
+        if "position_ids" not in data:
+            raise ValueError("MiniCPMVWrapper requires position_ids for prefill forward hidden states.")
+        return data
 
 
 class Gemma3Wrapper(BaseModelWrapper):

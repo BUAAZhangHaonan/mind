@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from mind.config import ModelConfig
 from mind.models.factory import create_model_wrapper
+from mind.models import wrappers
 
 
 def _config(*, name: str, family: str, thinking: dict[str, object] | None = None, offset: int | str = 1) -> ModelConfig:
@@ -78,3 +81,31 @@ def test_qwen_hidden_state_index_offset_cannot_be_unknown() -> None:
 
     with pytest.raises(ValueError, match="hidden_state_index_offset"):
         wrapper.resolve_hidden_state_index_offset()
+
+
+def test_qwen_load_processor_does_not_require_minicpm_tokenizer_contract(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    wrapper = create_model_wrapper(
+        ModelConfig(
+            name="qwen3-vl-8b",
+            model_id=str(tmp_path),
+            local_path=str(tmp_path),
+            family="qwen3_vl",
+            dtype="float16",
+            trust_remote_code=False,
+            attn_implementation="eager",
+            deterministic_generation={"do_sample": False, "temperature": 0, "max_new_tokens": 1},
+            thinking={"supported": False, "disabled_by_default": True, "disable_argument": None},
+            policy={"allow_moe": False, "allow_thinking": False, "allow_video_only": False, "allow_audio_only": False},
+            prompt_template_id="qwen3_vl_prompt",
+            prompt_template_text="single image plus normalized question",
+            hidden_state_index_offset=1,
+        )
+    )
+    fake_processor = SimpleNamespace(tokenizer=SimpleNamespace(padding_side="right"))
+
+    monkeypatch.setattr(wrappers.AutoProcessor, "from_pretrained", lambda *args, **kwargs: fake_processor)
+
+    loaded = wrapper.load_processor()
+
+    assert loaded is fake_processor
+    assert loaded.tokenizer.padding_side == "left"

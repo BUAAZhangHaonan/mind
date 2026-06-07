@@ -102,12 +102,14 @@ MOE_INDICATOR_KEYS = {
 }
 
 SUPPORTED_WRAPPER_FAMILIES = {
+    "glm4v": "Glm4vForConditionalGeneration",
     "qwen_vl": "AutoModelForImageTextToText",
     "qwen2_5_vl": "Qwen2_5_VLForConditionalGeneration",
     "llava_onevision": "AutoModelForImageTextToText",
     "qwen3_vl": "AutoModelForImageTextToText",
     "qwen3_5": "Qwen3_5ForConditionalGeneration",
     "internvl": "AutoModel",
+    "minicpmv": "MiniCPMV",
     "molmo": "AutoModelForCausalLM",
     "gemma3": "Gemma3ForConditionalGeneration",
     "phi3_v": "Phi3VForCausalLM",
@@ -653,6 +655,27 @@ def _audit_family_specific_constraints(
     config: Mapping[str, object],
 ) -> tuple[AssetStatus, str] | None:
     family = asset.family
+    if family == "glm4v":
+        if config.get("model_type") != "glm4v" or "vision_config" not in config or not _has_any_key(config, ("image_token_id", "image_token_index")):
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "GLM-4V image-text config is required"
+        processor_class = (_processor_class_from_files(local_path) or "").lower()
+        image_processor = (_image_processor_type(local_path) or "").lower()
+        if not processor_class.startswith("glm") or "processor" not in processor_class or not image_processor.startswith("glm"):
+            return AssetStatus.BLOCKED, "GLM image processor metadata is required"
+        missing = _missing_transformers_classes(("Glm4vForConditionalGeneration", "Glm46VProcessor"))
+        if missing:
+            return AssetStatus.BLOCKED, "installed transformers is missing required GLM classes: " + ", ".join(missing)
+    if family == "minicpmv":
+        if config.get("model_type") != "minicpmv" or "vision_config" not in config:
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "MiniCPM-V image-text config is required"
+        if _processor_class_from_files(local_path) != "MiniCPMVProcessor" or _image_processor_type(local_path) != "MiniCPMVImageProcessor":
+            return AssetStatus.BLOCKED, "MiniCPMV image processor metadata is required"
+        custom_chat = config.get("custom_chat_api")
+        if isinstance(custom_chat, Mapping) and custom_chat.get("returns_hidden_states") is False:
+            return AssetStatus.UNSUPPORTED_BY_WRAPPER, "MiniCPM custom chat API does not expose hidden-state access"
+        auto_map = config.get("auto_map")
+        if not isinstance(auto_map, Mapping) or not any("MiniCPMV" in str(value) for value in auto_map.values()):
+            return AssetStatus.UNSUPPORTED_BY_WRAPPER, "MiniCPM local remote-code MiniCPMV mapping is required for hidden-state extraction"
     if family == "gemma3":
         if config.get("model_type") != "gemma3" or "vision_config" not in config or "image_token_index" not in config:
             return AssetStatus.UNSUPPORTED_BY_POLICY, "Gemma3 multimodal image-text config is required"
@@ -716,6 +739,10 @@ def _phi4_config_has_image_text_path(config: Mapping[str, object]) -> bool:
         return False
     image_embedding = str(image_layer.get("embedding_cls", "")).lower()
     return "image" in image_embedding
+
+
+def _has_any_key(payload: Mapping[str, object], keys: Sequence[str]) -> bool:
+    return any(key in payload for key in keys)
 
 
 def _missing_imports(module_names: Sequence[str]) -> list[str]:

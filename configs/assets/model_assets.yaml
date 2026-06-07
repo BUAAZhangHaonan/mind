@@ -61,15 +61,15 @@ models:
     model_config_path: configs/models/minicpm_v_2_6.yaml
     model_id_or_family_name: minicpmv
     family: minicpmv
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: true
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
     thinking: {supported: false, disabled_by_default: true, disable_argument: null}
     policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
     prompt_template_id: minicpmv_single_image_raw_question_v1
-    prompt_template_text: "MiniCPM-V single-image prompt format is registered, but wrapper support is not implemented in Experiment 1."
-    hidden_state_index_offset: unknown
+    prompt_template_text: "MiniCPM-V single-image prompt uses tokenizer chat template with (<image>./</image>) followed by the normalized question unchanged."
+    hidden_state_index_offset: 1
   - alias: gemma-3-12b-it
     local_path: /home/team/lvshuyang/Models/gemma-3-12b-it
     model_config_path: configs/models/gemma_3_12b_it.yaml
@@ -173,15 +173,15 @@ models:
     model_config_path: configs/models/minicpm_v_4_5.yaml
     model_id_or_family_name: minicpmv
     family: minicpmv
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: true
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
     thinking: {supported: true, disabled_by_default: true, disable_argument: enable_thinking=false}
     policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
     prompt_template_id: minicpmv_single_image_raw_question_v1
-    prompt_template_text: "MiniCPM-V single-image prompt format is registered, but wrapper support is not implemented in Experiment 1."
-    hidden_state_index_offset: unknown
+    prompt_template_text: "MiniCPM-V single-image prompt uses tokenizer chat template with (<image>./</image>) followed by the normalized question unchanged; chat template receives enable_thinking=false when supported."
+    hidden_state_index_offset: 1
   - alias: llava-v1.5-7b
     local_path: /home/team/lvshuyang/Models/llava-v1.5-7b
     model_config_path: configs/models/llava_v1_5_7b.yaml

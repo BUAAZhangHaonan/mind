@@ -55,6 +55,22 @@ BATCH2_REGRESSION_MODELS = (
     "qwen3-vl-8b",
     "llava-onevision-qwen2-7b-ov-hf",
 )
+BATCH3_TARGET_MODELS = (
+    "glm-4.6v-flash",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+)
+BATCH3_REGRESSION_MODELS = (
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "gemma-3-4b-it",
+    "gemma-3-12b-it",
+    "phi-3.5-vision-instruct",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -107,6 +123,12 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
         write_markdown_report(output_root / "ASSET_COMPLETION_REPORT.md", summary)
         write_wrapper_batch2_report(
             output_root / "WRAPPER_BATCH2_REPORT.md",
+            output_root=output_root,
+            summary=summary,
+            validation_rows=validation_rows,
+        )
+        write_wrapper_batch3_report(
+            output_root / "WRAPPER_BATCH3_REPORT.md",
             output_root=output_root,
             summary=summary,
             validation_rows=validation_rows,
@@ -215,6 +237,12 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
     )
     write_wrapper_batch2_report(
         output_root / "WRAPPER_BATCH2_REPORT.md",
+        output_root=output_root,
+        summary=summary,
+        validation_rows=validation_rows,
+    )
+    write_wrapper_batch3_report(
+        output_root / "WRAPPER_BATCH3_REPORT.md",
         output_root=output_root,
         summary=summary,
         validation_rows=validation_rows,
@@ -506,6 +534,74 @@ def write_wrapper_batch2_report(
             "",
             "## Next Recommended Wrapper Batch",
             "Handle GLM, MiniCPM, Molmo, and LLaVA-v1.5 in separate scoped wrapper batches after resolving any exact dependency or metadata blockers.",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_wrapper_batch3_report(
+    path: Path,
+    *,
+    output_root: Path,
+    summary: Mapping[str, object],
+    validation_rows: Sequence[Mapping[str, object]],
+) -> None:
+    model_statuses = summary.get("model_statuses", {})
+    inspection_rows = read_csv(output_root / "wrapper_batch3_asset_inspection.csv")
+    inspection_by_alias = {str(row.get("alias")): row for row in inspection_rows}
+    lines = [
+        "# Wrapper Batch 3 Report",
+        "",
+        "## Target Models",
+        *[f"- {alias}" for alias in BATCH3_TARGET_MODELS],
+        "",
+        "## Regression Models",
+        *[f"- {alias}" for alias in BATCH3_REGRESSION_MODELS],
+        "",
+        "## Exact Wrapper Changes",
+        "- glm-4.6v-flash: explicit Glm4vWrapper with Glm46VProcessor, Glm4vForConditionalGeneration, single-image chat template, enable_thinking=false, and explicit forward prefill hidden states.",
+        "- minicpm-v-2_6 and minicpm-v-4_5: explicit MiniCPMVWrapper with local remote-code AutoProcessor and AutoModel, tokenizer chat template with (<image>./</image>), deterministic custom generate, and explicit forward prefill hidden states.",
+        "- The MiniCPM target configs use bfloat16 because both local configs declare torch_dtype=bfloat16.",
+        "",
+        "## Inspection Findings",
+    ]
+    for alias in BATCH3_TARGET_MODELS:
+        row = inspection_by_alias.get(alias, {})
+        lines.append(
+            f"- {alias}: model_type={row.get('model_type', '')}, architectures={row.get('architectures', '')}, "
+            f"processor={row.get('candidate_processor_class', '')}, model={row.get('candidate_model_class', '')}, "
+            f"image_only={row.get('image_only_inference_supported', '')}, audio_video={row.get('audio_video_paths', '')}, "
+            f"thinking_disable={row.get('thinking_disable_evidence', '')}, hidden_states={row.get('output_hidden_states_support', '')}, "
+            f"status={row.get('status', '')}, reason={row.get('reason', '')}"
+        )
+    lines.extend(["", "## Smoke And Validation Status"])
+    for alias in (*BATCH3_TARGET_MODELS, *BATCH3_REGRESSION_MODELS):
+        alias_rows = [row for row in validation_rows if row.get("model_alias") == alias]
+        row_statuses = sorted({str(row.get("status", "")) for row in alias_rows})
+        row_reasons = sorted({str(row.get("reason", "")) for row in alias_rows if row.get("reason")})
+        lines.append(
+            f"- {alias}: final={_mapping_get(model_statuses, alias)}, "
+            f"validation_rows={','.join(row_statuses)}, reason={' | '.join(row_reasons)}"
+        )
+    lines.extend(["", "## Final Status Per Target Model"])
+    for alias in BATCH3_TARGET_MODELS:
+        lines.append(f"- {alias}: {_mapping_get(model_statuses, alias)}")
+    lines.extend(["", "## Registry Model Statuses"])
+    for alias in REQUIRED_MODEL_ALIASES:
+        lines.append(f"- {alias}: {_mapping_get(model_statuses, alias)}; reason={summary_reason_for_alias(summary, alias)}")
+    lines.extend(["", "## Remaining Unsupported Models"])
+    for alias in summary.get("unsupported_models", []):
+        if alias not in BATCH3_TARGET_MODELS and alias not in BATCH3_REGRESSION_MODELS:
+            lines.append(f"- {alias}")
+    lines.extend(["", "## Remaining Blocked Models"])
+    for alias in summary.get("blocked_models", []):
+        if alias not in BATCH3_TARGET_MODELS and alias not in BATCH3_REGRESSION_MODELS:
+            lines.append(f"- {alias}")
+    lines.extend(
+        [
+            "",
+            "## Next Recommended Wrapper Batch",
+            "Resolve the Phi-4 missing dependency blocker, then handle Molmo and LLaVA-v1.5 in separate scoped wrapper tasks.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

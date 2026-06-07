@@ -3,7 +3,7 @@ model_id: /home/team/lvshuyang/Models/MiniCPM-V-2_6
 local_path: /home/team/lvshuyang/Models/MiniCPM-V-2_6
 model_id_or_family_name: minicpmv
 family: minicpmv
-dtype: float16
+dtype: bfloat16
 trust_remote_code: true
 attn_implementation: eager
 deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}

@@ -68,18 +68,27 @@ Batch 1 verified these assets for local smoke extraction and hidden-state valida
 - `qwen3-vl-8b`
 - `llava-onevision-qwen2-7b-ov-hf`
 
-Batch 2 targets these assets:
+Batch 2 verified these assets for local smoke extraction and hidden-state validation:
 
 - `gemma-3-4b-it`
 - `gemma-3-12b-it`
 - `phi-3.5-vision-instruct`
-- `phi-4-multimodal-instruct`
 
-The remaining unresolved assets are handled only by their current explicit statuses until separate scoped wrapper batches address them:
+Batch 3 targets these assets:
 
 - `glm-4.6v-flash`
 - `minicpm-v-2_6`
 - `minicpm-v-4_5`
+
+Batch 3 verified these assets for local smoke extraction and hidden-state validation:
+
+- `glm-4.6v-flash`
+- `minicpm-v-2_6`
+- `minicpm-v-4_5`
+
+The remaining unresolved assets are handled only by their current explicit statuses until separate scoped wrapper batches address them:
+
+- `phi-4-multimodal-instruct`
 - `molmo-7b-d-0924`
 - `llava-v1.5-7b`
 
