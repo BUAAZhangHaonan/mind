@@ -47,14 +47,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--smoke-cache-root", type=Path, required=True)
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=None,
+        help="Optional registry aliases to validate for a scoped batch run. Non-selected aliases are preserved.",
+    )
     return parser
 
 
-def run_validation(*, output_root: Path, smoke_cache_root: Path) -> int:
+def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequence[str] | None = None) -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     if not smoke_cache_root.is_dir():
         raise FileNotFoundError(f"--smoke-cache-root does not exist or is not a directory: {smoke_cache_root}")
+    selected_aliases = resolve_model_selection(models)
     smoke_rows = read_csv(output_root / "smoke_extraction_report.csv")
+    previous_validation_rows = read_csv(output_root / "hidden_state_validation_report.csv")
+    previous_validation_by_pair = {
+        (str(row.get("model_alias")), str(row.get("dataset")), str(row.get("subset"))): row
+        for row in previous_validation_rows
+    }
     contract = validate_smoke_report_contract(smoke_rows, datasets=SMOKE_DATASETS)
     validation_rows: list[dict[str, object]] = []
     checksums = read_json(output_root / "validation_checksums.json", default={})
@@ -83,6 +95,26 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path) -> int:
         return 0
 
     for smoke_row in smoke_rows:
+        alias = str(smoke_row.get("model_alias", ""))
+        dataset = str(smoke_row.get("dataset", ""))
+        subset = str(smoke_row.get("subset", ""))
+        if alias not in selected_aliases:
+            previous = previous_validation_by_pair.get((alias, dataset, subset))
+            if previous is not None:
+                validation_rows.append(dict(previous))
+            else:
+                validation_rows.append(
+                    {
+                        "model_alias": alias,
+                        "dataset": dataset,
+                        "subset": subset,
+                        "status": smoke_row.get("status", AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value),
+                        "reason": smoke_row.get("reason", "not selected in scoped validation run"),
+                        "shard_path": smoke_row.get("shard_path", ""),
+                        "num_entries": 0,
+                    }
+                )
+            continue
         if smoke_row.get("status") != AssetStatus.VERIFIED.value:
             validation_rows.append(
                 {
@@ -155,8 +187,28 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path) -> int:
     _write_json(output_root / "validation_checksums.json", checksums)
     _write_json(output_root / "asset_completion_summary.json", summary)
     write_markdown_report(output_root / "ASSET_COMPLETION_REPORT.md", summary)
+    write_wrapper_batch1_report(
+        output_root / "WRAPPER_BATCH1_REPORT.md",
+        output_root=output_root,
+        summary=summary,
+        validation_rows=validation_rows,
+    )
     print(f"asset_validate_hidden_states rows={len(validation_rows)} final_status={summary['final_status']}")
     return 0
+
+
+def resolve_model_selection(models: Sequence[str] | None) -> set[str]:
+    if models is None:
+        return set(REQUIRED_MODEL_ALIASES)
+    duplicates = sorted({alias for alias in models if list(models).count(alias) > 1})
+    if duplicates:
+        raise ValueError(f"--models contains duplicate aliases: {duplicates}")
+    unknown = sorted(set(models) - set(REQUIRED_MODEL_ALIASES))
+    if unknown:
+        raise ValueError(f"--models contains unknown aliases: {unknown}")
+    if not models:
+        raise ValueError("--models must name at least one alias when provided")
+    return set(models)
 
 
 def aggregate_model_statuses(rows: Sequence[Mapping[str, object]]) -> tuple[dict[str, str], dict[str, str]]:
@@ -302,6 +354,64 @@ def write_markdown_report(path: Path, summary: Mapping[str, object]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_wrapper_batch1_report(
+    path: Path,
+    *,
+    output_root: Path,
+    summary: Mapping[str, object],
+    validation_rows: Sequence[Mapping[str, object]],
+) -> None:
+    target_models = ("qwen2.5-vl-7b", "qwen3.5-4b", "qwen3.5-9b", "internvl3.5-8b")
+    regression_models = ("qwen3-vl-8b", "llava-onevision-qwen2-7b-ov-hf")
+    model_statuses = summary.get("model_statuses", {})
+    inspection_rows = read_csv(output_root / "wrapper_batch1_asset_inspection.csv")
+    inspection_by_alias = {str(row.get("alias")): row for row in inspection_rows}
+    lines = [
+        "# Wrapper Batch 1 Report",
+        "",
+        "## Target Models",
+        *[f"- {alias}" for alias in target_models],
+        "",
+        "## Regression Models",
+        *[f"- {alias}" for alias in regression_models],
+        "",
+        "## Exact Wrapper Changes",
+        "- qwen2.5-vl-7b: explicit Qwen25VLWrapper with Qwen2_5_VLProcessor and Qwen2_5_VLForConditionalGeneration; registry dtype is bfloat16 because the local config declares bfloat16 and float16 smoke produced non-finite prefill logits.",
+        "- qwen3.5-4b and qwen3.5-9b: explicit Qwen35VLWrapper with Qwen3VLProcessor, Qwen3_5ForConditionalGeneration, and enable_thinking=false.",
+        "- internvl3.5-8b: local InternVL wrapper using AutoTokenizer(use_fast=False), remote-code AutoModel, dynamic image tiling, IMG_CONTEXT prompt expansion, and explicit forward prefill hidden states.",
+        "",
+        "## Inspection Findings",
+    ]
+    for alias in target_models:
+        row = inspection_by_alias.get(alias, {})
+        lines.append(
+            f"- {alias}: model_type={row.get('model_type', '')}, architectures={row.get('architectures', '')}, "
+            f"processor={row.get('candidate_processor_class', '')}, model={row.get('candidate_model_class', '')}, "
+            f"status={row.get('status', '')}, reason={row.get('reason', '')}"
+        )
+    lines.extend(["", "## Smoke And Validation Status"])
+    for alias in (*target_models, *regression_models):
+        alias_rows = [row for row in validation_rows if row.get("model_alias") == alias]
+        row_statuses = sorted({str(row.get("status", "")) for row in alias_rows})
+        lines.append(f"- {alias}: final={_mapping_get(model_statuses, alias)}, validation_rows={','.join(row_statuses)}")
+    lines.extend(["", "## Remaining Unsupported Models"])
+    for alias in summary.get("unsupported_models", []):
+        if alias not in target_models and alias not in regression_models:
+            lines.append(f"- {alias}")
+    lines.extend(["", "## Remaining Blocked Models"])
+    for alias in summary.get("blocked_models", []):
+        if alias not in target_models and alias not in regression_models:
+            lines.append(f"- {alias}")
+    lines.extend(["", "## Next Recommended Wrapper Batch", "Phi, Gemma, MiniCPM, GLM, Molmo, and LLaVA-v1.5 remain outside this batch and should be handled in separate scoped wrapper tasks."])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _mapping_get(payload: object, key: str) -> object:
+    if isinstance(payload, Mapping):
+        return payload.get(key, "")
+    return ""
+
+
 def get_git_commit() -> str:
     try:
         result = subprocess.run(
@@ -319,7 +429,7 @@ def get_git_commit() -> str:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return run_validation(output_root=args.output_root, smoke_cache_root=args.smoke_cache_root)
+        return run_validation(output_root=args.output_root, smoke_cache_root=args.smoke_cache_root, models=args.models)
     except Exception as error:
         print(str(error), file=sys.stderr)
         return 2

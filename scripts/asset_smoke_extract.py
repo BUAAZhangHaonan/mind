@@ -75,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--datasets", nargs="+", required=True)
     parser.add_argument("--smoke-limit", type=int, default=2)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=None,
+        help="Optional registry aliases to load for a scoped smoke run. Non-selected aliases are not loaded.",
+    )
     return parser
 
 
@@ -86,6 +92,7 @@ def run_smoke(
     datasets: Sequence[str],
     smoke_limit: int,
     device: str,
+    models: Sequence[str] | None = None,
 ) -> int:
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -100,6 +107,12 @@ def run_smoke(
 
     output_root.mkdir(parents=True, exist_ok=True)
     registry = load_asset_registry(registry_path)
+    selected_aliases = resolve_model_selection(models)
+    previous_rows = read_report_rows(output_root / "smoke_extraction_report.csv")
+    previous_by_pair = {
+        (str(row.get("model_alias")), str(row.get("dataset")), str(row.get("subset"))): row
+        for row in previous_rows
+    }
     missing_paths = required_dataset_paths(stage0_root=stage0_root, datasets=datasets)
     audit_results = {result.alias: result for result in (audit_asset_metadata(model) for model in registry.models)}
     rows: list[dict[str, object]] = []
@@ -112,6 +125,9 @@ def run_smoke(
     if missing_paths:
         reason = "required smoke dataset file missing before model loading: " + ", ".join(str(path) for path in missing_paths)
         for alias in REQUIRED_MODEL_ALIASES:
+            if alias not in selected_aliases:
+                rows.extend(_preserved_or_audit_rows(alias, datasets, audit_results[alias], previous_by_pair))
+                continue
             audit = audit_results[alias]
             status = (
                 AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value
@@ -133,6 +149,9 @@ def run_smoke(
     }
     for asset in registry.models:
         audit = audit_results[asset.alias]
+        if asset.alias not in selected_aliases:
+            rows.extend(_preserved_or_audit_rows(asset.alias, datasets, audit, previous_by_pair))
+            continue
         if audit.status != AssetStatus.VERIFIED:
             for dataset in datasets:
                 dataset_name, subset = DATASET_SPECS[dataset]
@@ -197,8 +216,13 @@ def run_smoke(
                 metadata = {
                     "stage": "assets",
                     "cache_type": "asset_smoke_prefill",
+                    "model_alias": asset.alias,
                     "model_name": model_config.name,
                     "model_family": model_config.family,
+                    "local_path": asset.local_path,
+                    "wrapper_class": type(wrapper).__name__,
+                    "processor_class": type(processor).__name__,
+                    "model_class": type(model).__name__,
                     "dataset_name": dataset_name,
                     "source_dataset": dataset_name,
                     "subset": subset,
@@ -215,6 +239,10 @@ def run_smoke(
                     "dtype": model_config.dtype,
                     "prompt_template_id": wrapper.prompt_template_id(),
                     "prompt_template_text": wrapper.prompt_template_text(),
+                    "deterministic_generation_kwargs": sidecar_generation_kwargs(wrapper),
+                    "thinking_disabled": thinking_is_disabled(model_config, wrapper),
+                    "trust_remote_code": bool(model_config.trust_remote_code),
+                    "validation_commit": get_git_commit(),
                     "script": "scripts/asset_smoke_extract.py",
                     "git_commit": get_git_commit(),
                     "created_at_utc": utc_now_iso(),
@@ -276,6 +304,27 @@ def run_smoke(
     write_smoke_outputs(output_root, rows, checksums)
     write_summary_from_rows(output_root, rows, datasets=datasets, smoke_limit=smoke_limit)
     return 0
+
+
+def resolve_model_selection(models: Sequence[str] | None) -> set[str]:
+    if models is None:
+        return set(REQUIRED_MODEL_ALIASES)
+    duplicates = sorted({alias for alias in models if list(models).count(alias) > 1})
+    if duplicates:
+        raise ValueError(f"--models contains duplicate aliases: {duplicates}")
+    unknown = sorted(set(models) - set(REQUIRED_MODEL_ALIASES))
+    if unknown:
+        raise ValueError(f"--models contains unknown aliases: {unknown}")
+    if not models:
+        raise ValueError("--models must name at least one alias when provided")
+    return set(models)
+
+
+def read_report_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
 
 
 def required_dataset_paths(*, stage0_root: Path, datasets: Sequence[str]) -> list[Path]:
@@ -488,6 +537,53 @@ def _blocked_model_rows(alias: str, datasets: Sequence[str], reason: str, status
     return rows
 
 
+def _preserved_or_audit_rows(
+    alias: str,
+    datasets: Sequence[str],
+    audit: object,
+    previous_by_pair: Mapping[tuple[str, str, str], Mapping[str, object]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for dataset in datasets:
+        dataset_name, subset = DATASET_SPECS[dataset]
+        previous = previous_by_pair.get((alias, dataset_name, subset))
+        if previous is not None:
+            rows.append(dict(previous))
+            continue
+        if audit.status == AssetStatus.VERIFIED:
+            rows.append(
+                _report_row(
+                    alias,
+                    dataset_name,
+                    subset,
+                    AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value,
+                    "not selected in scoped smoke run and no previous smoke status was available",
+                )
+            )
+        else:
+            rows.append(_report_row(alias, dataset_name, subset, audit.status.value, audit.reason))
+    return rows
+
+
+def sidecar_generation_kwargs(wrapper: object) -> dict[str, object]:
+    kwargs = wrapper.deterministic_generation_kwargs(max_new_tokens=1)
+    return {
+        "max_new_tokens": int(kwargs["max_new_tokens"]),
+        "do_sample": bool(kwargs["do_sample"]),
+        "temperature": kwargs["temperature"],
+        "return_dict_in_generate": bool(kwargs["return_dict_in_generate"]),
+        "output_scores": bool(kwargs["output_scores"]),
+        "output_hidden_states": bool(kwargs["output_hidden_states"]),
+    }
+
+
+def thinking_is_disabled(model_config: ModelConfig, wrapper: object) -> bool:
+    thinking = model_config.thinking or {}
+    if thinking.get("supported") is True:
+        return bool(thinking.get("disabled_by_default") is True and wrapper.disable_thinking_kwargs())
+    return True
+
+
 def _report_row(
     alias: str,
     dataset: str,
@@ -607,6 +703,7 @@ def main(argv: list[str] | None = None) -> int:
             datasets=args.datasets,
             smoke_limit=args.smoke_limit,
             device=args.device,
+            models=args.models,
         )
     except Exception as error:
         print(str(error), file=sys.stderr)

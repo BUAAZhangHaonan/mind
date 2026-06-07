@@ -5,22 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import importlib.util
+import json
+import math
 from pathlib import Path
 import sys
 import types
 from typing import Any, ClassVar, Mapping, Sequence
 
+import numpy as np
 from PIL import Image
 from huggingface_hub import snapshot_download
 import torch
 import torch.nn.functional as F
 from transformers import (
+    AutoModel,
     AutoModelForCausalLM,
     AutoModelForImageTextToText,
     AutoProcessor,
     AutoTokenizer,
     GenerationConfig,
 )
+from transformers.modeling_utils import PreTrainedModel
 
 from mind.config import ModelConfig
 
@@ -156,6 +161,17 @@ def load_molmo_processing_modules(model_id: str) -> tuple[Any, Any, Path]:
     return preprocessing_module, image_module, snapshot_path
 
 
+def load_internvl_conversation_module(model_id: str) -> Any:
+    local_model_path = Path(model_id).expanduser()
+    if not local_model_path.exists():
+        raise FileNotFoundError(f"InternVL local model path does not exist: {local_model_path}")
+    conversation_path = local_model_path / "conversation.py"
+    if not conversation_path.is_file():
+        raise FileNotFoundError(f"InternVL conversation.py is missing: {conversation_path}")
+    package_name = f"_mind_internvl_{hashlib.sha1(str(local_model_path).encode('utf-8')).hexdigest()[:8]}"
+    return load_local_python_module(f"{package_name}.conversation", conversation_path)
+
+
 def _model_inputs_batch_size(model_inputs: Any) -> int:
     input_ids = _model_inputs_get(model_inputs, "input_ids")
     if hasattr(input_ids, "shape") and len(input_ids.shape) > 0:
@@ -225,6 +241,11 @@ def _normalize_molmo_past_key_values(
     return past_key_values
 
 
+def _pil_bicubic() -> Any:
+    resampling = getattr(Image, "Resampling", None)
+    return resampling.BICUBIC if resampling is not None else Image.BICUBIC
+
+
 @dataclass
 class BaseModelWrapper:
     """Base wrapper that normalizes model loading and prompt shape."""
@@ -274,6 +295,12 @@ class BaseModelWrapper:
 
     def prompt_template_text(self) -> str:
         return self.config.prompt_template_text or "Single-image prompt receives the normalized question text unchanged."
+
+    def expected_processor_class_name(self) -> str:
+        return "AutoProcessor"
+
+    def expected_model_class_name(self) -> str:
+        return "generic_unknown"
 
     def chat_template_kwargs(self) -> dict[str, Any]:
         disable_argument = None
@@ -516,6 +543,23 @@ class LoadedModelBundle:
     model: Any
 
 
+@dataclass
+class InternVLLocalProcessor:
+    tokenizer: Any
+    conversation_module: Any
+    template_name: str
+    image_size: int
+    min_dynamic_patch: int
+    max_dynamic_patch: int
+    use_thumbnail: bool
+    num_image_token: int
+    eos_token_id: int
+    eos_token_text: str
+
+    def batch_decode(self, *args: Any, **kwargs: Any) -> Any:
+        return self.tokenizer.batch_decode(*args, **kwargs)
+
+
 class QwenWrapper(BaseModelWrapper):
     def prepare_batch_inputs(
         self,
@@ -627,6 +671,12 @@ class QwenWrapper(BaseModelWrapper):
 
 
 class QwenVLWrapper(QwenWrapper):
+    def expected_model_class_name(self) -> str:
+        return "AutoModelForImageTextToText"
+
+    def expected_processor_class_name(self) -> str:
+        return "AutoProcessor"
+
     def resolve_vision_token_span(
         self,
         model: Any,
@@ -808,7 +858,67 @@ class QwenVLWrapper(QwenWrapper):
         )
 
 
+class Qwen25VLWrapper(QwenVLWrapper):
+    def expected_model_class_name(self) -> str:
+        return "Qwen2_5_VLForConditionalGeneration"
+
+    def expected_processor_class_name(self) -> str:
+        return "Qwen2_5_VLProcessor"
+
+    def load_processor(self):
+        from transformers import Qwen2_5_VLProcessor
+
+        return configure_left_padding(
+            Qwen2_5_VLProcessor.from_pretrained(
+                self.model_id_or_path(),
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import Qwen2_5_VLForConditionalGeneration
+
+        return Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        )
+
+
+class Qwen35VLWrapper(QwenVLWrapper):
+    def expected_model_class_name(self) -> str:
+        return "Qwen3_5ForConditionalGeneration"
+
+    def expected_processor_class_name(self) -> str:
+        return "Qwen3VLProcessor"
+
+    def load_processor(self):
+        from transformers import Qwen3VLProcessor
+
+        return configure_left_padding(
+            Qwen3VLProcessor.from_pretrained(
+                self.model_id_or_path(),
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import Qwen3_5ForConditionalGeneration
+
+        return Qwen3_5ForConditionalGeneration.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        )
+
+
 class QwenTextWrapper(QwenWrapper):
+    def expected_model_class_name(self) -> str:
+        return "AutoModelForCausalLM"
+
+    def expected_processor_class_name(self) -> str:
+        return "AutoTokenizer"
+
     def load_processor(self):
         return configure_left_padding(
             AutoTokenizer.from_pretrained(
@@ -846,8 +956,237 @@ class QwenTextWrapper(QwenWrapper):
         )
 
 
-class InternVLWrapper(QwenVLWrapper):
-    """InternVL shares the same high-level image+text message shape."""
+class InternVLWrapper(BaseModelWrapper):
+    """Local InternVL chat wrapper using the asset's remote-code prompt path."""
+
+    img_start_token: ClassVar[str] = "<img>"
+    img_end_token: ClassVar[str] = "</img>"
+    img_context_token: ClassVar[str] = "<IMG_CONTEXT>"
+    image_placeholder: ClassVar[str] = "<image>"
+
+    def expected_model_class_name(self) -> str:
+        return "InternVLChatModel"
+
+    def expected_processor_class_name(self) -> str:
+        return "InternVLLocalProcessor"
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("InternVLWrapper requires an image path.")
+        return [{"role": "user", "content": [{"type": "image", "image": image_path}, {"type": "text", "text": question}]}]
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        return self.prepare_asset_batch_inputs(
+            processor,
+            questions=[self.format_yes_no_question(question) for question in questions],
+            image_paths=image_paths,
+            device=device,
+        )
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: InternVLLocalProcessor,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> dict[str, Any]:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        pixel_values: list[torch.Tensor] = []
+        num_patches_list: list[int] = []
+        queries: list[str] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("InternVLWrapper requires an image path.")
+            image_tensor = self._load_image(
+                image_path,
+                image_size=processor.image_size,
+                min_num=processor.min_dynamic_patch,
+                max_num=processor.max_dynamic_patch,
+                use_thumbnail=processor.use_thumbnail,
+            )
+            num_patches = int(image_tensor.shape[0])
+            pixel_values.append(image_tensor)
+            num_patches_list.append(num_patches)
+            queries.append(self._build_query(processor, question=question, num_patches=num_patches))
+
+        processor.tokenizer.padding_side = "left"
+        tokenized = processor.tokenizer(queries, return_tensors="pt", padding=True)
+        dtype = resolve_torch_dtype(self.config.dtype)
+        batch = {
+            "input_ids": tokenized["input_ids"].to(device),
+            "attention_mask": tokenized["attention_mask"].to(device),
+            "pixel_values": torch.cat(pixel_values, dim=0).to(device=device, dtype=dtype),
+            "image_flags": torch.ones((sum(num_patches_list), 1), dtype=torch.long, device=device),
+            "num_patches_list": num_patches_list,
+        }
+        return batch
+
+    def load_processor(self):
+        model_path = Path(self.model_id_or_path()).expanduser()
+        config = json.loads((model_path / "config.json").read_text(encoding="utf-8"))
+        preprocessor = {}
+        preprocessor_path = model_path / "preprocessor_config.json"
+        if preprocessor_path.is_file():
+            preprocessor = json.loads(preprocessor_path.read_text(encoding="utf-8"))
+        processor_config = {}
+        processor_config_path = model_path / "processor_config.json"
+        if processor_config_path.is_file():
+            processor_config = json.loads(processor_config_path.read_text(encoding="utf-8"))
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id_or_path(),
+            trust_remote_code=self.config.trust_remote_code,
+            local_files_only=model_path.exists(),
+            use_fast=False,
+        )
+        configure_left_padding(tokenizer)
+        conversation_module = load_internvl_conversation_module(self.model_id_or_path())
+        template_name = str(config.get("template") or "internvl2_5")
+        template = conversation_module.get_conv_template(template_name)
+        eos_token_text = str(template.sep).strip()
+        eos_token_id = int(tokenizer.convert_tokens_to_ids(eos_token_text))
+        size_config = preprocessor.get("size") if isinstance(preprocessor, Mapping) else None
+        size_value = None
+        if isinstance(size_config, Mapping):
+            size_value = size_config.get("height") or size_config.get("width")
+        image_size = int(config.get("force_image_size") or size_value or 448)
+        return InternVLLocalProcessor(
+            tokenizer=tokenizer,
+            conversation_module=conversation_module,
+            template_name=template_name,
+            image_size=image_size,
+            min_dynamic_patch=int(config.get("min_dynamic_patch") or preprocessor.get("min_patches") or 1),
+            max_dynamic_patch=int(config.get("max_dynamic_patch") or preprocessor.get("max_patches") or 12),
+            use_thumbnail=bool(config.get("use_thumbnail", True)),
+            num_image_token=int(processor_config.get("image_seq_length") or 256),
+            eos_token_id=eos_token_id,
+            eos_token_text=eos_token_text,
+        )
+
+    def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
+        kwargs = super().model_load_kwargs(device=device)
+        kwargs.pop("attn_implementation", None)
+        kwargs.pop("device_map", None)
+        kwargs["use_flash_attn"] = False if self.config.attn_implementation == "eager" else True
+        kwargs.setdefault("low_cpu_mem_usage", True)
+        return kwargs
+
+    def load_model(self, *, device: str = "cuda"):
+        if not hasattr(PreTrainedModel, "all_tied_weights_keys"):
+            PreTrainedModel.all_tied_weights_keys = {}
+        model = AutoModel.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        )
+        if hasattr(model, "get_expanded_tied_weights_keys"):
+            model.all_tied_weights_keys = model.get_expanded_tied_weights_keys(all_submodels=True)
+        if device.startswith("cuda"):
+            model = model.to(device)
+        return model.eval()
+
+    def generate(
+        self,
+        model: Any,
+        processor: InternVLLocalProcessor,
+        *,
+        model_inputs: Any,
+        max_new_tokens: int,
+    ) -> Any:
+        self._set_img_context_token_id(model, processor)
+        generation_kwargs = self.deterministic_generation_kwargs(max_new_tokens=max_new_tokens)
+        return model.generate(
+            pixel_values=model_inputs["pixel_values"],
+            input_ids=model_inputs["input_ids"],
+            attention_mask=model_inputs["attention_mask"],
+            max_new_tokens=generation_kwargs["max_new_tokens"],
+            do_sample=generation_kwargs["do_sample"],
+            temperature=generation_kwargs["temperature"],
+            eos_token_id=processor.eos_token_id,
+            return_dict_in_generate=generation_kwargs["return_dict_in_generate"],
+            output_scores=generation_kwargs["output_scores"],
+            output_hidden_states=generation_kwargs["output_hidden_states"],
+        )
+
+    def decode_generation(
+        self,
+        processor: InternVLLocalProcessor,
+        *,
+        generated_ids: Any,
+        prompt_input_ids: Any,
+    ) -> str:
+        del prompt_input_ids
+        decoded = processor.tokenizer.batch_decode(
+            generated_ids.tolist(),
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        )
+        text = str(decoded[0]).split(processor.eos_token_text)[0].strip()
+        return text
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: InternVLLocalProcessor,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        self._set_img_context_token_id(model, processor)
+        return model(
+            pixel_values=model_inputs["pixel_values"],
+            input_ids=model_inputs["input_ids"],
+            attention_mask=model_inputs["attention_mask"],
+            image_flags=model_inputs["image_flags"],
+            return_dict=True,
+            output_hidden_states=True,
+        )
+
+    def resolve_total_layers(self, model_or_config: Any) -> int:
+        config = getattr(model_or_config, "config", model_or_config)
+        return _resolve_positive_config_int(config, (("llm_config", "num_hidden_layers"),), label="total_layers")
+
+    def resolve_hidden_dim(self, model_or_config: Any) -> int:
+        config = getattr(model_or_config, "config", model_or_config)
+        return _resolve_positive_config_int(config, (("llm_config", "hidden_size"),), label="hidden_dim")
+
+    def resolve_vision_token_span(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> tuple[int, int] | None:
+        del processor
+        input_ids = _model_inputs_get(model_inputs, "input_ids")
+        if input_ids is None:
+            return None
+        img_context_token_id = getattr(model, "img_context_token_id", None)
+        if img_context_token_id is None:
+            return None
+        positions = torch.nonzero(input_ids[batch_index] == int(img_context_token_id), as_tuple=False).flatten()
+        if len(positions) == 0:
+            return None
+        return int(positions[0].item()), int(positions[-1].item())
 
     def extract_preprojector_vision_features(
         self,
@@ -879,6 +1218,123 @@ class InternVLWrapper(QwenVLWrapper):
         if vision_features.shape[1] > 1:
             vision_features = vision_features[:, 1:, :]
         return vision_features.reshape(-1, vision_features.shape[-1]).detach().cpu()
+
+    def _build_query(self, processor: InternVLLocalProcessor, *, question: str, num_patches: int) -> str:
+        raw_question = question if self.image_placeholder in question else f"{self.image_placeholder}\n{question}"
+        template = processor.conversation_module.get_conv_template(processor.template_name)
+        template.append_message(template.roles[0], raw_question)
+        template.append_message(template.roles[1], None)
+        query = template.get_prompt()
+        image_tokens = (
+            self.img_start_token
+            + self.img_context_token * processor.num_image_token * num_patches
+            + self.img_end_token
+        )
+        if self.image_placeholder not in query:
+            raise ValueError("InternVL prompt template did not include the image placeholder.")
+        return query.replace(self.image_placeholder, image_tokens, 1)
+
+    def _set_img_context_token_id(self, model: Any, processor: InternVLLocalProcessor) -> None:
+        img_context_token_id = processor.tokenizer.convert_tokens_to_ids(self.img_context_token)
+        if img_context_token_id is None or int(img_context_token_id) < 0:
+            raise ValueError("InternVL tokenizer cannot resolve <IMG_CONTEXT> token id.")
+        model.img_context_token_id = int(img_context_token_id)
+
+    def _load_image(
+        self,
+        image_path: str,
+        *,
+        image_size: int,
+        min_num: int,
+        max_num: int,
+        use_thumbnail: bool,
+    ) -> torch.Tensor:
+        image = Image.open(image_path).convert("RGB")
+        images = self._dynamic_preprocess(
+            image,
+            image_size=image_size,
+            min_num=min_num,
+            max_num=max_num,
+            use_thumbnail=use_thumbnail,
+        )
+        return torch.stack([self._internvl_image_to_tensor(item, image_size=image_size) for item in images], dim=0)
+
+    def _dynamic_preprocess(
+        self,
+        image: Image.Image,
+        *,
+        min_num: int,
+        max_num: int,
+        image_size: int,
+        use_thumbnail: bool,
+    ) -> list[Image.Image]:
+        orig_width, orig_height = image.size
+        aspect_ratio = orig_width / orig_height
+        target_ratios = sorted(
+            {
+                (i, j)
+                for n in range(min_num, max_num + 1)
+                for i in range(1, n + 1)
+                for j in range(1, n + 1)
+                if min_num <= i * j <= max_num
+            },
+            key=lambda ratio: ratio[0] * ratio[1],
+        )
+        target_aspect_ratio = self._find_closest_aspect_ratio(
+            aspect_ratio,
+            target_ratios,
+            width=orig_width,
+            height=orig_height,
+            image_size=image_size,
+        )
+        target_width = image_size * target_aspect_ratio[0]
+        target_height = image_size * target_aspect_ratio[1]
+        blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
+        resized_img = image.resize((target_width, target_height), resample=_pil_bicubic())
+        processed_images = []
+        for index in range(blocks):
+            box = (
+                (index % (target_width // image_size)) * image_size,
+                (index // (target_width // image_size)) * image_size,
+                ((index % (target_width // image_size)) + 1) * image_size,
+                ((index // (target_width // image_size)) + 1) * image_size,
+            )
+            processed_images.append(resized_img.crop(box))
+        if len(processed_images) != blocks:
+            raise ValueError("InternVL dynamic image preprocessing produced an unexpected tile count.")
+        if use_thumbnail and len(processed_images) != 1:
+            processed_images.append(image.resize((image_size, image_size), resample=_pil_bicubic()))
+        return processed_images
+
+    def _find_closest_aspect_ratio(
+        self,
+        aspect_ratio: float,
+        target_ratios: Sequence[tuple[int, int]],
+        *,
+        width: int,
+        height: int,
+        image_size: int,
+    ) -> tuple[int, int]:
+        best_ratio_diff = math.inf
+        best_ratio = (1, 1)
+        area = width * height
+        for ratio in target_ratios:
+            target_aspect_ratio = ratio[0] / ratio[1]
+            ratio_diff = abs(aspect_ratio - target_aspect_ratio)
+            if ratio_diff < best_ratio_diff:
+                best_ratio_diff = ratio_diff
+                best_ratio = ratio
+            elif ratio_diff == best_ratio_diff and area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
+                best_ratio = ratio
+        return best_ratio
+
+    def _internvl_image_to_tensor(self, image: Image.Image, *, image_size: int) -> torch.Tensor:
+        image = image.convert("RGB").resize((image_size, image_size), resample=_pil_bicubic())
+        array = np.asarray(image, dtype=np.float32) / 255.0
+        tensor = torch.from_numpy(array).permute(2, 0, 1)
+        mean = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1, 1)
+        std = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
+        return (tensor - mean) / std
 
 
 class LlavaOnevisionWrapper(QwenVLWrapper):

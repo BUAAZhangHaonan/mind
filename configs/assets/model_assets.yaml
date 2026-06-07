@@ -201,7 +201,7 @@ models:
     model_config_path: configs/models/qwen2_5_vl_7b.yaml
     model_id_or_family_name: qwen2_5_vl
     family: qwen2_5_vl
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: false
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}

@@ -102,8 +102,11 @@ MOE_INDICATOR_KEYS = {
 
 SUPPORTED_WRAPPER_FAMILIES = {
     "qwen_vl": "AutoModelForImageTextToText",
+    "qwen2_5_vl": "Qwen2_5_VLForConditionalGeneration",
     "llava_onevision": "AutoModelForImageTextToText",
     "qwen3_vl": "AutoModelForImageTextToText",
+    "qwen3_5": "Qwen3_5ForConditionalGeneration",
+    "internvl": "AutoModel",
     "molmo": "AutoModelForCausalLM",
 }
 
@@ -119,12 +122,7 @@ SINGLE_IMAGE_VLM_FAMILIES = SUPPORTED_WRAPPER_FAMILIES.keys() | {
     "internvl",
 }
 
-UNSUPPORTED_LOCAL_WRAPPER_REASONS = {
-    "internvl3.5-8b": (
-        "local InternVL asset uses the custom InternVL chat/tokenizer path; "
-        "the Experiment 1 wrapper only supports HF-style image-text processor inputs"
-    ),
-}
+UNSUPPORTED_LOCAL_WRAPPER_REASONS: dict[str, str] = {}
 
 
 def detect_moe_indicators(payload: object, *, prefix: str = "") -> list[str]:
@@ -274,6 +272,9 @@ def validate_hidden_state_entries(
 ) -> ValidationResult:
     if not entries:
         return ValidationResult("failed_validation", "shard contains no entries")
+    sidecar_result = _validate_required_sidecar_metadata(sidecar)
+    if sidecar_result.status != "verified":
+        return sidecar_result
     try:
         total_layers = int(sidecar["total_layers"])
         hidden_dim = int(sidecar["hidden_dim"])
@@ -311,6 +312,46 @@ def validate_hidden_state_entries(
         )
         if result.status != "verified":
             return result
+    return ValidationResult("verified")
+
+
+def _validate_required_sidecar_metadata(sidecar: Mapping[str, object]) -> ValidationResult:
+    required_nonblank = (
+        "model_alias",
+        "model_family",
+        "local_path",
+        "wrapper_class",
+        "processor_class",
+        "model_class",
+        "prompt_template_id",
+        "validation_commit",
+    )
+    for key in required_nonblank:
+        value = str(sidecar.get(key) or "").strip()
+        if not value:
+            return ValidationResult("failed_validation", f"sidecar metadata missing or blank: {key}")
+    if str(sidecar.get("model_family")) == "unknown":
+        return ValidationResult("failed_validation", "sidecar metadata model_family must not be unknown")
+    if str(sidecar.get("wrapper_class")) == "generic_unknown":
+        return ValidationResult("failed_validation", "sidecar metadata wrapper_class must not be generic_unknown")
+    deterministic = sidecar.get("deterministic_generation_kwargs")
+    if not isinstance(deterministic, Mapping):
+        return ValidationResult("failed_validation", "sidecar metadata deterministic_generation_kwargs missing or invalid")
+    if deterministic.get("do_sample") is not False:
+        return ValidationResult("failed_validation", "sidecar metadata deterministic_generation_kwargs.do_sample must be false")
+    try:
+        max_new_tokens = int(deterministic["max_new_tokens"])
+        temperature = float(deterministic["temperature"])
+    except (KeyError, TypeError, ValueError) as error:
+        return ValidationResult("failed_validation", f"sidecar metadata deterministic generation invalid: {error}")
+    if max_new_tokens != 1 or temperature != 0.0:
+        return ValidationResult("failed_validation", "sidecar metadata deterministic generation must use max_new_tokens=1 and temperature=0")
+    thinking_disabled = sidecar.get("thinking_disabled")
+    if thinking_disabled not in (True, False):
+        return ValidationResult("failed_validation", "sidecar metadata thinking_disabled must be boolean")
+    trust_remote_code = sidecar.get("trust_remote_code")
+    if trust_remote_code not in (True, False):
+        return ValidationResult("failed_validation", "sidecar metadata trust_remote_code must be boolean")
     return ValidationResult("verified")
 
 
@@ -435,7 +476,10 @@ def tensor_checksum(tensor: torch.Tensor) -> str:
     digest = hashlib.sha256()
     digest.update(str(cpu.dtype).encode("utf-8"))
     digest.update(str(list(cpu.shape)).encode("utf-8"))
-    digest.update(cpu.numpy().tobytes())
+    if cpu.dtype == torch.bfloat16:
+        digest.update(cpu.view(torch.uint16).numpy().tobytes())
+    else:
+        digest.update(cpu.numpy().tobytes())
     return digest.hexdigest()
 
 
