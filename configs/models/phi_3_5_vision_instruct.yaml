@@ -3,7 +3,7 @@ model_id: /home/team/lvshuyang/Models/Phi-3.5-vision-instruct
 local_path: /home/team/lvshuyang/Models/Phi-3.5-vision-instruct
 model_id_or_family_name: phi3_v
 family: phi3_v
-dtype: float16
+dtype: bfloat16
 trust_remote_code: true
 attn_implementation: eager
 deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}

@@ -135,6 +135,17 @@ def test_missing_required_wrapper_sidecar_metadata_fails() -> None:
     assert "wrapper_class" in result.reason
 
 
+@pytest.mark.parametrize("key", ["processor_class", "model_class"])
+def test_unknown_processor_or_model_sidecar_metadata_fails(key: str) -> None:
+    sidecar = _sidecar()
+    sidecar[key] = "unknown"
+
+    result = validate_hidden_state_entries([_entry()], sidecar)
+
+    assert result.status == "failed_validation"
+    assert key in result.reason
+
+
 def test_tensor_checksum_supports_bfloat16() -> None:
     tensor = torch.tensor([[1.0, 2.0]], dtype=torch.bfloat16)
 

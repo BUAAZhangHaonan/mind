@@ -5,9 +5,12 @@ from __future__ import annotations
 from mind.config import ModelConfig
 
 from .wrappers import (
+    Gemma3Wrapper,
     InternVLWrapper,
     LlavaOnevisionWrapper,
     MolmoWrapper,
+    Phi35VisionWrapper,
+    Phi4MultimodalWrapper,
     Qwen25VLWrapper,
     Qwen35VLWrapper,
     QwenTextWrapper,
@@ -23,6 +26,12 @@ def create_model_wrapper(config: ModelConfig):
         return LlavaOnevisionWrapper(config)
     if family == "molmo":
         return MolmoWrapper(config)
+    if family == "gemma3":
+        return Gemma3Wrapper(config)
+    if family == "phi3_v":
+        return Phi35VisionWrapper(config)
+    if family == "phi4mm":
+        return Phi4MultimodalWrapper(config)
     if family in {"qwen2_5_vl", "qwen2.5_vl"}:
         return Qwen25VLWrapper(config)
     if family in {"qwen3_5", "qwen3.5"}:

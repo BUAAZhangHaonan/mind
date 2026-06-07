@@ -3,7 +3,7 @@ model_id: /home/team/lvshuyang/Models/Phi-4-multimodal-instruct
 local_path: /home/team/lvshuyang/Models/Phi-4-multimodal-instruct
 model_id_or_family_name: phi4mm
 family: phi4mm
-dtype: float16
+dtype: bfloat16
 trust_remote_code: true
 attn_implementation: eager
 deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}

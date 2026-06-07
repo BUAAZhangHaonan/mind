@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -108,6 +109,9 @@ SUPPORTED_WRAPPER_FAMILIES = {
     "qwen3_5": "Qwen3_5ForConditionalGeneration",
     "internvl": "AutoModel",
     "molmo": "AutoModelForCausalLM",
+    "gemma3": "Gemma3ForConditionalGeneration",
+    "phi3_v": "Phi3VForCausalLM",
+    "phi4mm": "Phi4MMForCausalLM",
 }
 
 SINGLE_IMAGE_VLM_FAMILIES = SUPPORTED_WRAPPER_FAMILIES.keys() | {
@@ -202,8 +206,6 @@ def audit_asset_metadata(asset: AssetModel) -> AssetAuditResult:
         prompt_template_id=asset.prompt_template_id,
     )
 
-    if not processor_tokenizer_assets:
-        return _replace_audit(result, status=AssetStatus.BLOCKED, reason="processor/tokenizer metadata is missing")
     if moe_indicators and not asset.policy.allow_moe:
         return _replace_audit(
             result,
@@ -221,6 +223,12 @@ def audit_asset_metadata(asset: AssetModel) -> AssetAuditResult:
         return _replace_audit(result, status=AssetStatus.UNSUPPORTED_BY_POLICY, reason="family is not registered as a single-image VLM")
     if not _deterministic_generation_is_valid(asset):
         return _replace_audit(result, status=AssetStatus.UNSUPPORTED_BY_POLICY, reason="deterministic yes/no generation contract is not satisfied")
+    family_result = _audit_family_specific_constraints(asset, local_path, config)
+    if family_result is not None:
+        status, reason = family_result
+        return _replace_audit(result, status=status, reason=reason)
+    if not processor_tokenizer_assets:
+        return _replace_audit(result, status=AssetStatus.BLOCKED, reason="processor/tokenizer metadata is missing")
     if asset.alias in UNSUPPORTED_LOCAL_WRAPPER_REASONS:
         return _replace_audit(
             result,
@@ -334,6 +342,10 @@ def _validate_required_sidecar_metadata(sidecar: Mapping[str, object]) -> Valida
         return ValidationResult("failed_validation", "sidecar metadata model_family must not be unknown")
     if str(sidecar.get("wrapper_class")) == "generic_unknown":
         return ValidationResult("failed_validation", "sidecar metadata wrapper_class must not be generic_unknown")
+    if str(sidecar.get("processor_class")) == "unknown":
+        return ValidationResult("failed_validation", "sidecar metadata processor_class must not be unknown")
+    if str(sidecar.get("model_class")) == "unknown":
+        return ValidationResult("failed_validation", "sidecar metadata model_class must not be unknown")
     deterministic = sidecar.get("deterministic_generation_kwargs")
     if not isinstance(deterministic, Mapping):
         return ValidationResult("failed_validation", "sidecar metadata deterministic_generation_kwargs missing or invalid")
@@ -633,6 +645,89 @@ def _image_processor_candidate(path: Path) -> str:
     for candidate in sorted(path.glob("image_processing_*.py")):
         return candidate.name
     return "unknown"
+
+
+def _audit_family_specific_constraints(
+    asset: AssetModel,
+    local_path: Path,
+    config: Mapping[str, object],
+) -> tuple[AssetStatus, str] | None:
+    family = asset.family
+    if family == "gemma3":
+        if config.get("model_type") != "gemma3" or "vision_config" not in config or "image_token_index" not in config:
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "Gemma3 multimodal image-text config is required"
+        if _processor_class_from_files(local_path) != "Gemma3Processor" or _image_processor_type(local_path) != "Gemma3ImageProcessor":
+            return AssetStatus.BLOCKED, "Gemma3Processor and Gemma3ImageProcessor metadata are required"
+        missing = _missing_transformers_classes(("Gemma3Processor", "Gemma3ForConditionalGeneration"))
+        if missing:
+            return AssetStatus.BLOCKED, "installed transformers is missing required Gemma3 classes: " + ", ".join(missing)
+    if family == "phi3_v":
+        if config.get("model_type") != "phi3_v" or "img_processor" not in config:
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "Phi-3.5 vision image-text config is required"
+        if _processor_class_from_files(local_path) != "Phi3VProcessor" or _image_processor_type(local_path) != "Phi3VImageProcessor":
+            return AssetStatus.BLOCKED, "Phi3V image processor metadata is required"
+    if family == "phi4mm":
+        if config.get("model_type") != "phi4mm" or not _phi4_config_has_image_text_path(config):
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "Phi-4 multimodal image-text config is required"
+        if _processor_class_from_files(local_path) != "Phi4MMProcessor" or _image_processor_type(local_path) != "Phi4MMImageProcessor":
+            return AssetStatus.BLOCKED, "Phi4MM image processor metadata is required"
+        missing = _missing_imports(("peft",))
+        if missing:
+            return (
+                AssetStatus.BLOCKED,
+                "missing dependency required by Phi4MMForCausalLM local image-text loading: " + ", ".join(missing),
+            )
+    return None
+
+
+def _processor_class_from_files(path: Path) -> str | None:
+    for filename in ("processor_config.json", "preprocessor_config.json"):
+        candidate = path / filename
+        if not candidate.is_file():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, Mapping) and payload.get("processor_class"):
+            return str(payload["processor_class"])
+    return None
+
+
+def _image_processor_type(path: Path) -> str | None:
+    candidate = path / "preprocessor_config.json"
+    if not candidate.is_file():
+        return None
+    try:
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, Mapping) and payload.get("image_processor_type"):
+        return str(payload["image_processor_type"])
+    return None
+
+
+def _phi4_config_has_image_text_path(config: Mapping[str, object]) -> bool:
+    embedding = config.get("embd_layer")
+    if not isinstance(embedding, Mapping):
+        return False
+    image_layer = embedding.get("image_embd_layer")
+    if not isinstance(image_layer, Mapping):
+        return False
+    image_embedding = str(image_layer.get("embedding_cls", "")).lower()
+    return "image" in image_embedding
+
+
+def _missing_imports(module_names: Sequence[str]) -> list[str]:
+    return [module_name for module_name in module_names if importlib.util.find_spec(module_name) is None]
+
+
+def _missing_transformers_classes(class_names: Sequence[str]) -> list[str]:
+    try:
+        import transformers
+    except ImportError:
+        return [f"transformers.{class_name}" for class_name in class_names]
+    return [f"transformers.{class_name}" for class_name in class_names if not hasattr(transformers, class_name)]
 
 
 def _deterministic_generation_is_valid(asset: AssetModel) -> bool:

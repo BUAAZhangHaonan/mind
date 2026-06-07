@@ -75,7 +75,7 @@ models:
     model_config_path: configs/models/gemma_3_12b_it.yaml
     model_id_or_family_name: gemma3
     family: gemma3
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: false
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
@@ -117,35 +117,35 @@ models:
     model_config_path: configs/models/phi_4_multimodal_instruct.yaml
     model_id_or_family_name: phi4mm
     family: phi4mm
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: true
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
     thinking: {supported: false, disabled_by_default: true, disable_argument: null}
     policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
     prompt_template_id: phi4mm_single_image_raw_question_v1
-    prompt_template_text: "Phi-4 multimodal prompt format is registered, but wrapper support is not implemented in Experiment 1."
-    hidden_state_index_offset: unknown
+    prompt_template_text: "Single-image Phi-4 multimodal prompt uses <|user|><|image_1|>{question}<|end|><|assistant|> with the normalized question unchanged."
+    hidden_state_index_offset: 1
   - alias: phi-3.5-vision-instruct
     local_path: /home/team/lvshuyang/Models/Phi-3.5-vision-instruct
     model_config_path: configs/models/phi_3_5_vision_instruct.yaml
     model_id_or_family_name: phi3_v
     family: phi3_v
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: true
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
     thinking: {supported: false, disabled_by_default: true, disable_argument: null}
     policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
     prompt_template_id: phi3_v_single_image_raw_question_v1
-    prompt_template_text: "Phi-3.5 vision prompt format is registered, but wrapper support is not implemented in Experiment 1."
-    hidden_state_index_offset: unknown
+    prompt_template_text: "Single-image Phi-3.5 vision prompt uses <|user|> newline <|image_1|> newline {question}<|end|> newline <|assistant|> newline with the normalized question unchanged."
+    hidden_state_index_offset: 1
   - alias: gemma-3-4b-it
     local_path: /home/team/lvshuyang/Models/gemma-3-4b-it
     model_config_path: configs/models/gemma_3_4b_it.yaml
     model_id_or_family_name: gemma3
     family: gemma3
-    dtype: float16
+    dtype: bfloat16
     trust_remote_code: false
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}

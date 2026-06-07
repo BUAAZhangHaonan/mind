@@ -116,11 +116,7 @@ def run_smoke(
     missing_paths = required_dataset_paths(stage0_root=stage0_root, datasets=datasets)
     audit_results = {result.alias: result for result in (audit_asset_metadata(model) for model in registry.models)}
     rows: list[dict[str, object]] = []
-    checksums: dict[str, object] = {
-        "determinism": {},
-        "image_sensitivity_canary": {},
-        "created_at_utc": utc_now_iso(),
-    }
+    checksums = initialize_validation_checksums(output_root)
 
     if missing_paths:
         reason = "required smoke dataset file missing before model loading: " + ", ".join(str(path) for path in missing_paths)
@@ -325,6 +321,23 @@ def read_report_rows(path: Path) -> list[dict[str, str]]:
         return []
     with path.open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def initialize_validation_checksums(output_root: Path) -> dict[str, object]:
+    existing = read_json(output_root / "validation_checksums.json", default={})
+    checksums = dict(existing) if isinstance(existing, Mapping) else {}
+    for key in ("determinism", "image_sensitivity_canary"):
+        value = checksums.get(key)
+        checksums[key] = dict(value) if isinstance(value, Mapping) else {}
+    checksums["created_at_utc"] = utc_now_iso()
+    return checksums
+
+
+def read_json(path: Path, *, default: object) -> object:
+    if not path.is_file():
+        return default
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def required_dataset_paths(*, stage0_root: Path, datasets: Sequence[str]) -> list[Path]:
@@ -567,7 +580,7 @@ def _preserved_or_audit_rows(
 
 def sidecar_generation_kwargs(wrapper: object) -> dict[str, object]:
     kwargs = wrapper.deterministic_generation_kwargs(max_new_tokens=1)
-    return {
+    sidecar = {
         "max_new_tokens": int(kwargs["max_new_tokens"]),
         "do_sample": bool(kwargs["do_sample"]),
         "temperature": kwargs["temperature"],
@@ -575,6 +588,9 @@ def sidecar_generation_kwargs(wrapper: object) -> dict[str, object]:
         "output_scores": bool(kwargs["output_scores"]),
         "output_hidden_states": bool(kwargs["output_hidden_states"]),
     }
+    if "use_cache" in kwargs:
+        sidecar["use_cache"] = bool(kwargs["use_cache"])
+    return sidecar
 
 
 def thinking_is_disabled(model_config: ModelConfig, wrapper: object) -> bool:

@@ -41,6 +41,20 @@ REPORT_FIELDS = (
 )
 SMOKE_DATASETS = ("pope", "repope", "dash-b")
 EXPECTED_DATASET_SUBSETS = (("pope", "popular"), ("repope", "popular"), ("dash-b", "all"))
+BATCH2_TARGET_MODELS = (
+    "gemma-3-4b-it",
+    "gemma-3-12b-it",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+)
+BATCH2_REGRESSION_MODELS = (
+    "qwen2.5-vl-7b",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "internvl3.5-8b",
+    "qwen3-vl-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,6 +105,12 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
         _write_json(output_root / "validation_checksums.json", checksums)
         _write_json(output_root / "asset_completion_summary.json", summary)
         write_markdown_report(output_root / "ASSET_COMPLETION_REPORT.md", summary)
+        write_wrapper_batch2_report(
+            output_root / "WRAPPER_BATCH2_REPORT.md",
+            output_root=output_root,
+            summary=summary,
+            validation_rows=validation_rows,
+        )
         print(f"asset_validate_hidden_states rows={len(validation_rows)} final_status={summary['final_status']}")
         return 0
 
@@ -189,6 +209,12 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
     write_markdown_report(output_root / "ASSET_COMPLETION_REPORT.md", summary)
     write_wrapper_batch1_report(
         output_root / "WRAPPER_BATCH1_REPORT.md",
+        output_root=output_root,
+        summary=summary,
+        validation_rows=validation_rows,
+    )
+    write_wrapper_batch2_report(
+        output_root / "WRAPPER_BATCH2_REPORT.md",
         output_root=output_root,
         summary=summary,
         validation_rows=validation_rows,
@@ -344,8 +370,17 @@ def write_markdown_report(path: Path, summary: Mapping[str, object]) -> None:
         "Full cache extraction started: false",
         "Training started: false",
         "",
-        "## Non-Verified Reasons",
+        "## Registry Model Statuses",
     ]
+    model_statuses = summary.get("model_statuses", {})
+    for alias in REQUIRED_MODEL_ALIASES:
+        lines.append(f"- {alias}: {_mapping_get(model_statuses, alias)}; reason={summary_reason_for_alias(summary, alias)}")
+    lines.extend(
+        [
+            "",
+            "## Non-Verified Reasons",
+        ]
+    )
     for group_key in ("blocked_reasons", "unsupported_reasons", "failed_reasons", "not_attempted_due_to_dependency_reasons"):
         reasons = summary.get(group_key, {})
         if isinstance(reasons, Mapping):
@@ -406,9 +441,93 @@ def write_wrapper_batch1_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_wrapper_batch2_report(
+    path: Path,
+    *,
+    output_root: Path,
+    summary: Mapping[str, object],
+    validation_rows: Sequence[Mapping[str, object]],
+) -> None:
+    model_statuses = summary.get("model_statuses", {})
+    inspection_rows = read_csv(output_root / "wrapper_batch2_asset_inspection.csv")
+    inspection_by_alias = {str(row.get("alias")): row for row in inspection_rows}
+    lines = [
+        "# Wrapper Batch 2 Report",
+        "",
+        "## Target Models",
+        *[f"- {alias}" for alias in BATCH2_TARGET_MODELS],
+        "",
+        "## Regression Models",
+        *[f"- {alias}" for alias in BATCH2_REGRESSION_MODELS],
+        "",
+        "## Exact Wrapper Changes",
+        "- gemma-3-4b-it and gemma-3-12b-it: explicit Gemma3Wrapper with Gemma3Processor, Gemma3ForConditionalGeneration, Gemma chat template image item, and explicit forward prefill hidden states.",
+        "- phi-3.5-vision-instruct: explicit Phi35VisionWrapper with Phi3VProcessor, Phi3VForCausalLM, local remote-code image-text prompt, eager attention, and explicit forward prefill hidden states.",
+        "- phi-4-multimodal-instruct: explicit Phi4MultimodalWrapper for local image-text prompt; current environment blocks model loading when required local dependencies are missing.",
+        "- The four batch-2 target configs use bfloat16 because each local config declares torch_dtype=bfloat16.",
+        "",
+        "## Inspection Findings",
+    ]
+    for alias in BATCH2_TARGET_MODELS:
+        row = inspection_by_alias.get(alias, {})
+        lines.append(
+            f"- {alias}: model_type={row.get('model_type', '')}, architectures={row.get('architectures', '')}, "
+            f"processor={row.get('candidate_processor_class', '')}, model={row.get('candidate_model_class', '')}, "
+            f"image_only={row.get('image_only_inference_supported', '')}, audio_video={row.get('audio_video_paths', '')}, "
+            f"attention={row.get('registry_attn_implementation', '') or row.get('local_attn_implementation', '')}, "
+            f"attention_reason={row.get('attention_override_reason', '')}, "
+            f"status={row.get('status', '')}, reason={row.get('reason', '')}"
+        )
+    lines.extend(["", "## Smoke And Validation Status"])
+    for alias in (*BATCH2_TARGET_MODELS, *BATCH2_REGRESSION_MODELS):
+        alias_rows = [row for row in validation_rows if row.get("model_alias") == alias]
+        row_statuses = sorted({str(row.get("status", "")) for row in alias_rows})
+        row_reasons = sorted({str(row.get("reason", "")) for row in alias_rows if row.get("reason")})
+        lines.append(
+            f"- {alias}: final={_mapping_get(model_statuses, alias)}, "
+            f"validation_rows={','.join(row_statuses)}, reason={' | '.join(row_reasons)}"
+        )
+    lines.extend(["", "## Final Status Per Target Model"])
+    for alias in BATCH2_TARGET_MODELS:
+        lines.append(f"- {alias}: {_mapping_get(model_statuses, alias)}")
+    lines.extend(["", "## Registry Model Statuses"])
+    for alias in REQUIRED_MODEL_ALIASES:
+        lines.append(f"- {alias}: {_mapping_get(model_statuses, alias)}; reason={summary_reason_for_alias(summary, alias)}")
+    lines.extend(["", "## Remaining Unsupported Models"])
+    for alias in summary.get("unsupported_models", []):
+        if alias not in BATCH2_TARGET_MODELS and alias not in BATCH2_REGRESSION_MODELS:
+            lines.append(f"- {alias}")
+    lines.extend(["", "## Remaining Blocked Models"])
+    for alias in summary.get("blocked_models", []):
+        if alias not in BATCH2_TARGET_MODELS and alias not in BATCH2_REGRESSION_MODELS:
+            lines.append(f"- {alias}")
+    lines.extend(
+        [
+            "",
+            "## Next Recommended Wrapper Batch",
+            "Handle GLM, MiniCPM, Molmo, and LLaVA-v1.5 in separate scoped wrapper batches after resolving any exact dependency or metadata blockers.",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _mapping_get(payload: object, key: str) -> object:
     if isinstance(payload, Mapping):
         return payload.get(key, "")
+    return ""
+
+
+def summary_reason_for_alias(summary: Mapping[str, object], alias: str) -> str:
+    for group_key in (
+        "blocked_reasons",
+        "unsupported_by_policy_reasons",
+        "unsupported_by_wrapper_reasons",
+        "failed_reasons",
+        "not_attempted_due_to_dependency_reasons",
+    ):
+        reasons = summary.get(group_key, {})
+        if isinstance(reasons, Mapping) and alias in reasons:
+            return str(reasons.get(alias, ""))
     return ""
 
 

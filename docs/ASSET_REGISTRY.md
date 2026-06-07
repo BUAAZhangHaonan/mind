@@ -49,12 +49,38 @@ The smoke and validation steps write:
 - `outputs/assets/asset_completion_summary.json`
 - `outputs/assets/ASSET_COMPLETION_REPORT.md`
 
-## Current Blocker
+## Wrapper Batch Status
 
-The required smoke inputs are:
+The normalized smoke source files now exist under `outputs/stage0/normalized`. The required smoke inputs for the scoped asset smoke runs are:
 
 - `outputs/stage0/normalized/pope/popular.jsonl`
 - `outputs/stage0/normalized/repope/popular.jsonl`
 - `outputs/stage0/normalized/dash-b/all.jsonl`
 
 If any file is missing, `scripts/asset_smoke_extract.py` writes blocked rows for every model/dataset pair and exits before model loading.
+
+Batch 1 verified these assets for local smoke extraction and hidden-state validation:
+
+- `qwen2.5-vl-7b`
+- `qwen3.5-4b`
+- `qwen3.5-9b`
+- `internvl3.5-8b`
+- `qwen3-vl-8b`
+- `llava-onevision-qwen2-7b-ov-hf`
+
+Batch 2 targets these assets:
+
+- `gemma-3-4b-it`
+- `gemma-3-12b-it`
+- `phi-3.5-vision-instruct`
+- `phi-4-multimodal-instruct`
+
+The remaining unresolved assets are handled only by their current explicit statuses until separate scoped wrapper batches address them:
+
+- `glm-4.6v-flash`
+- `minicpm-v-2_6`
+- `minicpm-v-4_5`
+- `molmo-7b-d-0924`
+- `llava-v1.5-7b`
+
+Asset verification only checks local asset metadata, deterministic smoke extraction, and hidden-state extraction contracts. It is not scientific validation of a model or of MIND. The final Experiment 1 status remains `blocked` until all 15 registered assets are verified.

@@ -14,7 +14,6 @@ from typing import Any, ClassVar, Mapping, Sequence
 
 import numpy as np
 from PIL import Image
-from huggingface_hub import snapshot_download
 import torch
 import torch.nn.functional as F
 from transformers import (
@@ -122,28 +121,15 @@ def load_local_python_module(module_name: str, module_path: Path) -> Any:
     return module
 
 
+def require_local_model_path(model_id_or_path: str) -> Path:
+    local_model_path = Path(model_id_or_path).expanduser()
+    if not local_model_path.is_dir():
+        raise FileNotFoundError(f"local model path does not exist or is not a directory: {local_model_path}")
+    return local_model_path
+
+
 def load_molmo_processing_modules(model_id: str) -> tuple[Any, Any, Path]:
-    local_model_path = Path(model_id).expanduser()
-    if local_model_path.exists():
-        snapshot_path = local_model_path
-    else:
-        snapshot_path = Path(
-            snapshot_download(
-                repo_id=model_id,
-                allow_patterns=[
-                    "preprocessing_molmo.py",
-                    "image_preprocessing_molmo.py",
-                    "preprocessor_config.json",
-                    "processor_config.json",
-                    "tokenizer.json",
-                    "tokenizer_config.json",
-                    "special_tokens_map.json",
-                    "added_tokens.json",
-                    "merges.txt",
-                    "vocab.json",
-                ],
-            )
-        )
+    snapshot_path = require_local_model_path(model_id)
     package_name = f"_mind_molmo_{hashlib.sha1(model_id.encode('utf-8')).hexdigest()[:8]}"
     package = sys.modules.get(package_name)
     if package is None:
@@ -254,16 +240,16 @@ class BaseModelWrapper:
     default_prompt_template_id: ClassVar[str] = "single_image_raw_question_v1"
 
     def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
+        require_local_model_path(self.model_id_or_path())
         kwargs: dict[str, Any] = {
             "trust_remote_code": self.config.trust_remote_code,
             "torch_dtype": resolve_torch_dtype(self.config.dtype),
+            "local_files_only": True,
         }
         if self.config.attn_implementation is not None:
             kwargs["attn_implementation"] = self.config.attn_implementation
         if device.startswith("cuda"):
             kwargs["device_map"] = {"": device} if ":" in device else "auto"
-        if Path(self.model_id_or_path()).expanduser().exists():
-            kwargs["local_files_only"] = True
         return kwargs
 
     def model_id_or_path(self) -> str:
@@ -525,11 +511,12 @@ class BaseModelWrapper:
         return str(decoded[0]).strip()
 
     def load_processor(self):
+        require_local_model_path(self.model_id_or_path())
         return configure_left_padding(
             AutoProcessor.from_pretrained(
                 self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
-                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
+                local_files_only=True,
             )
         )
 
@@ -659,9 +646,11 @@ class QwenWrapper(BaseModelWrapper):
         processor_factory: Any = AutoProcessor,
         device: str = "cuda",
     ) -> LoadedModelBundle:
+        require_local_model_path(self.model_id_or_path())
         processor = processor_factory.from_pretrained(
             self.model_id_or_path(),
             trust_remote_code=self.config.trust_remote_code,
+            local_files_only=True,
         )
         model = model_factory.from_pretrained(
             self.model_id_or_path(),
@@ -872,7 +861,7 @@ class Qwen25VLWrapper(QwenVLWrapper):
             Qwen2_5_VLProcessor.from_pretrained(
                 self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
-                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
+                local_files_only=True,
             )
         )
 
@@ -899,7 +888,7 @@ class Qwen35VLWrapper(QwenVLWrapper):
             Qwen3VLProcessor.from_pretrained(
                 self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
-                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
+                local_files_only=True,
             )
         )
 
@@ -910,6 +899,259 @@ class Qwen35VLWrapper(QwenVLWrapper):
             self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
         )
+
+
+class Gemma3Wrapper(BaseModelWrapper):
+    """Gemma3 local image-text wrapper using the asset chat template."""
+
+    def expected_model_class_name(self) -> str:
+        return "Gemma3ForConditionalGeneration"
+
+    def expected_processor_class_name(self) -> str:
+        return "Gemma3Processor"
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("Gemma3Wrapper requires an image path.")
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": str(Path(image_path))},
+                    {"type": "text", "text": question},
+                ],
+            }
+        ]
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        return self.prepare_asset_batch_inputs(
+            processor,
+            questions=[self.format_yes_no_question(question) for question in questions],
+            image_paths=image_paths,
+            device=device,
+        )
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        prompts: list[str] = []
+        images: list[Image.Image] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("Gemma3Wrapper requires an image path.")
+            prompts.append(
+                processor.apply_chat_template(
+                    self.build_messages(question=question, image_path=image_path),
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            )
+            images.append(Image.open(image_path).convert("RGB"))
+        batch = processor(text=prompts, images=images, return_tensors="pt", padding=True)
+        return self._move_batch_to_device(batch, device)
+
+    def load_processor(self):
+        from transformers import Gemma3Processor
+
+        local_path = require_local_model_path(self.model_id_or_path())
+        return configure_left_padding(
+            Gemma3Processor.from_pretrained(
+                local_path,
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=True,
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import Gemma3ForConditionalGeneration
+
+        return Gemma3ForConditionalGeneration.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        ).eval()
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+
+class PhiImageTextWrapper(BaseModelWrapper):
+    """Shared exact image-text path for local Phi remote-code assets."""
+
+    processor_num_crops: ClassVar[int | None] = None
+
+    def deterministic_generation_kwargs(self, *, max_new_tokens: int | None = None) -> dict[str, Any]:
+        kwargs = super().deterministic_generation_kwargs(max_new_tokens=max_new_tokens)
+        kwargs["use_cache"] = False
+        return kwargs
+
+    def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
+        kwargs = super().model_load_kwargs(device=device)
+        attention = kwargs.pop("attn_implementation", None)
+        if attention is not None:
+            kwargs["_attn_implementation"] = attention
+        kwargs.setdefault("low_cpu_mem_usage", True)
+        return kwargs
+
+    def load_processor(self):
+        require_local_model_path(self.model_id_or_path())
+        kwargs: dict[str, Any] = {
+            "trust_remote_code": self.config.trust_remote_code,
+            "local_files_only": True,
+        }
+        if self.processor_num_crops is not None:
+            kwargs["num_crops"] = self.processor_num_crops
+        return configure_left_padding(
+            AutoProcessor.from_pretrained(
+                self.model_id_or_path(),
+                **kwargs,
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        model = AutoModelForCausalLM.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        )
+        return model.eval()
+
+    def build_prompt(self, question: str) -> str:
+        raise NotImplementedError
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError(f"{type(self).__name__} requires an image path.")
+        return [{"role": "user", "content": [{"type": "image", "image": image_path}, {"type": "text", "text": question}]}]
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        return self.prepare_asset_batch_inputs(
+            processor,
+            questions=[self.format_yes_no_question(question) for question in questions],
+            image_paths=image_paths,
+            device=device,
+        )
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        processed: list[dict[str, torch.Tensor]] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError(f"{type(self).__name__} requires an image path.")
+            image = Image.open(image_path).convert("RGB")
+            batch = processor(
+                text=self.build_prompt(question),
+                images=image,
+                return_tensors="pt",
+            )
+            processed.append(
+                {
+                    key: value[0] if isinstance(value, torch.Tensor) and value.ndim > 0 else value
+                    for key, value in dict(batch).items()
+                    if isinstance(value, torch.Tensor)
+                }
+            )
+        return self._move_batch_to_device(collate_tensor_dicts(processed), device)
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+
+class Phi35VisionWrapper(PhiImageTextWrapper):
+    processor_num_crops: ClassVar[int | None] = 4
+
+    def expected_model_class_name(self) -> str:
+        return "Phi3VForCausalLM"
+
+    def expected_processor_class_name(self) -> str:
+        return "Phi3VProcessor"
+
+    def build_prompt(self, question: str) -> str:
+        return f"<|user|>\n<|image_1|>\n{question}<|end|>\n<|assistant|>\n"
+
+
+class Phi4MultimodalWrapper(PhiImageTextWrapper):
+    def expected_model_class_name(self) -> str:
+        return "Phi4MMForCausalLM"
+
+    def expected_processor_class_name(self) -> str:
+        return "Phi4MMProcessor"
+
+    def build_prompt(self, question: str) -> str:
+        return f"<|user|><|image_1|>{question}<|end|><|assistant|>"
 
 
 class QwenTextWrapper(QwenWrapper):
@@ -924,7 +1166,7 @@ class QwenTextWrapper(QwenWrapper):
             AutoTokenizer.from_pretrained(
                 self.model_id_or_path(),
                 trust_remote_code=self.config.trust_remote_code,
-                local_files_only=Path(self.model_id_or_path()).expanduser().exists(),
+                local_files_only=True,
             )
         )
 
@@ -935,9 +1177,11 @@ class QwenTextWrapper(QwenWrapper):
         processor_factory: Any = AutoTokenizer,
         device: str = "cuda",
     ) -> LoadedModelBundle:
+        require_local_model_path(self.model_id_or_path())
         processor = processor_factory.from_pretrained(
             self.model_id_or_path(),
             trust_remote_code=self.config.trust_remote_code,
+            local_files_only=True,
         )
         model = model_factory.from_pretrained(
             self.model_id_or_path(),
@@ -1045,7 +1289,7 @@ class InternVLWrapper(BaseModelWrapper):
         tokenizer = AutoTokenizer.from_pretrained(
             self.model_id_or_path(),
             trust_remote_code=self.config.trust_remote_code,
-            local_files_only=model_path.exists(),
+            local_files_only=True,
             use_fast=False,
         )
         configure_left_padding(tokenizer)
@@ -1443,6 +1687,7 @@ class MolmoWrapper(BaseModelWrapper):
         tokenizer = AutoTokenizer.from_pretrained(
             snapshot_path,
             trust_remote_code=self.config.trust_remote_code,
+            local_files_only=True,
         )
         processor = preprocessing_module.MolmoProcessor(
             image_processor=image_processor,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -21,6 +22,12 @@ from mind.models.registry import load_asset_registry
 
 
 BATCH1_TARGET_ALIASES = ("qwen2.5-vl-7b", "qwen3.5-4b", "qwen3.5-9b", "internvl3.5-8b")
+BATCH2_TARGET_ALIASES = (
+    "gemma-3-4b-it",
+    "gemma-3-12b-it",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -132,11 +139,47 @@ def run_audit(*, registry_path: Path, output_root: Path, load_model: bool = Fals
     ]
     _write_csv(output_root / "wrapper_batch1_asset_inspection.csv", inspection_rows, inspection_fields)
     _write_json(output_root / "wrapper_batch1_asset_inspection.json", inspection_rows)
+    batch2_rows = build_wrapper_batch2_inspection(registry.models)
+    batch2_fields = [
+        "alias",
+        "local_path",
+        "config_json_path",
+        "model_type",
+        "architectures",
+        "auto_map",
+        "tokenizer_files",
+        "processor_files",
+        "image_processor_files",
+        "chat_template_available",
+        "image_processor_available",
+        "generation_config_available",
+        "hidden_size_candidates",
+        "layer_count_candidates",
+        "moe_indicators",
+        "thinking_indicators",
+        "required_trust_remote_code",
+        "candidate_model_class",
+        "candidate_processor_class",
+        "local_attn_implementation",
+        "registry_attn_implementation",
+        "attention_override_reason",
+        "image_only_inference_supported",
+        "audio_video_paths",
+        "deterministic_generation_enforceable",
+        "status",
+        "reason",
+    ]
+    _write_csv(output_root / "wrapper_batch2_asset_inspection.csv", batch2_rows, batch2_fields)
+    _write_json(output_root / "wrapper_batch2_asset_inspection.json", batch2_rows)
     return results
 
 
 def build_wrapper_batch1_inspection(models: list[object]) -> list[dict[str, object]]:
     return [_inspect_batch1_asset(model) for model in models if getattr(model, "alias", "") in BATCH1_TARGET_ALIASES]
+
+
+def build_wrapper_batch2_inspection(models: list[object]) -> list[dict[str, object]]:
+    return [_inspect_batch2_asset(model) for model in models if getattr(model, "alias", "") in BATCH2_TARGET_ALIASES]
 
 
 def _inspect_batch1_asset(model: object) -> dict[str, object]:
@@ -203,6 +246,62 @@ def _inspect_batch1_asset(model: object) -> dict[str, object]:
     return row
 
 
+def _inspect_batch2_asset(model: object) -> dict[str, object]:
+    row = _inspect_batch1_asset(model)
+    alias = str(row["alias"])
+    local_path = Path(str(row["local_path"]))
+    row["image_processor_files"] = []
+    if local_path.is_dir():
+        row["image_processor_files"] = sorted(
+            path.name
+            for path in local_path.iterdir()
+            if (
+                path.name.startswith("image_processing")
+                or path.name == "preprocessor_config.json"
+                or path.name.startswith("vision_")
+            )
+        )
+    row["image_only_inference_supported"] = False
+    row["audio_video_paths"] = "unknown"
+    row["deterministic_generation_enforceable"] = False
+    if row["status"] != "inspected":
+        return row
+
+    config_path = local_path / "config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    family = str(getattr(model, "family", ""))
+    local_attention = str(config.get("_attn_implementation") or config.get("attn_implementation") or "")
+    registry_attention = str(getattr(model, "attn_implementation", "") or "")
+    row["local_attn_implementation"] = local_attention
+    row["registry_attn_implementation"] = registry_attention
+    row["attention_override_reason"] = ""
+    if local_attention and registry_attention and local_attention != registry_attention:
+        row["attention_override_reason"] = (
+            f"registry uses {registry_attention} instead of local {local_attention} to avoid missing optional attention kernels"
+        )
+    if family == "gemma3":
+        row["image_only_inference_supported"] = bool(
+            config.get("model_type") == "gemma3"
+            and "vision_config" in config
+            and _candidate_processor_class(local_path, alias) == "Gemma3Processor"
+        )
+        row["audio_video_paths"] = "not_required"
+        row["deterministic_generation_enforceable"] = True
+    elif family == "phi3_v":
+        row["image_only_inference_supported"] = bool(config.get("model_type") == "phi3_v" and "img_processor" in config)
+        row["audio_video_paths"] = "not_required"
+        row["deterministic_generation_enforceable"] = True
+    elif family == "phi4mm":
+        row["image_only_inference_supported"] = _phi4_config_has_image_text_path(config)
+        row["audio_video_paths"] = "audio_optional_for_image_text"
+        row["deterministic_generation_enforceable"] = True
+        missing = [module for module in ("peft",) if importlib.util.find_spec(module) is None]
+        if missing:
+            row["status"] = "blocked"
+            row["reason"] = "missing dependency required by Phi4MMForCausalLM local image-text loading: " + ", ".join(missing)
+    return row
+
+
 def _candidate_config_values(config: dict[str, object], *paths: tuple[str, ...]) -> dict[str, object]:
     values: dict[str, object] = {}
     for path in paths:
@@ -245,6 +344,12 @@ def _thinking_indicator_files(path: Path) -> list[str]:
 
 
 def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
+    if alias in {"gemma-3-4b-it", "gemma-3-12b-it"}:
+        return "Gemma3ForConditionalGeneration"
+    if alias == "phi-3.5-vision-instruct":
+        return "Phi3VForCausalLM"
+    if alias == "phi-4-multimodal-instruct":
+        return "Phi4MMForCausalLM"
     if alias == "qwen2.5-vl-7b":
         return "Qwen2_5_VLForConditionalGeneration"
     if alias in {"qwen3.5-4b", "qwen3.5-9b"}:
@@ -255,6 +360,17 @@ def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
     if isinstance(architectures, list) and architectures:
         return str(architectures[0])
     return ""
+
+
+def _phi4_config_has_image_text_path(config: dict[str, object]) -> bool:
+    embedding = config.get("embd_layer")
+    if not isinstance(embedding, dict):
+        return False
+    image_layer = embedding.get("image_embd_layer")
+    if not isinstance(image_layer, dict):
+        return False
+    image_embedding = str(image_layer.get("embedding_cls", "")).lower()
+    return "image" in image_embedding
 
 
 def _candidate_processor_class(path: Path, alias: str) -> str:
