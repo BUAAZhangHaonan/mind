@@ -17,6 +17,10 @@ REPAIR_SCRIPTS = (
     "final_model_panel_decisions.py",
     "run_remaining_asset_repairs.py",
     "run_molmo_tf457_asset_pipeline.py",
+    "run_gemma4_unified_tmp_smoke.py",
+    "run_phi4_tmp_smoke.py",
+    "run_llava_v15_tmp_smoke.py",
+    "run_final_tmp_asset_smokes.py",
 )
 
 FORBIDDEN_PRODUCTION_FILES = (
