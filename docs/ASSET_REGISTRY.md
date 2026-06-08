@@ -117,32 +117,21 @@ Asset verification only checks local asset metadata, deterministic smoke extract
 
 The local Gemma 4 path now exists. The core `model.safetensors` file was moved into `/home/team/lvshuyang/Models/gemma-4-12B-it`, and the temporary repair script reports the local asset as `already_present`. The local config is `model_type=gemma4_unified` with `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `processor_class=Gemma4UnifiedProcessor`, and nested `Gemma4UnifiedImageProcessor` metadata.
 
-Gemma 4 Unified has no independent vision tower, so its image wiring check must use the image-sensitivity canary, deterministic repeat check, and full-layer pre-generation hidden-state validation. Thinking must be explicitly disabled with `enable_thinking=False` or an equivalent recorded setting. The main production asset pipeline still does not verify Gemma 4 because exact `gemma4_unified` wrapper support is not in the production path.
+Gemma 4 Unified has no independent vision tower, so its image wiring check must use the image-sensitivity canary, deterministic repeat check, and full-layer pre-generation hidden-state validation. Thinking must be explicitly disabled with `enable_thinking=False` or an equivalent recorded setting. The production path now has an explicit `gemma4_unified` wrapper, but the current `mind-py311` Transformers runtime does not expose the required Gemma4 Unified classes, so Gemma4 remains blocked in the main pipeline.
 
-## Remaining Blockers
+## Final Production Integration Status
 
-- `gemma-4-12b-it`: local asset is complete enough for file integrity checks, but the main pipeline remains `unsupported_by_policy` until production validation and wrapper support handle `gemma4_unified` exactly.
-- `phi-4-multimodal-instruct`: Python package blockers have been repaired. Normal smoke extraction now blocks on `RuntimeError: Tensor.item() cannot be called on meta tensors`, which is a loading/runtime issue, not a missing package issue.
-- `molmo-7b-d-0924`: the main `mind-py311` pipeline remains blocked because the local class lacks `_extract_generation_mode_kwargs` under that Transformers generation API. A separate `mind-molmo-py311` environment with Transformers 4.57.1 verified Molmo smoke extraction and hidden-state validation under `outputs/assets_molmo_tf457`.
-- `llava-v1.5-7b`: the registry now points to the complete HF 7B local asset at `/home/team/lvshuyang/Models/llava-1.5-7b-hf`. The 13B HF asset is also structurally complete but is not registered. The main pipeline remains `unsupported_by_wrapper` because no Experiment 1 LLaVA-v1.5 wrapper is implemented.
+Experiment 1.8 moved the workable temporary paths into the production asset pipeline where the current `mind-py311` environment can support them.
 
-## Final Temporary Repair Attempt
+Current target outcomes:
 
-Experiment 1.7 keeps all temporary repair code under `tmp/asset_repair` so it is separate from the production wrapper path. This task did not modify `src/mind/models/wrappers.py`, `src/mind/models/factory.py`, `src/mind/models/asset_validation.py`, or `src/mind/models/registry.py`.
+- `phi-4-multimodal-instruct`: verified in the main asset pipeline. The production Phi4 path uses eager attention, not Flash Attention 2. It sets `low_cpu_mem_usage=False`, avoids `device_map="auto"`, removes user-site Python packages before smoke extraction, confirms no meta tensors after load, and uses a forward-only one-token smoke path because the local remote class does not safely support the standard `generate` path in this environment.
+- `llava-v1.5-7b`: verified in the main asset pipeline with the complete HF local path `/home/team/lvshuyang/Models/llava-1.5-7b-hf`. It uses its own `llava_v15` wrapper and does not copy metadata or prompt logic from LLaVA-OneVision.
+- `molmo-7b-d-0924`: accepted as `verified_separate_env` from `outputs/assets_molmo_tf457`. This is distinct from main-env `verified`. It means the separate environment produced smoke and hidden-state validation artifacts that satisfy the same asset contract.
+- `gemma-4-12b-it`: still blocked in the main production pipeline. The local asset is registered as `gemma4_unified`, not Gemma3, and it has no separate vision encoder. Thinking must be disabled with `enable_thinking=False`. The current `mind-py311` production environment has the explicit wrapper path, but it is missing the concrete Gemma4 Unified Transformers classes needed for local loading: `Gemma4UnifiedProcessor` and `Gemma4UnifiedForConditionalGeneration`.
 
-The temporary repair scripts write diagnostic reports under `outputs/assets/repair`, but those reports are not the verification authority. The normal `scripts/asset_audit.py`, `scripts/asset_smoke_extract.py`, and `scripts/asset_validate_hidden_states.py` pipeline remains the only path that can mark a model verified.
+Gemma4 remains a candidate for future integration, but it needs a production environment with explicit Gemma4 Unified class support before the normal smoke and hidden-state validation pipeline can verify it. The Gemma4 wrapper must rely on deterministic repeat checks, image sensitivity canary, and full-layer hidden-state validation rather than a vision-tower check.
 
-Final repair outcomes and panel decisions:
+The final Experiment 1.8 production summary has 14 main-env verified models, 1 separate-env verified model, and 1 blocked model. `verified_separate_env` is not the same as `verified`; downstream panels should label Molmo explicitly if they include it.
 
-- `gemma-4-12b-it`: local Gemma 4 Unified asset is present, `model_type=gemma4_unified` is recorded, and file integrity checks pass. It remains a high-value candidate, but it is `blocked_manual_future_work` until exact production `gemma4_unified` support records `enable_thinking=False` and passes the normal smoke and validation pipeline.
-- `phi-4-multimodal-instruct`: package blockers were repaired, but safe load diagnostics still hit the Phi4 Flash Attention 2 / meta-tensor loading path. The decision is `blocked_remove_from_panel` unless a later environment-level load fix is approved.
-- `molmo-7b-d-0924`: accepted as `verified_separate_env` from the `mind-molmo-py311` output under `outputs/assets_molmo_tf457`. This is not main-env verification; it means the separate environment produced smoke and hidden-state validation artifacts that satisfy the same contract.
-- `llava-v1.5-7b`: the registered local path is the complete HF 7B asset at `/home/team/lvshuyang/Models/llava-1.5-7b-hf`, with no metadata copied from LLaVA-OneVision. It remains `blocked_remove_from_panel` until an exact production LLaVA-v1.5 wrapper passes the normal pipeline.
-
-Models that remain in the candidate set:
-
-- the 12 main-env verified assets listed above
-- `gemma-4-12b-it` as manual future work for the separate `gemma4_unified` family
-- `molmo-7b-d-0924` only if the panel allows a `verified_separate_env` label
-
-Removal candidates from the main model panel are `phi-4-multimodal-instruct` and `llava-v1.5-7b`. These decisions are asset and extraction decisions only. They do not make scientific validation claims about any model or about MIND.
+These are asset and extraction checks only. They do not make scientific validation claims about any model or about MIND.

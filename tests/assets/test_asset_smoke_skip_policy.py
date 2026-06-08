@@ -272,6 +272,49 @@ def test_scoped_smoke_only_loads_selected_supported_model(monkeypatch, tmp_path:
     assert "not_attempted_due_to_dependency" in report
 
 
+def test_molmo_without_separate_env_manifest_is_blocked_not_loaded(monkeypatch, tmp_path: Path) -> None:
+    datasets = ("pope", "repope", "dash-b")
+
+    def fake_load_asset_registry(path: Path):
+        models = [
+            SimpleNamespace(alias=alias, model_config_path="unused.yaml", local_path=f"/models/{alias}")
+            for alias in REQUIRED_MODEL_ALIASES
+        ]
+        return SimpleNamespace(models=models)
+
+    class FakeAudit:
+        def __init__(self, alias: str) -> None:
+            self.alias = alias
+            self.status = AssetStatus.VERIFIED
+            self.reason = "ok"
+
+    def fail_if_loaded(config):
+        raise AssertionError("Molmo must not be loaded in the main smoke process")
+
+    monkeypatch.setattr(asset_smoke_extract, "load_asset_registry", fake_load_asset_registry)
+    monkeypatch.setattr(asset_smoke_extract, "audit_asset_metadata", lambda asset: FakeAudit(asset.alias))
+    monkeypatch.setattr(asset_smoke_extract, "required_dataset_paths", lambda **kwargs: [])
+    monkeypatch.setattr(asset_smoke_extract, "load_smoke_records", lambda **kwargs: [SimpleNamespace(question="q", image_path="i")])
+    monkeypatch.setattr(asset_smoke_extract, "create_model_wrapper", fail_if_loaded)
+
+    result = asset_smoke_extract.run_smoke(
+        registry_path=Path("registry.yaml"),
+        output_root=tmp_path,
+        stage0_root=tmp_path / "stage0",
+        datasets=datasets,
+        smoke_limit=2,
+        device="cuda:0",
+        models=["molmo-7b-d-0924"],
+    )
+
+    assert result == 0
+    report = (tmp_path / "smoke_extraction_report.csv").read_text(encoding="utf-8")
+    assert "molmo-7b-d-0924" in report
+    assert "main-env smoke loading is disabled" in report
+    summary = json.loads((tmp_path / "asset_completion_summary.json").read_text(encoding="utf-8"))
+    assert summary["model_statuses"]["molmo-7b-d-0924"] == AssetStatus.BLOCKED.value
+
+
 def test_scoped_smoke_preserves_existing_validation_checksums(monkeypatch, tmp_path: Path) -> None:
     datasets = ("pope", "repope", "dash-b")
     selected = REQUIRED_MODEL_ALIASES[2]

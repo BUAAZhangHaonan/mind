@@ -2,8 +2,8 @@ name: gemma-4-12b-it
 model_id: /home/team/lvshuyang/Models/gemma-4-12B-it
 local_path: /home/team/lvshuyang/Models/gemma-4-12B-it
 hf_model_id: google/gemma-4-12B-it
-model_id_or_family_name: gemma4
-family: gemma4
+model_id_or_family_name: gemma4_unified
+family: gemma4_unified
 dtype: bfloat16
 trust_remote_code: false
 attn_implementation: eager
@@ -20,6 +20,6 @@ policy:
   allow_thinking: false
   allow_video_only: false
   allow_audio_only: false
-prompt_template_id: gemma4_chat_single_image_raw_question_no_thinking_v1
-prompt_template_text: "Single user message with one image item followed by the normalized question text unchanged; chat template receives enable_thinking=false."
+prompt_template_id: gemma4_unified_single_image_raw_question_no_thinking_v1
+prompt_template_text: "Gemma4 Unified chat template with one image item followed by the normalized question text unchanged; chat template receives enable_thinking=false."
 hidden_state_index_offset: 1

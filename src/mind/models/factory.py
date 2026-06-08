@@ -6,10 +6,12 @@ from mind.config import ModelConfig
 
 from .wrappers import (
     Gemma3Wrapper,
+    Gemma4UnifiedWrapper,
     Gemma4Wrapper,
     Glm4vWrapper,
     InternVLWrapper,
     LlavaOnevisionWrapper,
+    LlavaV15Wrapper,
     MiniCPMVWrapper,
     MolmoWrapper,
     Phi35VisionWrapper,
@@ -29,12 +31,16 @@ def create_model_wrapper(config: ModelConfig):
         return InternVLWrapper(config)
     if family in {"llava_onevision", "llava-onevision"}:
         return LlavaOnevisionWrapper(config)
+    if family == "llava_v15":
+        return LlavaV15Wrapper(config)
     if family == "molmo":
         return MolmoWrapper(config)
     if family == "gemma3":
         return Gemma3Wrapper(config)
     if family == "gemma4":
         return Gemma4Wrapper(config)
+    if family == "gemma4_unified":
+        return Gemma4UnifiedWrapper(config)
     if family == "phi3_v":
         return Phi35VisionWrapper(config)
     if family == "phi4mm":

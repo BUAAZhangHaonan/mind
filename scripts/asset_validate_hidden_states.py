@@ -160,6 +160,11 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
             summary=summary,
             validation_rows=validation_rows,
         )
+        write_final_production_asset_integration_report(
+            output_root=output_root,
+            summary=summary,
+            validation_rows=validation_rows,
+        )
         print(f"asset_validate_hidden_states rows={len(validation_rows)} final_status={summary['final_status']}")
         return 0
 
@@ -185,6 +190,19 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
                 )
             continue
         if smoke_row.get("status") != AssetStatus.VERIFIED.value:
+            if smoke_row.get("status") == AssetStatus.VERIFIED_SEPARATE_ENV.value:
+                validation_rows.append(
+                    {
+                        "model_alias": smoke_row.get("model_alias", ""),
+                        "dataset": smoke_row.get("dataset", ""),
+                        "subset": smoke_row.get("subset", ""),
+                        "status": AssetStatus.VERIFIED_SEPARATE_ENV.value,
+                        "reason": smoke_row.get("reason", "accepted from separate environment"),
+                        "shard_path": smoke_row.get("shard_path", ""),
+                        "num_entries": 0,
+                    }
+                )
+                continue
             validation_rows.append(
                 {
                     "model_alias": smoke_row.get("model_alias", ""),
@@ -281,6 +299,11 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
         summary=summary,
         validation_rows=validation_rows,
     )
+    write_final_production_asset_integration_report(
+        output_root=output_root,
+        summary=summary,
+        validation_rows=validation_rows,
+    )
     print(f"asset_validate_hidden_states rows={len(validation_rows)} final_status={summary['final_status']}")
     return 0
 
@@ -309,6 +332,7 @@ def aggregate_model_statuses(rows: Sequence[Mapping[str, object]]) -> tuple[dict
         AssetStatus.UNSUPPORTED_BY_POLICY.value: 2,
         AssetStatus.UNSUPPORTED_BY_WRAPPER.value: 2,
         AssetStatus.VERIFIED.value: 1,
+        AssetStatus.VERIFIED_SEPARATE_ENV.value: 1,
     }
     for alias in REQUIRED_MODEL_ALIASES:
         alias_rows = [row for row in rows if row.get("model_alias") == alias]
@@ -321,6 +345,10 @@ def aggregate_model_statuses(rows: Sequence[Mapping[str, object]]) -> tuple[dict
         if row_pairs == expected_pairs and all(row.get("status") == AssetStatus.VERIFIED.value for row in alias_rows):
             statuses[alias] = AssetStatus.VERIFIED.value
             reasons[alias] = ""
+            continue
+        if row_pairs == expected_pairs and all(row.get("status") == AssetStatus.VERIFIED_SEPARATE_ENV.value for row in alias_rows):
+            statuses[alias] = AssetStatus.VERIFIED_SEPARATE_ENV.value
+            reasons[alias] = "; ".join(sorted({str(row.get("reason", "")) for row in alias_rows if row.get("reason")}))
             continue
         worst = max((str(row.get("status")) for row in alias_rows), key=lambda status: severity.get(status, 0))
         statuses[alias] = worst
@@ -478,6 +506,7 @@ def write_markdown_report(path: Path, summary: Mapping[str, object]) -> None:
         "",
         f"Total models requested: {summary['total_models_requested']}",
         f"Verified: {summary['num_verified']}",
+        f"Verified separate env: {summary.get('num_verified_separate_env', 0)}",
         f"Blocked: {summary['num_blocked']}",
         f"Unsupported by policy: {summary['num_unsupported_by_policy']}",
         f"Unsupported by wrapper: {summary['num_unsupported_by_wrapper']}",
@@ -780,6 +809,87 @@ def write_final_asset_closure_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_final_production_asset_integration_report(
+    *,
+    output_root: Path,
+    summary: Mapping[str, object],
+    validation_rows: Sequence[Mapping[str, object]],
+) -> None:
+    model_statuses = summary.get("model_statuses", {})
+    target_statuses = {
+        alias: str(_mapping_get(model_statuses, alias))
+        for alias in FINAL_CLOSURE_TARGET_MODELS
+    }
+    target_reasons = {
+        alias: summary_reason_for_alias(summary, alias)
+        for alias, status in target_statuses.items()
+        if status not in {AssetStatus.VERIFIED.value, AssetStatus.VERIFIED_SEPARATE_ENV.value}
+    }
+    previous_verified_statuses = {
+        alias: str(_mapping_get(model_statuses, alias))
+        for alias in FINAL_CLOSURE_REGRESSION_MODELS
+    }
+    payload: dict[str, object] = {
+        "gemma4_production_status": target_statuses.get("gemma-4-12b-it", ""),
+        "phi4_production_status": target_statuses.get("phi-4-multimodal-instruct", ""),
+        "llava_v1_5_production_status": target_statuses.get("llava-v1.5-7b", ""),
+        "molmo_separate_env_status": target_statuses.get("molmo-7b-d-0924", ""),
+        "verified_models": summary.get("verified_models", []),
+        "verified_separate_env_models": summary.get("verified_separate_env_models", []),
+        "blocked_models": summary.get("blocked_models", []),
+        "failed_validation_models": summary.get("failed_models", []),
+        "target_statuses": target_statuses,
+        "target_reasons": target_reasons,
+        "previous_verified_statuses": previous_verified_statuses,
+        "all_previous_verified_models_stayed_verified": all(
+            status == AssetStatus.VERIFIED.value for status in previous_verified_statuses.values()
+        ),
+        "all_16_registry_models_have_final_statuses": len(_mapping_get(summary, "model_statuses") or {}) == len(REQUIRED_MODEL_ALIASES),
+        "stageA_started": False,
+        "full_cache_extraction_started": False,
+        "training_started": False,
+        "validation_row_statuses": {
+            alias: sorted({str(row.get("status", "")) for row in validation_rows if row.get("model_alias") == alias})
+            for alias in (*FINAL_CLOSURE_TARGET_MODELS, *FINAL_CLOSURE_REGRESSION_MODELS)
+        },
+        "note": "This report covers asset pipeline integration and hidden-state extraction checks only. It is not scientific validation.",
+    }
+    _write_json(output_root / "final_production_asset_integration_report.json", payload)
+
+    lines = [
+        "# Final Production Asset Integration Report",
+        "",
+        "This report covers asset pipeline integration and hidden-state extraction checks only. It is not scientific validation.",
+        "",
+        "## Target Status",
+        f"- gemma-4-12b-it: {payload['gemma4_production_status']}; reason={summary_reason_for_alias(summary, 'gemma-4-12b-it')}",
+        f"- phi-4-multimodal-instruct: {payload['phi4_production_status']}; reason={summary_reason_for_alias(summary, 'phi-4-multimodal-instruct')}",
+        f"- llava-v1.5-7b: {payload['llava_v1_5_production_status']}; reason={summary_reason_for_alias(summary, 'llava-v1.5-7b')}",
+        f"- molmo-7b-d-0924: {payload['molmo_separate_env_status']}; reason={summary_reason_for_alias(summary, 'molmo-7b-d-0924')}",
+        "",
+        "## Verified Models",
+        *[f"- {alias}" for alias in summary.get("verified_models", [])],
+        "",
+        "## Verified Separate Env Models",
+        *[f"- {alias}" for alias in summary.get("verified_separate_env_models", [])],
+        "",
+        "## Blocked Models",
+        *[f"- {alias}: {summary_reason_for_alias(summary, str(alias))}" for alias in summary.get("blocked_models", [])],
+        "",
+        "## Failed Validation Models",
+        *[f"- {alias}: {summary_reason_for_alias(summary, str(alias))}" for alias in summary.get("failed_models", [])],
+        "",
+        "## Regression Check",
+        f"- all_previous_verified_models_stayed_verified: {payload['all_previous_verified_models_stayed_verified']}",
+        "",
+        "## Scope Flags",
+        "- Stage A started: false",
+        "- Full cache extraction started: false",
+        "- Training started: false",
+    ]
+    (output_root / "final_production_asset_integration_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _mapping_get(payload: object, key: str) -> object:
     if isinstance(payload, Mapping):
         return payload.get(key, "")
@@ -788,6 +898,7 @@ def _mapping_get(payload: object, key: str) -> object:
 
 def summary_reason_for_alias(summary: Mapping[str, object], alias: str) -> str:
     for group_key in (
+        "verified_separate_env_reasons",
         "blocked_reasons",
         "unsupported_by_policy_reasons",
         "unsupported_by_wrapper_reasons",

@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 from typing import Any, Iterable, Mapping, Sequence
 
 import torch
@@ -19,6 +20,7 @@ from mind.models.types import parse_yes_no_answer
 
 class AssetStatus(str, Enum):
     VERIFIED = "verified"
+    VERIFIED_SEPARATE_ENV = "verified_separate_env"
     BLOCKED = "blocked"
     UNSUPPORTED_BY_POLICY = "unsupported_by_policy"
     UNSUPPORTED_BY_WRAPPER = "unsupported_by_wrapper"
@@ -58,6 +60,9 @@ class AssetAuditResult:
     generation_api_support: str
     hidden_state_index_offset: int | str
     prompt_template_id: str
+    moe_policy_decision: str = "not_evaluated"
+    moe_indicators_seen: list[str] = field(default_factory=list)
+    moe_indicators_ignored_with_reason: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -84,6 +89,9 @@ class AssetAuditResult:
             "generation_api_support": self.generation_api_support,
             "hidden_state_index_offset": self.hidden_state_index_offset,
             "prompt_template_id": self.prompt_template_id,
+            "moe_policy_decision": self.moe_policy_decision,
+            "moe_indicators_seen": self.moe_indicators_seen,
+            "moe_indicators_ignored_with_reason": self.moe_indicators_ignored_with_reason,
         }
 
 
@@ -99,6 +107,9 @@ MOE_INDICATOR_KEYS = {
     "experts_per_tok",
     "num_local_experts",
     "router_aux_loss_coef",
+    "enable_moe_block",
+    "moe_intermediate_size",
+    "top_k_experts",
 }
 
 SUPPORTED_WRAPPER_FAMILIES = {
@@ -113,14 +124,17 @@ SUPPORTED_WRAPPER_FAMILIES = {
     "molmo": "AutoModelForCausalLM",
     "gemma3": "Gemma3ForConditionalGeneration",
     "gemma4": "Gemma4ForConditionalGeneration",
+    "gemma4_unified": "AutoModelForMultimodalLM",
     "phi3_v": "Phi3VForCausalLM",
     "phi4mm": "Phi4MMForCausalLM",
+    "llava_v15": "LlavaForConditionalGeneration",
 }
 
 SINGLE_IMAGE_VLM_FAMILIES = SUPPORTED_WRAPPER_FAMILIES.keys() | {
     "glm4v",
     "gemma3",
     "gemma4",
+    "gemma4_unified",
     "qwen3_5",
     "qwen2_5_vl",
     "minicpmv",
@@ -140,7 +154,7 @@ def detect_moe_indicators(payload: object, *, prefix: str = "") -> list[str]:
             key = str(raw_key)
             label = key if not prefix else f"{prefix}.{key}"
             normalized = key.lower()
-            if normalized in MOE_INDICATOR_KEYS or normalized == "moe":
+            if (normalized in MOE_INDICATOR_KEYS or normalized == "moe") and _moe_indicator_is_active(value):
                 found.append(label)
             found.extend(detect_moe_indicators(value, prefix=label))
     elif isinstance(payload, list):
@@ -148,6 +162,53 @@ def detect_moe_indicators(payload: object, *, prefix: str = "") -> list[str]:
             label = f"{prefix}[{index}]" if prefix else f"[{index}]"
             found.extend(detect_moe_indicators(value, prefix=label))
     return found
+
+
+def _moe_indicator_is_active(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "none", "null"}
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
+def classify_moe_policy(asset: AssetModel, config: Mapping[str, object]) -> tuple[list[str], str, dict[str, str]]:
+    active = detect_moe_indicators(config)
+    ignored: dict[str, str] = {}
+    if asset.family == "gemma4_unified":
+        ignored = {
+            label: "Gemma4 12B Unified local config carries inactive expert-capacity fields; only active routing fields or the 26B A4B MoE architecture block this family."
+            for label in _inactive_moe_indicator_labels(config)
+        }
+        architectures = config.get("architectures")
+        architecture_text = " ".join(str(item) for item in architectures) if isinstance(architectures, list) else str(architectures or "")
+        if "26B" in architecture_text or "A4B" in architecture_text:
+            active = active or ["architectures"]
+    decision = "moe_disallowed" if active and not asset.policy.allow_moe else "non_moe"
+    return active, decision, ignored
+
+
+def _inactive_moe_indicator_labels(payload: object, *, prefix: str = "") -> list[str]:
+    labels: list[str] = []
+    if isinstance(payload, Mapping):
+        for raw_key, value in payload.items():
+            key = str(raw_key)
+            label = key if not prefix else f"{prefix}.{key}"
+            normalized = key.lower()
+            if (normalized in MOE_INDICATOR_KEYS or normalized == "moe") and not _moe_indicator_is_active(value):
+                labels.append(label)
+            labels.extend(_inactive_moe_indicator_labels(value, prefix=label))
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            label = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            labels.extend(_inactive_moe_indicator_labels(value, prefix=label))
+    return labels
 
 
 def audit_asset_metadata(asset: AssetModel) -> AssetAuditResult:
@@ -174,10 +235,13 @@ def audit_asset_metadata(asset: AssetModel) -> AssetAuditResult:
     processor_tokenizer_assets = _has_processor_or_tokenizer_assets(local_path)
     model_family = str(config.get("model_type") or asset.family)
     architecture = _architecture_name(config)
-    moe_indicators = detect_moe_indicators(config)
+    moe_indicators, moe_policy_decision, moe_ignored = classify_moe_policy(asset, config)
     thinking_detected = _detect_thinking_markers(local_path)
     total_layers = resolve_total_layers_from_config(config)
     hidden_dim = resolve_hidden_dim_from_config(config)
+    if asset.family == "llava_v15":
+        total_layers = total_layers or resolve_total_layers_from_weight_index(local_path)
+        hidden_dim = hidden_dim or resolve_hidden_dim_from_safetensors_header(local_path)
     loading_class = SUPPORTED_WRAPPER_FAMILIES.get(asset.family, "unsupported")
     output_support = "resolved_by_wrapper" if asset.family in SUPPORTED_WRAPPER_FAMILIES else "unsupported_by_wrapper"
     generation_support = output_support
@@ -208,15 +272,19 @@ def audit_asset_metadata(asset: AssetModel) -> AssetAuditResult:
         generation_api_support=generation_support,
         hidden_state_index_offset=asset.hidden_state_index_offset,
         prompt_template_id=asset.prompt_template_id,
+        moe_policy_decision=moe_policy_decision,
+        moe_indicators_seen=moe_indicators,
+        moe_indicators_ignored_with_reason=moe_ignored,
     )
 
-    if moe_indicators and not asset.policy.allow_moe:
+    if moe_policy_decision == "moe_disallowed":
         return _replace_audit(
             result,
             status=AssetStatus.UNSUPPORTED_BY_POLICY,
             reason="MoE indicators are disallowed: " + ", ".join(moe_indicators),
         )
-    if thinking_detected and not asset.policy.allow_thinking:
+    thinking_requires_disable = thinking_detected or asset.thinking.supported is True
+    if thinking_requires_disable and not asset.policy.allow_thinking:
         if asset.thinking.disable_argument is None or asset.thinking.disabled_by_default is not True:
             return _replace_audit(
                 result,
@@ -275,6 +343,51 @@ def resolve_hidden_dim_from_config(config: Mapping[str, object]) -> int | None:
         integer = _positive_int_or_none(value)
         if integer is not None:
             return integer
+    return None
+
+
+def resolve_total_layers_from_weight_index(local_path: Path) -> int | None:
+    index_path = local_path / "model.safetensors.index.json"
+    if not index_path.is_file():
+        return None
+    try:
+        payload = _read_json(index_path)
+    except Exception:
+        return None
+    weight_map = payload.get("weight_map")
+    if not isinstance(weight_map, Mapping):
+        return None
+    layer_indices: set[int] = set()
+    for key_object in weight_map:
+        key = str(key_object)
+        match = re.search(r"(?:language_model\.)?model\.layers\.(\d+)\.", key)
+        if match:
+            layer_indices.add(int(match.group(1)))
+    if not layer_indices:
+        return None
+    return max(layer_indices) + 1
+
+
+def resolve_hidden_dim_from_safetensors_header(local_path: Path) -> int | None:
+    try:
+        from safetensors import safe_open
+    except Exception:
+        return None
+    for shard_path in sorted(local_path.glob("*.safetensors")):
+        try:
+            with safe_open(shard_path, framework="pt", device="cpu") as handle:
+                for key in (
+                    "language_model.model.embed_tokens.weight",
+                    "model.embed_tokens.weight",
+                    "language_model.model.layers.0.self_attn.q_proj.weight",
+                    "model.layers.0.self_attn.q_proj.weight",
+                ):
+                    if key in handle.keys():
+                        shape = handle.get_slice(key).get_shape()
+                        if len(shape) >= 2:
+                            return int(shape[-1])
+        except Exception:
+            continue
     return None
 
 
@@ -368,6 +481,40 @@ def _validate_required_sidecar_metadata(sidecar: Mapping[str, object]) -> Valida
     trust_remote_code = sidecar.get("trust_remote_code")
     if trust_remote_code not in (True, False):
         return ValidationResult("failed_validation", "sidecar metadata trust_remote_code must be boolean")
+    family = str(sidecar.get("model_family"))
+    if family == "gemma4_unified":
+        for key, expected in (
+            ("unified_multimodal", True),
+            ("has_separate_vision_encoder", False),
+            ("image_sensitivity_canary_required", True),
+            ("enable_thinking", False),
+        ):
+            if sidecar.get(key) is not expected:
+                return ValidationResult("failed_validation", f"sidecar metadata {key} must be {expected!r}")
+    if family == "phi4mm":
+        required_phi4 = (
+            "attn_implementation_effective",
+            "disabled_flash_attention_2",
+            "low_cpu_mem_usage",
+            "device_map_policy",
+            "no_meta_tensors_after_load",
+            "peft_version",
+        )
+        for key in required_phi4:
+            if key not in sidecar:
+                return ValidationResult("failed_validation", f"sidecar metadata missing Phi4 loading field: {key}")
+        if sidecar.get("attn_implementation_effective") not in {"eager", "sdpa"}:
+            return ValidationResult("failed_validation", "Phi4 sidecar attention must be eager or sdpa")
+        if sidecar.get("low_cpu_mem_usage") is not False:
+            return ValidationResult("failed_validation", "Phi4 sidecar low_cpu_mem_usage must be false")
+        if sidecar.get("no_meta_tensors_after_load") is not True:
+            return ValidationResult("failed_validation", "Phi4 sidecar no_meta_tensors_after_load must be true")
+    if family == "llava_v15":
+        for key in ("hf_complete_asset_path", "vision_tower_status", "image_token_prompt_policy", "copied_metadata_from_onevision"):
+            if key not in sidecar:
+                return ValidationResult("failed_validation", f"sidecar metadata missing LLaVA-v1.5 field: {key}")
+        if sidecar.get("copied_metadata_from_onevision") is not False:
+            return ValidationResult("failed_validation", "LLaVA-v1.5 sidecar copied_metadata_from_onevision must be false")
     return ValidationResult("verified")
 
 
@@ -448,16 +595,19 @@ def build_completion_summary(
         for alias in REQUIRED_MODEL_ALIASES
     }
     verified = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.VERIFIED.value)
+    verified_separate_env = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.VERIFIED_SEPARATE_ENV.value)
     blocked = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.BLOCKED.value)
     unsupported_policy = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.UNSUPPORTED_BY_POLICY.value)
     unsupported_wrapper = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.UNSUPPORTED_BY_WRAPPER.value)
     unsupported = sorted(unsupported_policy + unsupported_wrapper)
     failed = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.FAILED_VALIDATION.value)
     not_attempted = sorted(alias for alias, status in normalized_statuses.items() if status == AssetStatus.NOT_ATTEMPTED_DUE_TO_DEPENDENCY.value)
+    passing_statuses = {AssetStatus.VERIFIED.value, AssetStatus.VERIFIED_SEPARATE_ENV.value}
     return {
-        "final_status": "passed" if len(verified) == len(REQUIRED_MODEL_ALIASES) else "blocked",
+        "final_status": "passed" if all(normalized_statuses[alias] in passing_statuses for alias in REQUIRED_MODEL_ALIASES) else "blocked",
         "total_models_requested": len(REQUIRED_MODEL_ALIASES),
         "num_verified": len(verified),
+        "num_verified_separate_env": len(verified_separate_env),
         "num_blocked": len(blocked),
         "num_unsupported_by_policy": len(unsupported_policy),
         "num_unsupported_by_wrapper": len(unsupported_wrapper),
@@ -465,12 +615,14 @@ def build_completion_summary(
         "num_not_attempted_due_to_dependency": len(not_attempted),
         "model_statuses": normalized_statuses,
         "verified_models": verified,
+        "verified_separate_env_models": verified_separate_env,
         "blocked_models": blocked,
         "unsupported_by_policy_models": unsupported_policy,
         "unsupported_by_wrapper_models": unsupported_wrapper,
         "unsupported_models": unsupported,
         "failed_models": failed,
         "not_attempted_due_to_dependency_models": not_attempted,
+        "verified_separate_env_reasons": {alias: model_reasons.get(alias, "") for alias in verified_separate_env},
         "blocked_reasons": {alias: model_reasons.get(alias, "") for alias in blocked},
         "unsupported_reasons": {alias: model_reasons.get(alias, "") for alias in unsupported},
         "unsupported_by_policy_reasons": {alias: model_reasons.get(alias, "") for alias in unsupported_policy},
@@ -585,6 +737,9 @@ def _base_audit_result(
         generation_api_support="unknown",
         hidden_state_index_offset=asset.hidden_state_index_offset,
         prompt_template_id=asset.prompt_template_id,
+        moe_policy_decision="not_evaluated",
+        moe_indicators_seen=[],
+        moe_indicators_ignored_with_reason={},
     )
 
 
@@ -696,6 +851,16 @@ def _audit_family_specific_constraints(
         missing = _missing_transformers_classes(("Gemma4Processor", "Gemma4ForConditionalGeneration", "AutoModelForMultimodalLM"))
         if missing:
             return AssetStatus.BLOCKED, "installed transformers is missing required Gemma4 classes: " + ", ".join(missing)
+    if family == "gemma4_unified":
+        if config.get("model_type") != "gemma4_unified" or "image_token_id" not in config:
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "Gemma4 Unified image-text config is required"
+        if _processor_class_from_files(local_path) != "Gemma4UnifiedProcessor" or _image_processor_type(local_path) != "Gemma4UnifiedImageProcessor":
+            return AssetStatus.BLOCKED, "Gemma4UnifiedProcessor and Gemma4UnifiedImageProcessor metadata are required"
+        if not _has_safetensors_asset(local_path):
+            return AssetStatus.BLOCKED, "Gemma4 Unified safetensors asset is required in the local asset"
+        missing = _missing_transformers_classes(("Gemma4UnifiedProcessor", "Gemma4UnifiedForConditionalGeneration", "AutoModelForMultimodalLM"))
+        if missing:
+            return AssetStatus.BLOCKED, "installed transformers is missing required Gemma4 Unified classes: " + ", ".join(missing)
     if family == "phi3_v":
         if config.get("model_type") != "phi3_v" or "img_processor" not in config:
             return AssetStatus.UNSUPPORTED_BY_POLICY, "Phi-3.5 vision image-text config is required"
@@ -740,15 +905,19 @@ def _processor_class_from_files(path: Path) -> str | None:
 
 
 def _image_processor_type(path: Path) -> str | None:
-    candidate = path / "preprocessor_config.json"
-    if not candidate.is_file():
-        return None
-    try:
-        payload = json.loads(candidate.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    if isinstance(payload, Mapping) and payload.get("image_processor_type"):
-        return str(payload["image_processor_type"])
+    for filename in ("preprocessor_config.json", "processor_config.json"):
+        candidate = path / filename
+        if not candidate.is_file():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, Mapping) and payload.get("image_processor_type"):
+            return str(payload["image_processor_type"])
+        nested = payload.get("image_processor") if isinstance(payload, Mapping) else None
+        if isinstance(nested, Mapping) and nested.get("image_processor_type"):
+            return str(nested["image_processor_type"])
     return None
 
 

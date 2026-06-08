@@ -11,9 +11,25 @@ import gc
 import json
 import os
 from pathlib import Path
+import site
 import subprocess
 import sys
 from typing import Mapping, Sequence
+
+
+def remove_user_site_paths() -> list[str]:
+    user_site = site.getusersitepackages()
+    candidates = [user_site] if isinstance(user_site, str) else list(user_site)
+    removed: list[str] = []
+    for candidate in candidates:
+        for path in list(sys.path):
+            if path == candidate or path.startswith(str(candidate) + "/"):
+                sys.path.remove(path)
+                removed.append(path)
+    return removed
+
+
+REMOVED_USER_SITE_PATHS = remove_user_site_paths() if os.environ.get("MIND_SMOKE_REMOVE_USER_SITE") == "1" else []
 
 import torch
 
@@ -106,13 +122,25 @@ def run_smoke(
         raise ValueError(f"unsupported smoke datasets: {unknown}")
 
     output_root.mkdir(parents=True, exist_ok=True)
-    registry = load_asset_registry(registry_path)
     selected_aliases = resolve_model_selection(models)
+    if registry_path.is_file() and should_run_phi4_in_isolated_process(selected_aliases):
+        run_phi4_isolated_smoke(
+            registry_path=registry_path,
+            output_root=output_root,
+            stage0_root=stage0_root,
+            datasets=datasets,
+            smoke_limit=smoke_limit,
+            device=device,
+        )
+        selected_aliases = set(selected_aliases) - {"phi-4-multimodal-instruct"}
+
+    registry = load_asset_registry(registry_path)
     previous_rows = read_report_rows(output_root / "smoke_extraction_report.csv")
     previous_by_pair = {
         (str(row.get("model_alias")), str(row.get("dataset")), str(row.get("subset"))): row
         for row in previous_rows
     }
+    separate_env_statuses = read_separate_env_acceptance(output_root)
     missing_paths = required_dataset_paths(stage0_root=stage0_root, datasets=datasets)
     audit_results = {result.alias: result for result in (audit_asset_metadata(model) for model in registry.models)}
     rows: list[dict[str, object]] = []
@@ -122,7 +150,7 @@ def run_smoke(
         reason = "required smoke dataset file missing before model loading: " + ", ".join(str(path) for path in missing_paths)
         for alias in REQUIRED_MODEL_ALIASES:
             if alias not in selected_aliases:
-                rows.extend(_preserved_or_audit_rows(alias, datasets, audit_results[alias], previous_by_pair))
+                rows.extend(_preserved_or_audit_rows(alias, datasets, audit_results[alias], previous_by_pair, separate_env_statuses))
                 continue
             audit = audit_results[alias]
             status = (
@@ -145,8 +173,20 @@ def run_smoke(
     }
     for asset in registry.models:
         audit = audit_results[asset.alias]
+        if asset.alias in separate_env_statuses:
+            reason = str(separate_env_statuses[asset.alias].get("reason", "accepted from separate environment"))
+            for dataset in datasets:
+                dataset_name, subset = DATASET_SPECS[dataset]
+                rows.append(_report_row(asset.alias, dataset_name, subset, AssetStatus.VERIFIED_SEPARATE_ENV.value, reason))
+            continue
+        if asset.alias == "molmo-7b-d-0924":
+            reason = "Molmo is accepted only from separate-env artifacts; main-env smoke loading is disabled for this asset"
+            for dataset in datasets:
+                dataset_name, subset = DATASET_SPECS[dataset]
+                rows.append(_report_row(asset.alias, dataset_name, subset, AssetStatus.BLOCKED.value, reason))
+            continue
         if asset.alias not in selected_aliases:
-            rows.extend(_preserved_or_audit_rows(asset.alias, datasets, audit, previous_by_pair))
+            rows.extend(_preserved_or_audit_rows(asset.alias, datasets, audit, previous_by_pair, separate_env_statuses))
             continue
         if audit.status != AssetStatus.VERIFIED:
             for dataset in datasets:
@@ -242,7 +282,12 @@ def run_smoke(
                     "script": "scripts/asset_smoke_extract.py",
                     "git_commit": get_git_commit(),
                     "created_at_utc": utc_now_iso(),
+                    "removed_user_site_paths": REMOVED_USER_SITE_PATHS,
+                    "python_no_user_site": os.environ.get("PYTHONNOUSERSITE") == "1",
+                    "mind_smoke_remove_user_site": os.environ.get("MIND_SMOKE_REMOVE_USER_SITE") == "1",
                 }
+                production_metadata = getattr(wrapper, "production_sidecar_metadata", lambda: {})()
+                metadata.update(production_metadata)
                 sidecar = save_prefill_cache_shard(
                     entries,
                     shard_path,
@@ -314,6 +359,46 @@ def resolve_model_selection(models: Sequence[str] | None) -> set[str]:
     if not models:
         raise ValueError("--models must name at least one alias when provided")
     return set(models)
+
+
+def should_run_phi4_in_isolated_process(selected_aliases: set[str]) -> bool:
+    return (
+        "phi-4-multimodal-instruct" in selected_aliases
+        and os.environ.get("MIND_SMOKE_REMOVE_USER_SITE") != "1"
+    )
+
+
+def run_phi4_isolated_smoke(
+    *,
+    registry_path: Path,
+    output_root: Path,
+    stage0_root: Path,
+    datasets: Sequence[str],
+    smoke_limit: int,
+    device: str,
+) -> None:
+    env = os.environ.copy()
+    env["MIND_SMOKE_REMOVE_USER_SITE"] = "1"
+    env["PYTHONNOUSERSITE"] = "1"
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--registry",
+        str(registry_path),
+        "--output-root",
+        str(output_root),
+        "--stage0-root",
+        str(stage0_root),
+        "--datasets",
+        *datasets,
+        "--smoke-limit",
+        str(smoke_limit),
+        "--device",
+        device,
+        "--models",
+        "phi-4-multimodal-instruct",
+    ]
+    subprocess.run(command, check=True, env=env)
 
 
 def read_report_rows(path: Path) -> list[dict[str, str]]:
@@ -555,10 +640,22 @@ def _preserved_or_audit_rows(
     datasets: Sequence[str],
     audit: object,
     previous_by_pair: Mapping[tuple[str, str, str], Mapping[str, object]],
+    separate_env_statuses: Mapping[str, Mapping[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for dataset in datasets:
         dataset_name, subset = DATASET_SPECS[dataset]
+        if separate_env_statuses and alias in separate_env_statuses:
+            rows.append(
+                _report_row(
+                    alias,
+                    dataset_name,
+                    subset,
+                    AssetStatus.VERIFIED_SEPARATE_ENV.value,
+                    str(separate_env_statuses[alias].get("reason", "accepted from separate environment")),
+                )
+            )
+            continue
         previous = previous_by_pair.get((alias, dataset_name, subset))
         if previous is not None:
             rows.append(dict(previous))
@@ -576,6 +673,17 @@ def _preserved_or_audit_rows(
         else:
             rows.append(_report_row(alias, dataset_name, subset, audit.status.value, audit.reason))
     return rows
+
+
+def read_separate_env_acceptance(output_root: Path) -> dict[str, Mapping[str, object]]:
+    path = output_root / "molmo_separate_env_acceptance.json"
+    payload = read_json(path, default={})
+    if not isinstance(payload, Mapping):
+        return {}
+    alias = str(payload.get("model_alias", ""))
+    if alias and payload.get("status") == AssetStatus.VERIFIED_SEPARATE_ENV.value:
+        return {alias: payload}
+    return {}
 
 
 def sidecar_generation_kwargs(wrapper: object) -> dict[str, object]:
@@ -636,6 +744,7 @@ def write_summary_from_rows(output_root: Path, rows: Sequence[Mapping[str, objec
         AssetStatus.UNSUPPORTED_BY_POLICY.value: 3,
         AssetStatus.UNSUPPORTED_BY_WRAPPER.value: 3,
         AssetStatus.VERIFIED.value: 1,
+        AssetStatus.VERIFIED_SEPARATE_ENV.value: 1,
     }
     statuses: dict[str, str] = {}
     reasons: dict[str, str] = {}

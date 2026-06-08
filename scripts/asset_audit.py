@@ -7,9 +7,26 @@ import argparse
 import csv
 import importlib.util
 import json
+import os
 from pathlib import Path
+import site
 import subprocess
 import sys
+
+
+def remove_user_site_paths() -> list[str]:
+    user_site = site.getusersitepackages()
+    candidates = [user_site] if isinstance(user_site, str) else list(user_site)
+    removed: list[str] = []
+    for candidate in candidates:
+        for path in list(sys.path):
+            if path == candidate or path.startswith(str(candidate) + "/"):
+                sys.path.remove(path)
+                removed.append(path)
+    return removed
+
+
+REMOVED_USER_SITE_PATHS = remove_user_site_paths() if os.environ.get("MIND_AUDIT_REMOVE_USER_SITE") == "1" else []
 
 REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 repo_src_path = str(REPO_SRC)
@@ -379,15 +396,15 @@ def gemma4_local_asset_complete(local_path: Path) -> bool:
         config = json.loads(config_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return False
-    if config.get("model_type") != "gemma4" or not _gemma4_config_has_image_text_path(config):
+    if config.get("model_type") not in {"gemma4", "gemma4_unified"} or not _gemma4_config_has_image_text_path(config):
         return False
     has_tokenizer_or_processor = any(
         (local_path / filename).is_file()
         for filename in ("tokenizer_config.json", "tokenizer.json", "tokenizer.model", "processor_config.json", "preprocessor_config.json")
     )
     has_weights = _has_complete_safetensors_asset(local_path)
-    has_processor = _candidate_processor_class(local_path, "gemma-4-12b-it") == "Gemma4Processor"
-    has_image_processor = _image_processor_type(local_path) == "Gemma4ImageProcessor"
+    has_processor = _candidate_processor_class(local_path, "gemma-4-12b-it") in {"Gemma4Processor", "Gemma4UnifiedProcessor"}
+    has_image_processor = _image_processor_type(local_path) in {"Gemma4ImageProcessor", "Gemma4UnifiedImageProcessor"}
     has_generation_or_processor = (
         (local_path / "generation_config.json").is_file()
         or (local_path / "processor_config.json").is_file()
@@ -432,6 +449,15 @@ def _image_processor_type(path: Path) -> str:
         image_processor = payload.get("image_processor_type") or payload.get("image_processor_class")
         if image_processor:
             return str(image_processor)
+    processor_config = path / "processor_config.json"
+    if processor_config.is_file():
+        try:
+            payload = json.loads(processor_config.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return ""
+        nested = payload.get("image_processor")
+        if isinstance(nested, dict) and nested.get("image_processor_type"):
+            return str(nested["image_processor_type"])
     return ""
 
 
@@ -639,8 +665,8 @@ def _inspect_final_closure_asset(model: object, *, gemma4_preflight: dict[str, o
             row["safetensors_files"] = [*row["safetensors_files"], "model.safetensors.index.json"]
     if alias == "gemma-4-12b-it":
         row["thinking_disable_evidence"] = "official Gemma 4 chat template uses enable_thinking=false; local template must confirm after download"
-        row["candidate_model_class"] = "Gemma4ForConditionalGeneration"
-        row["candidate_processor_class"] = "Gemma4Processor"
+        row["candidate_model_class"] = "AutoModelForMultimodalLM"
+        row["candidate_processor_class"] = "Gemma4UnifiedProcessor"
         if not local_path.is_dir():
             row["status"] = AssetStatus.BLOCKED.value
             row["reason"] = str(gemma4_preflight.get("reason") or f"local path does not exist: {local_path}")
@@ -715,7 +741,7 @@ def _thinking_indicator_files(path: Path) -> list[str]:
 
 def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
     if alias == "gemma-4-12b-it":
-        return "Gemma4ForConditionalGeneration"
+        return "AutoModelForMultimodalLM"
     if alias == "glm-4.6v-flash":
         return "Glm4vForConditionalGeneration"
     if alias in {"minicpm-v-2_6", "minicpm-v-4_5"}:
@@ -729,7 +755,7 @@ def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
     if alias == "molmo-7b-d-0924":
         return "AutoModelForCausalLM"
     if alias == "llava-v1.5-7b":
-        return "unsupported_until_complete_local_metadata"
+        return "LlavaForConditionalGeneration"
     if alias == "qwen2.5-vl-7b":
         return "Qwen2_5_VLForConditionalGeneration"
     if alias in {"qwen3.5-4b", "qwen3.5-9b"}:
@@ -784,6 +810,15 @@ def _llava_v15_image_processor_type(path: Path) -> str:
         image_processor = payload.get("image_processor_type") or payload.get("image_processor_class")
         if image_processor:
             return str(image_processor)
+    processor_config = path / "processor_config.json"
+    if processor_config.is_file():
+        try:
+            payload = json.loads(processor_config.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return ""
+        nested = payload.get("image_processor")
+        if isinstance(nested, dict) and nested.get("image_processor_type"):
+            return str(nested["image_processor_type"])
     return ""
 
 

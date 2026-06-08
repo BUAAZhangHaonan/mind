@@ -88,16 +88,16 @@ models:
     local_path: /home/team/lvshuyang/Models/gemma-4-12B-it
     hf_model_id: google/gemma-4-12B-it
     model_config_path: configs/models/gemma_4_12b_it.yaml
-    model_id_or_family_name: gemma4
-    family: gemma4
+    model_id_or_family_name: gemma4_unified
+    family: gemma4_unified
     dtype: bfloat16
     trust_remote_code: false
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
     thinking: {supported: true, disabled_by_default: true, disable_argument: enable_thinking=false}
     policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
-    prompt_template_id: gemma4_chat_single_image_raw_question_no_thinking_v1
-    prompt_template_text: "Single user message with one image item followed by the normalized question text unchanged; chat template receives enable_thinking=false."
+    prompt_template_id: gemma4_unified_single_image_raw_question_no_thinking_v1
+    prompt_template_text: "Gemma4 Unified chat template with one image item followed by the normalized question text unchanged; chat template receives enable_thinking=false."
     hidden_state_index_offset: 1
   - alias: qwen3.5-4b
     local_path: /home/team/lvshuyang/Models/Qwen3.5-4B
@@ -203,14 +203,14 @@ models:
     model_id_or_family_name: llava_v15
     family: llava_v15
     dtype: float16
-    trust_remote_code: true
+    trust_remote_code: false
     attn_implementation: eager
     deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
     thinking: {supported: false, disabled_by_default: true, disable_argument: null}
     policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
     prompt_template_id: llava_v15_single_image_raw_question_v1
-    prompt_template_text: "LLaVA v1.5 prompt format is registered, but wrapper support is not implemented in Experiment 1."
-    hidden_state_index_offset: unknown
+    prompt_template_text: "LLaVA-v1.5 chat template receives one image content item followed by the normalized question text unchanged, with add_generation_prompt=true."
+    hidden_state_index_offset: 1
   - alias: qwen2.5-vl-7b
     local_path: /home/team/lvshuyang/Models/Qwen2.5-VL-7B-Instruct
     model_config_path: configs/models/qwen2_5_vl_7b.yaml

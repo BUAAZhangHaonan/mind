@@ -22,7 +22,6 @@ from transformers import (
     AutoModel,
     AutoModelForCausalLM,
     AutoModelForImageTextToText,
-    AutoModelForMultimodalLM,
     AutoProcessor,
     AutoTokenizer,
     GenerationConfig,
@@ -34,6 +33,11 @@ from transformers.modeling_utils import PreTrainedModel
 from mind.config import ModelConfig
 
 from .types import parse_yes_no_answer, resolve_torch_dtype
+
+try:
+    from transformers import AutoModelForMultimodalLM
+except ImportError:
+    AutoModelForMultimodalLM = None
 
 
 def _model_inputs_get(model_inputs: Any, key: str, default: Any = None) -> Any:
@@ -390,6 +394,24 @@ class BaseModelWrapper:
 
     def expected_model_class_name(self) -> str:
         return "generic_unknown"
+
+    def production_sidecar_metadata(self) -> dict[str, Any]:
+        return {}
+
+    def requires_image_sensitivity_canary(self) -> bool:
+        return False
+
+    def has_separate_vision_encoder(self) -> bool | None:
+        return None
+
+    def validate_no_meta_tensors_after_load(self, model: Any) -> bool:
+        named_parameters = getattr(model, "named_parameters", None)
+        if not callable(named_parameters):
+            raise ValueError("meta tensor validation requires a loaded model with named_parameters()")
+        meta_names = [name for name, parameter in named_parameters() if str(getattr(parameter, "device", "")) == "meta"]
+        if meta_names:
+            raise ValueError("meta tensors remain after model load: " + ", ".join(meta_names[:20]))
+        return True
 
     def chat_template_kwargs(self) -> dict[str, Any]:
         disable_argument = None
@@ -1479,6 +1501,151 @@ class Gemma4Wrapper(Gemma3Wrapper):
         return self._move_batch_to_device(collate_tensor_dicts(processed), device)
 
 
+class Gemma4UnifiedWrapper(BaseModelWrapper):
+    """Gemma 4 12B Unified image-text wrapper with thinking disabled."""
+
+    def expected_model_class_name(self) -> str:
+        return "AutoModelForMultimodalLM"
+
+    def expected_processor_class_name(self) -> str:
+        return "Gemma4UnifiedProcessor"
+
+    def requires_image_sensitivity_canary(self) -> bool:
+        return True
+
+    def has_separate_vision_encoder(self) -> bool:
+        return False
+
+    def disable_thinking_kwargs(self) -> dict[str, Any]:
+        return {"enable_thinking": False}
+
+    def chat_template_kwargs(self) -> dict[str, Any]:
+        return {"enable_thinking": False}
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("Gemma4UnifiedWrapper requires an image path.")
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": question},
+                ],
+            }
+        ]
+
+    def load_processor(self):
+        local_path = require_local_model_path(self.model_id_or_path())
+        processor = configure_left_padding(
+            AutoProcessor.from_pretrained(
+                local_path,
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=True,
+            )
+        )
+        if type(processor).__name__ != "Gemma4UnifiedProcessor":
+            raise ValueError(f"Gemma4UnifiedWrapper requires Gemma4UnifiedProcessor, got {type(processor).__name__}")
+        return processor
+
+    def load_model(self, *, device: str = "cuda"):
+        if AutoModelForMultimodalLM is None:
+            raise ImportError("installed transformers is missing required Gemma4 Unified class: AutoModelForMultimodalLM")
+        return AutoModelForMultimodalLM.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        ).eval()
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        return self.prepare_asset_batch_inputs(
+            processor,
+            questions=[self.format_yes_no_question(question) for question in questions],
+            image_paths=image_paths,
+            device=device,
+        )
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        prompts: list[str] = []
+        images: list[Image.Image] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("Gemma4UnifiedWrapper requires an image path.")
+            prompts.append(
+                processor.apply_chat_template(
+                    self.build_messages(question=question, image_path=image_path),
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    enable_thinking=False,
+                )
+            )
+            images.append(Image.open(image_path).convert("RGB"))
+        batch = processor(images=images, text=prompts, return_tensors="pt", padding=True)
+        self._validate_unified_batch(batch)
+        return self._move_batch_to_device(batch, device)
+
+    def _validate_unified_batch(self, batch: Any) -> None:
+        pixel_values = _model_inputs_get(batch, "pixel_values")
+        image_position_ids = _model_inputs_get(batch, "image_position_ids")
+        if pixel_values is None or image_position_ids is None:
+            raise ValueError("Gemma4UnifiedWrapper requires pixel_values and image_position_ids.")
+        if int(pixel_values.ndim) != 3 or int(pixel_values.shape[-1]) != 6912:
+            raise ValueError(f"Gemma4 Unified pixel_values must be [batch, patches, 6912], got {tuple(pixel_values.shape)}")
+        if int(image_position_ids.ndim) != 3 or tuple(image_position_ids.shape[:2]) != tuple(pixel_values.shape[:2]) or int(image_position_ids.shape[-1]) != 2:
+            raise ValueError(
+                "Gemma4 Unified image_position_ids must align with pixel_values as [batch, patches, 2]"
+            )
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+    def production_sidecar_metadata(self) -> dict[str, Any]:
+        return {
+            "unified_multimodal": True,
+            "has_separate_vision_encoder": False,
+            "image_sensitivity_canary_required": True,
+            "enable_thinking": False,
+        }
+
+
 class PhiImageTextWrapper(BaseModelWrapper):
     """Shared exact image-text path for local Phi remote-code assets."""
 
@@ -1612,6 +1779,17 @@ class Phi35VisionWrapper(PhiImageTextWrapper):
 
 
 class Phi4MultimodalWrapper(PhiImageTextWrapper):
+    """Phi-4 multimodal image-text wrapper with explicit safe loading policy.
+
+    The local Phi4 asset fails under Flash Attention 2 in this environment, so
+    eager attention is intentionally used. low_cpu_mem_usage=False is
+    intentionally used to avoid meta tensors. device_map is intentionally
+    controlled and the model is moved to one requested device after full
+    materialization. This is an asset-loading policy, not a scientific method
+    choice. Do not change these parameters without rerunning asset smoke and
+    hidden-state validation.
+    """
+
     def expected_model_class_name(self) -> str:
         return "Phi4MMForCausalLM"
 
@@ -1620,6 +1798,190 @@ class Phi4MultimodalWrapper(PhiImageTextWrapper):
 
     def build_prompt(self, question: str) -> str:
         return f"<|user|><|image_1|>{question}<|end|><|assistant|>"
+
+    def effective_attention_implementation(self) -> str:
+        configured = str(self.config.attn_implementation or "eager")
+        if configured == "flash_attention_2":
+            return "eager"
+        if configured not in {"eager", "sdpa"}:
+            return "eager"
+        return configured
+
+    def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
+        kwargs = BaseModelWrapper.model_load_kwargs(self, device="cpu")
+        kwargs.pop("attn_implementation", None)
+        kwargs["attn_implementation"] = self.effective_attention_implementation()
+        kwargs["low_cpu_mem_usage"] = False
+        kwargs["device_map"] = None
+        return kwargs
+
+    def ensure_phi4_peft_compatibility(self, local_path: Path) -> bool:
+        phi4_model = get_class_from_dynamic_module(
+            "modeling_phi4mm.Phi4MMModel",
+            str(local_path),
+            local_files_only=True,
+            trust_remote_code=True,
+        )
+        if hasattr(phi4_model, "prepare_inputs_for_generation"):
+            return False
+
+        def _mind_prepare_inputs_for_generation(self: object, input_ids: Any, **kwargs: Any) -> dict[str, Any]:
+            return {"input_ids": input_ids, **kwargs}
+
+        phi4_model.prepare_inputs_for_generation = _mind_prepare_inputs_for_generation
+        return True
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import AutoConfig
+        try:
+            import peft
+        except ImportError as error:
+            raise ImportError("Phi4MultimodalWrapper requires peft for local Phi4MM image-text loading") from error
+
+        local_path = require_local_model_path(self.model_id_or_path())
+        patch_applied = self.ensure_phi4_peft_compatibility(local_path)
+        config = AutoConfig.from_pretrained(
+            local_path,
+            trust_remote_code=self.config.trust_remote_code,
+            local_files_only=True,
+        )
+        original_attn = str(
+            getattr(config, "_attn_implementation", None)
+            or getattr(config, "attn_implementation", None)
+            or self.config.attn_implementation
+            or "unknown"
+        )
+        self._phi4_original_attn_implementation = original_attn
+        self._phi4_disabled_flash_attention_2 = original_attn == "flash_attention_2"
+        config._attn_implementation = self.effective_attention_implementation()
+        kwargs = self.model_load_kwargs(device=device)
+        kwargs["config"] = config
+        model = AutoModelForCausalLM.from_pretrained(local_path, **kwargs).eval()
+        if device:
+            model = model.to(device)
+        no_meta = self.validate_no_meta_tensors_after_load(model)
+        self._phi4_no_meta_tensors_after_load = no_meta
+        self._phi4_peft_version = getattr(peft, "__version__", "unknown")
+        self._phi4_peft_compatibility_mode = (
+            "scoped_prepare_inputs_for_generation_patch" if patch_applied else "native_prepare_inputs_for_generation"
+        )
+        return model
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != 1 or len(image_paths) != 1:
+            raise ValueError("Phi4 asset smoke extraction prepares one image-question sample at a time")
+        image_path = image_paths[0]
+        if image_path is None:
+            raise ValueError("Phi4MultimodalWrapper requires an image path")
+        image = Image.open(image_path).convert("RGB")
+        batch = processor(
+            text=self.build_prompt(questions[0]),
+            images=image,
+            return_tensors="pt",
+        )
+        input_mode = _model_inputs_get(batch, "input_mode")
+        image_embeds = _model_inputs_get(batch, "input_image_embeds")
+        if input_mode is None or int(input_mode.flatten()[0].item()) != 1:
+            raise ValueError("Phi4 processor did not record image-text input_mode=1")
+        if image_embeds is None or int(image_embeds.numel()) <= 0:
+            raise ValueError("Phi4 processor did not produce input_image_embeds")
+        return self._move_batch_to_device(batch, device)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+            num_logits_to_keep=1,
+        )
+
+    def resolve_query_token_index(
+        self,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+    ) -> int:
+        return BaseModelWrapper.resolve_query_token_index(
+            self,
+            processor,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+        )
+
+    def resolve_prefill_logits(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        batch_index: int,
+        token_index: int,
+    ) -> torch.Tensor:
+        del token_index
+        outputs = self.extract_prefill_outputs(model, processor, model_inputs=model_inputs)
+        logits = getattr(outputs, "logits", None)
+        if logits is None:
+            raise ValueError("Forward output did not include logits.")
+        return logits[batch_index, -1, :].detach().cpu()
+
+    def generate(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        max_new_tokens: int,
+    ) -> Any:
+        if max_new_tokens != 1:
+            raise ValueError("Phi4 asset smoke generation is fixed to max_new_tokens=1")
+        outputs = self.extract_prefill_outputs(model, processor, model_inputs=model_inputs)
+        logits = outputs.logits[:, -1, :]
+        next_ids = torch.argmax(logits, dim=-1, keepdim=True).to(model_inputs["input_ids"].device)
+        sequences = torch.cat([model_inputs["input_ids"], next_ids], dim=-1)
+        return types.SimpleNamespace(
+            sequences=sequences,
+            hidden_states=(outputs.hidden_states,),
+            scores=(logits,),
+        )
+
+    def production_sidecar_metadata(self) -> dict[str, Any]:
+        original_attn = str(getattr(self, "_phi4_original_attn_implementation", self.config.attn_implementation or "unknown"))
+        disabled_flash_attention_2 = bool(
+            getattr(
+                self,
+                "_phi4_disabled_flash_attention_2",
+                original_attn == "flash_attention_2" or self.effective_attention_implementation() != original_attn,
+            )
+        )
+        return {
+            "attn_implementation_effective": self.effective_attention_implementation(),
+            "attn_implementation_original": original_attn,
+            "disabled_flash_attention_2": disabled_flash_attention_2,
+            "disabled_flash_attention_2_reason": (
+                "Phi4MMForCausalLM does not support Flash Attention 2 in this environment"
+            ),
+            "low_cpu_mem_usage": False,
+            "device_map_policy": "manual_to_single_device",
+            "no_meta_tensors_after_load": bool(getattr(self, "_phi4_no_meta_tensors_after_load", False)),
+            "peft_version": str(getattr(self, "_phi4_peft_version", "unknown")),
+            "peft_compatibility_mode": str(getattr(self, "_phi4_peft_compatibility_mode", "not_loaded")),
+        }
 
 
 class QwenTextWrapper(QwenWrapper):
@@ -2047,6 +2409,116 @@ class InternVLWrapper(BaseModelWrapper):
         mean = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1, 1)
         std = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
         return (tensor - mean) / std
+
+
+class LlavaV15Wrapper(BaseModelWrapper):
+    """HF LLaVA-v1.5 image-text wrapper for the complete local 7B checkpoint."""
+
+    def expected_model_class_name(self) -> str:
+        return "LlavaForConditionalGeneration"
+
+    def expected_processor_class_name(self) -> str:
+        return "LlavaProcessor"
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("LlavaV15Wrapper requires an image path.")
+        return [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": question}]}]
+
+    def load_processor(self):
+        processor = configure_left_padding(
+            AutoProcessor.from_pretrained(
+                self.model_id_or_path(),
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=True,
+            )
+        )
+        if type(processor).__name__ != "LlavaProcessor":
+            raise ValueError(f"LlavaV15Wrapper requires LlavaProcessor, got {type(processor).__name__}")
+        return processor
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import LlavaForConditionalGeneration
+
+        return LlavaForConditionalGeneration.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        ).eval()
+
+    def prepare_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        return self.prepare_asset_batch_inputs(
+            processor,
+            questions=[self.format_yes_no_question(question) for question in questions],
+            image_paths=image_paths,
+            device=device,
+        )
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        prompts: list[str] = []
+        images: list[Image.Image] = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("LlavaV15Wrapper requires an image path.")
+            prompts.append(
+                processor.apply_chat_template(
+                    self.build_messages(question=question, image_path=image_path),
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            )
+            images.append(Image.open(image_path).convert("RGB"))
+        batch = processor(text=prompts, images=images, return_tensors="pt", padding=True)
+        return self._move_batch_to_device(batch, device)
+
+    def resolve_prefill_hidden_states(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+        generation_output: Any,
+    ) -> Sequence[torch.Tensor]:
+        del generation_output
+        return self.extract_prefill_hidden_states(model, processor, model_inputs=model_inputs)
+
+    def extract_prefill_outputs(
+        self,
+        model: Any,
+        processor: Any,
+        *,
+        model_inputs: Any,
+    ) -> Any:
+        del processor
+        return model(
+            **model_inputs,
+            return_dict=True,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+    def production_sidecar_metadata(self) -> dict[str, Any]:
+        return {
+            "hf_complete_asset_path": "/home/team/lvshuyang/Models/llava-1.5-7b-hf",
+            "vision_tower_status": "local_hf_checkpoint_contains_vision_tower",
+            "image_token_prompt_policy": "llava_v15_user_image_newline_question",
+            "copied_metadata_from_onevision": False,
+        }
 
 
 class LlavaOnevisionWrapper(QwenVLWrapper):
