@@ -175,6 +175,38 @@ def _require_finite_first_token_logits(
     return logits
 
 
+def resolve_first_token_logits(
+    *,
+    model: Any,
+    processor: Any,
+    wrapper: Any,
+    model_inputs: Any,
+    generation_output: Any,
+    batch_index: int,
+    token_index: int,
+    record: HallucinationRecord,
+    answer_text: str,
+) -> torch.Tensor:
+    resolver = getattr(wrapper, "resolve_prefill_logits", None)
+    if callable(resolver):
+        logits = resolver(
+            model,
+            processor,
+            model_inputs=model_inputs,
+            batch_index=batch_index,
+            token_index=token_index,
+        )
+    else:
+        if not generation_output.scores:
+            raise ValueError("Generation output did not include token scores.")
+        logits = generation_output.scores[0][batch_index]
+    return _require_finite_first_token_logits(
+        torch.as_tensor(logits).detach().cpu(),
+        record=record,
+        answer_text=answer_text,
+    )
+
+
 def _prepare_cache_value(
     value: object,
     *,
@@ -421,8 +453,6 @@ def extract_prefill_entries(
         model_inputs=model_inputs,
         max_new_tokens=max_new_tokens,
     )
-    if not generation_output.scores:
-        raise ValueError("Generation output did not include token scores.")
     prefill_hidden_states = resolve_prefill_hidden_states(
         model=model,
         processor=processor,
@@ -443,8 +473,14 @@ def extract_prefill_entries(
             generated_ids=generation_output.sequences[batch_index : batch_index + 1],
             prompt_input_ids=model_inputs["input_ids"][batch_index : batch_index + 1],
         )
-        first_token_logits = _require_finite_first_token_logits(
-            generation_output.scores[0][batch_index],
+        first_token_logits = resolve_first_token_logits(
+            model=model,
+            processor=processor,
+            wrapper=wrapper,
+            model_inputs=model_inputs,
+            generation_output=generation_output,
+            batch_index=batch_index,
+            token_index=token_index,
             record=record,
             answer_text=answer_text,
         )

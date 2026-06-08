@@ -676,14 +676,19 @@ def _preserved_or_audit_rows(
 
 
 def read_separate_env_acceptance(output_root: Path) -> dict[str, Mapping[str, object]]:
-    path = output_root / "molmo_separate_env_acceptance.json"
-    payload = read_json(path, default={})
-    if not isinstance(payload, Mapping):
-        return {}
-    alias = str(payload.get("model_alias", ""))
-    if alias and payload.get("status") == AssetStatus.VERIFIED_SEPARATE_ENV.value:
-        return {alias: payload}
-    return {}
+    manifests = (
+        output_root / "molmo_separate_env_acceptance.json",
+        output_root / "gemma_4_12b_it_separate_env_acceptance.json",
+    )
+    accepted: dict[str, Mapping[str, object]] = {}
+    for path in manifests:
+        payload = read_json(path, default={})
+        if not isinstance(payload, Mapping):
+            continue
+        alias = str(payload.get("model_alias", ""))
+        if alias and payload.get("status") == AssetStatus.VERIFIED_SEPARATE_ENV.value:
+            accepted[alias] = payload
+    return accepted
 
 
 def sidecar_generation_kwargs(wrapper: object) -> dict[str, object]:

@@ -102,14 +102,12 @@ The final closure batch targets these existing blockers and the new Gemma 4 asse
 - `molmo-7b-d-0924`
 - `llava-v1.5-7b`
 
-After the latest temporary repair run, the 12 previously verified assets remained verified in the main `mind-py311` asset pipeline. The remaining unresolved assets are handled only by their current explicit statuses:
+After the final production integration and Gemma4 separate-environment pass, the model-panel asset summary has 14 main-env `verified` assets and 2 `verified_separate_env` assets:
 
 - `gemma-4-12b-it`
-- `phi-4-multimodal-instruct`
 - `molmo-7b-d-0924`
-- `llava-v1.5-7b`
 
-Asset verification only checks local asset metadata, deterministic smoke extraction, and hidden-state extraction contracts. It is not scientific validation of a model or of MIND. The final Experiment 1 status remains `blocked` until all 16 registered assets are verified.
+Asset verification only checks local asset metadata, deterministic smoke extraction, and hidden-state extraction contracts. It is not scientific validation of a model or of MIND. `verified_separate_env` is distinct from main-env `verified`; it means the model passed the same asset contract in a dedicated compatible environment.
 
 ## Gemma 4 Asset Notes
 
@@ -117,21 +115,21 @@ Asset verification only checks local asset metadata, deterministic smoke extract
 
 The local Gemma 4 path now exists. The core `model.safetensors` file was moved into `/home/team/lvshuyang/Models/gemma-4-12B-it`, and the temporary repair script reports the local asset as `already_present`. The local config is `model_type=gemma4_unified` with `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `processor_class=Gemma4UnifiedProcessor`, and nested `Gemma4UnifiedImageProcessor` metadata.
 
-Gemma 4 Unified has no independent vision tower, so its image wiring check must use the image-sensitivity canary, deterministic repeat check, and full-layer pre-generation hidden-state validation. Thinking must be explicitly disabled with `enable_thinking=False` or an equivalent recorded setting. The production path now has an explicit `gemma4_unified` wrapper, but the current `mind-py311` Transformers runtime does not expose the required Gemma4 Unified classes, so Gemma4 remains blocked in the main pipeline.
+Gemma 4 Unified has no independent vision tower, so its image wiring check uses the image-sensitivity canary, deterministic repeat check, and full-layer pre-generation hidden-state validation. Thinking is explicitly disabled with `enable_thinking=False`. The main `mind-py311` Transformers runtime does not expose the required Gemma4 Unified classes, so Gemma4 is accepted through a dedicated `mind-gemma4-py311` environment rather than loaded in the main environment.
 
 ## Final Production Integration Status
 
-Experiment 1.8 moved the workable temporary paths into the production asset pipeline where the current `mind-py311` environment can support them.
+Experiment 1.8 moved the workable temporary paths into the production asset pipeline where the current environment can support them. Gemma4 was later accepted through a dedicated Gemma4 environment because the main `mind-py311` runtime lacks the concrete Gemma4 Unified Transformers classes.
 
 Current target outcomes:
 
 - `phi-4-multimodal-instruct`: verified in the main asset pipeline. The production Phi4 path uses eager attention, not Flash Attention 2. It sets `low_cpu_mem_usage=False`, avoids `device_map="auto"`, removes user-site Python packages before smoke extraction, confirms no meta tensors after load, and uses a forward-only one-token smoke path because the local remote class does not safely support the standard `generate` path in this environment.
 - `llava-v1.5-7b`: verified in the main asset pipeline with the complete HF local path `/home/team/lvshuyang/Models/llava-1.5-7b-hf`. It uses its own `llava_v15` wrapper and does not copy metadata or prompt logic from LLaVA-OneVision.
 - `molmo-7b-d-0924`: accepted as `verified_separate_env` from `outputs/assets_molmo_tf457`. This is distinct from main-env `verified`. It means the separate environment produced smoke and hidden-state validation artifacts that satisfy the same asset contract.
-- `gemma-4-12b-it`: still blocked in the main production pipeline. The local asset is registered as `gemma4_unified`, not Gemma3, and it has no separate vision encoder. Thinking must be disabled with `enable_thinking=False`. The current `mind-py311` production environment has the explicit wrapper path, but it is missing the concrete Gemma4 Unified Transformers classes needed for local loading: `Gemma4UnifiedProcessor` and `Gemma4UnifiedForConditionalGeneration`.
+- `gemma-4-12b-it`: accepted as `verified_separate_env` from `outputs/assets_gemma4_tf5102`. The local asset is registered as `gemma4_unified`, not Gemma3, and it has no separate vision encoder. The dedicated environment provides `Gemma4UnifiedProcessor`, `Gemma4UnifiedForConditionalGeneration`, and `AutoModelForMultimodalLM`. Smoke extraction and hidden-state validation passed with 48 x 3840 hidden states, deterministic repeat checks, and image sensitivity canary.
 
-Gemma4 remains a candidate for future integration, but it needs a production environment with explicit Gemma4 Unified class support before the normal smoke and hidden-state validation pipeline can verify it. The Gemma4 wrapper must rely on deterministic repeat checks, image sensitivity canary, and full-layer hidden-state validation rather than a vision-tower check.
+Gemma4 full-cache extraction was run in the dedicated Gemma4 environment. The cache root is `outputs/assets_gemma4_tf5102/full_cache/gemma-4-12b-it`, covering POPE popular/random/adversarial, Re-POPE popular/random/adversarial, and DASH-B all. These cache files are extraction artifacts, not scientific result files.
 
-The final Experiment 1.8 production summary has 14 main-env verified models, 1 separate-env verified model, and 1 blocked model. `verified_separate_env` is not the same as `verified`; downstream panels should label Molmo explicitly if they include it.
+The current asset summary has 14 main-env verified models and 2 separate-env verified models. `verified_separate_env` is not the same as `verified`; downstream panels should label Gemma4 and Molmo explicitly if they include them.
 
 These are asset and extraction checks only. They do not make scientific validation claims about any model or about MIND.

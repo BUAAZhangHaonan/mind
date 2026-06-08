@@ -186,6 +186,56 @@ def test_extract_prefill_entry_runs_wrapper_and_model_contract() -> None:
     assert torch.equal(entry["first_token_logits"], torch.tensor([0.3, 0.7]))
 
 
+def test_extract_prefill_entry_prefers_wrapper_prefill_logits_over_generation_scores() -> None:
+    class FakeBatch(dict):
+        def to(self, device: str):
+            self["device"] = device
+            return self
+
+    class FakeWrapper:
+        def prepare_batch_inputs(self, processor, *, questions, image_paths, device: str):
+            return FakeBatch(
+                {
+                    "input_ids": torch.tensor([[10, 11, 12]]),
+                    "attention_mask": torch.tensor([[1, 1, 1]]),
+                }
+            ).to(device)
+
+        def decode_generation(self, processor, *, generated_ids: torch.Tensor, prompt_input_ids: torch.Tensor) -> str:
+            return "Yes"
+
+        def resolve_prefill_logits(self, model, processor, *, model_inputs, batch_index: int, token_index: int) -> torch.Tensor:
+            assert batch_index == 0
+            assert token_index == -1
+            return torch.tensor([0.25, 0.75], dtype=torch.float32)
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            return type(
+                "FakeGenerationOutput",
+                (),
+                {
+                    "sequences": torch.tensor([[10, 11, 12, 42]]),
+                    "scores": [torch.tensor([[float("-inf"), 0.7]], dtype=torch.float32)],
+                    "hidden_states": [
+                        tuple(torch.full((1, 3, 2), fill_value=float(index)) for index in range(5))
+                    ],
+                },
+            )()
+
+    entry = extract_prefill_entry(
+        model=FakeModel(),
+        processor="processor",
+        wrapper=FakeWrapper(),
+        record=_record(),
+        selected_layers=[0, 2],
+        device="cuda:0",
+        token_index=-1,
+    )
+
+    assert torch.equal(entry["first_token_logits"], torch.tensor([0.25, 0.75]))
+
+
 def test_extract_prefill_entry_rejects_non_finite_first_token_logits() -> None:
     class FakeBatch(dict):
         def to(self, device: str):

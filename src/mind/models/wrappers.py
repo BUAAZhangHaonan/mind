@@ -1566,7 +1566,7 @@ class Gemma4UnifiedWrapper(BaseModelWrapper):
     ) -> Any:
         return self.prepare_asset_batch_inputs(
             processor,
-            questions=[self.format_yes_no_question(question) for question in questions],
+            questions=questions,
             image_paths=image_paths,
             device=device,
         )

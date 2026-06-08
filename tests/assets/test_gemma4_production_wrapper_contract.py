@@ -9,6 +9,7 @@ from mind.config import ModelConfig
 from mind.models.asset_validation import AssetStatus, audit_asset_metadata
 from mind.models.factory import create_model_wrapper
 from mind.models.registry import AssetModel
+from mind.models.wrappers import Gemma4UnifiedWrapper
 
 
 def _config(*, family: str = "gemma4_unified", offset: int | str = 1) -> ModelConfig:
@@ -120,3 +121,19 @@ def test_gemma4_thinking_must_be_disabled(tmp_path: Path, monkeypatch: pytest.Mo
 
     assert result.status == AssetStatus.UNSUPPORTED_BY_POLICY
     assert "thinking" in result.reason
+
+
+def test_gemma4_full_extraction_preserves_normalized_question_text() -> None:
+    seen: dict[str, list[str]] = {}
+
+    class CapturingGemma4Wrapper(Gemma4UnifiedWrapper):
+        def prepare_asset_batch_inputs(self, processor, *, questions, image_paths, device):
+            seen["questions"] = list(questions)
+            return {"input_ids": None}
+
+    wrapper = CapturingGemma4Wrapper(_config())
+    question = "Is there a cat in the image?"
+
+    wrapper.prepare_batch_inputs(object(), questions=[question], image_paths=["image.jpg"], device="cuda:0")
+
+    assert seen["questions"] == [question]
