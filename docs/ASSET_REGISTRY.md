@@ -102,7 +102,7 @@ The final closure batch targets these existing blockers and the new Gemma 4 asse
 - `molmo-7b-d-0924`
 - `llava-v1.5-7b`
 
-After the final closure run, the 12 previously verified assets remain verified. The remaining unresolved assets are handled only by their current explicit statuses:
+After the final closure run, the 12 previously verified assets remained verified. The remaining unresolved assets are handled only by their current explicit statuses:
 
 - `gemma-4-12b-it`
 - `phi-4-multimodal-instruct`
@@ -115,13 +115,33 @@ Asset verification only checks local asset metadata, deterministic smoke extract
 
 `gemma-4-12b-it` is registered as a separate `gemma4` family. It is not silently handled by the Gemma3 wrapper. The registry records `google/gemma-4-12B-it` as the Hugging Face model ID and `/home/team/lvshuyang/Models/gemma-4-12B-it` as the desired local path.
 
-The local Gemma 4 path was missing during this run, so no model files were loaded and no download was performed. The audit supports `--download-gemma4`, which is the only allowed download path for this task and is limited to `google/gemma-4-12B-it`.
+The local Gemma 4 path was missing during final closure, so no model files were loaded. Experiment 1.7 made one temporary download attempt through `tmp/asset_repair/repair_gemma4_download.py`; it used the command-scoped `HF_ENDPOINT=https://hf-mirror.com` setting and only targeted `google/gemma-4-12B-it`. The download failed before any asset was materialized because the current SOCKS proxy path needs the missing Python package `socksio`.
 
 The Gemma 4 config entry records thinking support and requires `enable_thinking=false`. That local chat-template behavior still needs to be verified after the local asset exists.
 
 ## Remaining Blockers
 
-- `gemma-4-12b-it`: blocked because `/home/team/lvshuyang/Models/gemma-4-12B-it` does not exist. It was not downloaded because `--download-gemma4` was not used.
-- `phi-4-multimodal-instruct`: blocked because `peft` is not installed. The audit records this dependency and does not install it unless `--allow-install-peft` is explicitly used.
+- `gemma-4-12b-it`: blocked because `/home/team/lvshuyang/Models/gemma-4-12B-it` does not exist. The temporary download attempt failed with `ImportError: Using SOCKS proxy, but the 'socksio' package is not installed`.
+- `phi-4-multimodal-instruct`: `peft` was installed through the temporary repair script with `--allow-install-peft`, but normal smoke extraction then blocked on the next missing dependency: `No module named 'backoff'`.
 - `molmo-7b-d-0924`: blocked during smoke extraction. The wrapper applies Molmo-local compatibility shims for `all_tied_weights_keys`, `tie_weights(missing_keys, recompute_mapping)`, and `generate_from_batch`, but the local class still lacks `_extract_generation_mode_kwargs` under the installed Transformers version.
 - `llava-v1.5-7b`: blocked because the registered local asset is incomplete for image-text smoke extraction. It lacks processor/image processor metadata, local vision tower weights, and also needs missing tokenizer dependencies such as protobuf or tiktoken. Metadata was not copied from LLaVA-OneVision and no network repair was run.
+
+## Temporary Repair Attempt for Remaining Blockers
+
+Experiment 1.7 keeps all temporary repair code under `tmp/asset_repair` so it is separate from the production wrapper path. This task did not modify `src/mind/models/wrappers.py`, `src/mind/models/factory.py`, `src/mind/models/asset_validation.py`, or `src/mind/models/registry.py`.
+
+The temporary repair scripts write diagnostic reports under `outputs/assets/repair`, but those reports are not the verification authority. The normal `scripts/asset_audit.py`, `scripts/asset_smoke_extract.py`, and `scripts/asset_validate_hidden_states.py` pipeline remains the only path that can mark a model verified.
+
+Repair outcomes:
+
+- `gemma-4-12b-it`: download attempted for `google/gemma-4-12B-it` only; blocked because the environment's SOCKS proxy needs missing `socksio`.
+- `phi-4-multimodal-instruct`: `peft` installed in `mind-py311`; blocked after normal smoke extraction because `backoff` is also missing.
+- `molmo-7b-d-0924`: local files appear complete; blocked because the local remote code is incompatible with the installed Transformers generation API and lacks `_extract_generation_mode_kwargs`.
+- `llava-v1.5-7b`: no metadata was copied and no tokenizer dependency install was run; blocked because the local asset remains incomplete and the exact redownload model ID is not proven by local metadata.
+
+Candidates to remove from the main model panel if no further repair is approved:
+
+- `gemma-4-12b-it`
+- `phi-4-multimodal-instruct`
+- `molmo-7b-d-0924`
+- `llava-v1.5-7b`
