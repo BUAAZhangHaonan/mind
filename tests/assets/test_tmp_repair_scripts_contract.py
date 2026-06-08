@@ -6,10 +6,15 @@ from pathlib import Path
 
 
 REPAIR_SCRIPTS = (
+    "repair_gemma4_local_asset.py",
     "repair_gemma4_download.py",
+    "repair_phi4_meta_tensor.py",
     "repair_phi4_peft.py",
+    "accept_molmo_separate_env.py",
     "repair_molmo_asset.py",
+    "repair_llava_v15_hf_asset.py",
     "repair_llava_v15_asset.py",
+    "final_model_panel_decisions.py",
     "run_remaining_asset_repairs.py",
     "run_molmo_tf457_asset_pipeline.py",
 )
@@ -53,8 +58,8 @@ def test_dry_run_writes_reports_without_modifying_production_wrappers(tmp_path: 
 
     monkeypatch.setattr(module, "GEMMA4_LOCAL_PATH", tmp_path / "missing-gemma4")
     monkeypatch.setattr(module, "PHI4_LOCAL_PATH", tmp_path / "missing-phi4")
-    monkeypatch.setattr(module, "MOLMO_LOCAL_PATH", tmp_path / "missing-molmo")
-    monkeypatch.setattr(module, "LLAVA_V15_LOCAL_PATH", tmp_path / "missing-llava")
+    monkeypatch.setattr(module, "MOLMO_SOURCE_ROOT", tmp_path / "missing-molmo-source")
+    monkeypatch.setattr(module, "LLAVA_REGISTRY_PATH", tmp_path / "missing-registry.yaml")
 
     result = module.run_repairs(execute=False, output_root=tmp_path / "repair")
 
@@ -63,6 +68,7 @@ def test_dry_run_writes_reports_without_modifying_production_wrappers(tmp_path: 
     assert result["mode"] == "dry_run"
     assert (tmp_path / "repair" / "remaining_asset_repair_summary.json").is_file()
     assert (tmp_path / "repair" / "REMAINING_ASSET_REPAIR_SUMMARY.md").is_file()
+    assert (tmp_path / "repair" / "final_model_panel_decisions.json").is_file()
 
 
 def test_molmo_tf457_pipeline_defaults_to_dry_run_and_writes_report(tmp_path: Path) -> None:
