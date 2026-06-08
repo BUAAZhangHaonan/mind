@@ -16,7 +16,7 @@ from common import CommandResult, add_common_args, command_environment, file_lis
 
 
 ALIAS = "llava-v1.5-7b"
-LOCAL_PATH = Path("/home/team/lvshuyang/Models/llava-v1.5-7b")
+LOCAL_PATH = Path("/home/team/lvshuyang/Models/llava-1.5-7b-hf")
 DEFAULT_HF_ENDPOINT = "https://hf-mirror.com"
 TOKENIZER_DEPS = ("protobuf", "tiktoken")
 
@@ -55,7 +55,11 @@ def vision_tower_files(local_path: Path) -> list[str]:
     weight_map = index.get("weight_map")
     if not isinstance(weight_map, dict):
         return []
-    return sorted(name for name in weight_map if str(name).startswith("model.vision_tower"))
+    return sorted(
+        name
+        for name in weight_map
+        if str(name).startswith("vision_tower") or str(name).startswith("model.vision_tower")
+    )
 
 
 def missing_metadata(local_path: Path) -> list[str]:

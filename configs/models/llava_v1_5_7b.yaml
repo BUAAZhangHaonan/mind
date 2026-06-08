@@ -1,6 +1,6 @@
 name: llava-v1.5-7b
-model_id: /home/team/lvshuyang/Models/llava-v1.5-7b
-local_path: /home/team/lvshuyang/Models/llava-v1.5-7b
+model_id: /home/team/lvshuyang/Models/llava-1.5-7b-hf
+local_path: /home/team/lvshuyang/Models/llava-1.5-7b-hf
 model_id_or_family_name: llava_v15
 family: llava_v15
 dtype: float16

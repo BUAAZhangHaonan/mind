@@ -39,7 +39,10 @@ def inspect_local_asset(local_path: Path = LOCAL_PATH) -> dict[str, object]:
         "architectures": config.get("architectures", []),
         "tokenizer_files": file_list(local_path, ("tokenizer*", "*.model", "vocab.json", "merges.txt", "special_tokens_map.json")),
         "processor_files": file_list(local_path, ("processor*", "preprocessor*", "image_processor*", "chat_template*")),
-        "image_processor_files": file_list(local_path, ("preprocessor_config.json", "image_processor_config.json")),
+        "image_processor_files": [
+            *file_list(local_path, ("preprocessor_config.json", "image_processor_config.json")),
+            *(["processor_config.json:image_processor"] if processor_config_has_image_processor(local_path) else []),
+        ],
         "safetensors_files": file_list(local_path, ("*.safetensors", "model.safetensors.index.json")),
         "generation_config_exists": (local_path / "generation_config.json").is_file(),
         "chat_template_exists": any((local_path / name).is_file() for name in ("chat_template.json", "chat_template.jinja")),
@@ -52,14 +55,22 @@ def is_complete_asset(local_path: Path) -> bool:
     if not local_path.is_dir():
         return False
     config = read_json(local_path / "config.json")
-    if config.get("model_type") != "gemma4":
+    if config.get("model_type") not in {"gemma4", "gemma4_unified"}:
         return False
     has_image = "image_token_id" in config or "image_token_index" in config or "image" in {
         str(modality).lower() for modality in config.get("supported_modalities", [])
     }
     has_tokenizer_or_processor = bool(file_list(local_path, ("tokenizer*", "*.model", "processor_config.json")))
-    has_image_processor = bool(file_list(local_path, ("preprocessor_config.json", "image_processor_config.json")))
+    has_image_processor = bool(file_list(local_path, ("preprocessor_config.json", "image_processor_config.json"))) or processor_config_has_image_processor(local_path)
     return bool(has_image and has_tokenizer_or_processor and has_image_processor and safetensors_complete(local_path))
+
+
+def processor_config_has_image_processor(local_path: Path) -> bool:
+    processor_config = read_json(local_path / "processor_config.json")
+    image_processor = processor_config.get("image_processor")
+    if isinstance(image_processor, Mapping):
+        return bool(image_processor.get("image_processor_type"))
+    return False
 
 
 def safetensors_complete(local_path: Path) -> bool:

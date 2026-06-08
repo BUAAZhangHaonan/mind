@@ -70,3 +70,25 @@ def test_llava_incomplete_asset_reports_precise_missing_fields(tmp_path: Path, m
     assert result["status"] == "incomplete"
     assert "processor/image metadata" in result["reason"]
     assert "vision tower" in result["reason"]
+
+
+def test_llava_hf_complete_layout_reports_complete(tmp_path: Path, monkeypatch) -> None:
+    module = _load_script()
+    model_dir = tmp_path / "llava-1.5-7b-hf"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text('{"model_type":"llava","architectures":["LlavaForConditionalGeneration"]}', encoding="utf-8")
+    (model_dir / "processor_config.json").write_text('{"processor_class":"LlavaProcessor"}', encoding="utf-8")
+    (model_dir / "preprocessor_config.json").write_text('{"image_processor_type":"CLIPImageProcessor"}', encoding="utf-8")
+    (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model-00001-of-00001.safetensors").write_text("", encoding="utf-8")
+    (model_dir / "model.safetensors.index.json").write_text(
+        '{"weight_map":{"vision_tower.vision_model.embeddings.class_embedding":"model-00001-of-00001.safetensors"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "LOCAL_PATH", model_dir)
+    monkeypatch.setattr(module, "missing_tokenizer_dependencies", lambda: [])
+
+    result = module.run_repair(execute=False, output_root=tmp_path / "repair")
+
+    assert result["status"] == "complete"
+    assert result["inspection"]["local_path"].endswith("llava-1.5-7b-hf")

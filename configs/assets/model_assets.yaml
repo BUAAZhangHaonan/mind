@@ -198,7 +198,7 @@ models:
     prompt_template_text: "MiniCPM-V single-image prompt uses tokenizer chat template with (<image>./</image>) followed by the normalized question unchanged; chat template receives enable_thinking=false when supported."
     hidden_state_index_offset: 1
   - alias: llava-v1.5-7b
-    local_path: /home/team/lvshuyang/Models/llava-v1.5-7b
+    local_path: /home/team/lvshuyang/Models/llava-1.5-7b-hf
     model_config_path: configs/models/llava_v1_5_7b.yaml
     model_id_or_family_name: llava_v15
     family: llava_v15

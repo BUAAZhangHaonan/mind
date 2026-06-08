@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import json
 
 
 def _load_script():
@@ -54,3 +55,37 @@ def test_hf_endpoint_mirror_is_command_scoped(monkeypatch) -> None:
     env = module.command_environment({})
 
     assert env["HF_ENDPOINT"] == "https://hf-mirror.com"
+
+
+def test_uploaded_gemma4_unified_layout_reports_already_present(tmp_path: Path, monkeypatch) -> None:
+    module = _load_script()
+    local_path = tmp_path / "gemma-4-12B-it"
+    local_path.mkdir()
+    (local_path / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "gemma4_unified",
+                "architectures": ["Gemma4UnifiedForConditionalGeneration"],
+                "image_token_id": 258880,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (local_path / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (local_path / "processor_config.json").write_text(
+        json.dumps(
+            {
+                "processor_class": "Gemma4UnifiedProcessor",
+                "image_processor": {"image_processor_type": "Gemma4UnifiedImageProcessor"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (local_path / "model.safetensors").write_text("", encoding="utf-8")
+    monkeypatch.setattr(module, "LOCAL_PATH", local_path)
+
+    result = module.run_repair(execute=False, output_root=tmp_path / "repair")
+
+    assert result["status"] == "already_present"
+    assert result["inspection"]["complete"] is True
+    assert "processor_config.json:image_processor" in result["inspection"]["image_processor_files"]

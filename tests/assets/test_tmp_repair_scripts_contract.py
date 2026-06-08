@@ -11,6 +11,7 @@ REPAIR_SCRIPTS = (
     "repair_molmo_asset.py",
     "repair_llava_v15_asset.py",
     "run_remaining_asset_repairs.py",
+    "run_molmo_tf457_asset_pipeline.py",
 )
 
 FORBIDDEN_PRODUCTION_FILES = (
@@ -62,3 +63,28 @@ def test_dry_run_writes_reports_without_modifying_production_wrappers(tmp_path: 
     assert result["mode"] == "dry_run"
     assert (tmp_path / "repair" / "remaining_asset_repair_summary.json").is_file()
     assert (tmp_path / "repair" / "REMAINING_ASSET_REPAIR_SUMMARY.md").is_file()
+
+
+def test_molmo_tf457_pipeline_defaults_to_dry_run_and_writes_report(tmp_path: Path) -> None:
+    before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in FORBIDDEN_PRODUCTION_FILES}
+    module = _load_script("run_molmo_tf457_asset_pipeline.py")
+
+    result = module.run_pipeline(
+        execute=False,
+        output_root=tmp_path / "repair",
+        registry=tmp_path / "registry.yaml",
+        stage0_root=tmp_path / "stage0",
+        pipeline_output_root=tmp_path / "molmo-output",
+        device="cuda:0",
+        smoke_limit=2,
+        datasets=("pope", "repope", "dash-b"),
+        models=("molmo-7b-d-0924",),
+        steps="both",
+    )
+
+    after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in FORBIDDEN_PRODUCTION_FILES}
+    assert before == after
+    assert result["mode"] == "dry_run"
+    assert result["verification_authority"] == "existing asset smoke and validation scripts"
+    assert not (tmp_path / "molmo-output").exists()
+    assert (tmp_path / "repair" / "molmo-7b-d-0924_tf457_pipeline_repair_report.json").is_file()

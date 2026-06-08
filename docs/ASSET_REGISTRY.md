@@ -102,7 +102,7 @@ The final closure batch targets these existing blockers and the new Gemma 4 asse
 - `molmo-7b-d-0924`
 - `llava-v1.5-7b`
 
-After the final closure run, the 12 previously verified assets remained verified. The remaining unresolved assets are handled only by their current explicit statuses:
+After the latest temporary repair run, the 12 previously verified assets remained verified in the main `mind-py311` asset pipeline. The remaining unresolved assets are handled only by their current explicit statuses:
 
 - `gemma-4-12b-it`
 - `phi-4-multimodal-instruct`
@@ -115,16 +115,16 @@ Asset verification only checks local asset metadata, deterministic smoke extract
 
 `gemma-4-12b-it` is registered as a separate `gemma4` family. It is not silently handled by the Gemma3 wrapper. The registry records `google/gemma-4-12B-it` as the Hugging Face model ID and `/home/team/lvshuyang/Models/gemma-4-12B-it` as the desired local path.
 
-The local Gemma 4 path was missing during final closure, so no model files were loaded. Experiment 1.7 made one temporary download attempt through `tmp/asset_repair/repair_gemma4_download.py`; it used the command-scoped `HF_ENDPOINT=https://hf-mirror.com` setting and only targeted `google/gemma-4-12B-it`. The download failed before any asset was materialized because the current SOCKS proxy path needs the missing Python package `socksio`.
+The local Gemma 4 path now exists. The core `model.safetensors` file was moved into `/home/team/lvshuyang/Models/gemma-4-12B-it`, and the temporary repair script reports the local asset as `already_present`. The local config is `model_type=gemma4_unified` with `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `processor_class=Gemma4UnifiedProcessor`, and nested `Gemma4UnifiedImageProcessor` metadata.
 
-The Gemma 4 config entry records thinking support and requires `enable_thinking=false`. That local chat-template behavior still needs to be verified after the local asset exists.
+The main production asset pipeline still does not verify Gemma 4. It currently marks the asset `unsupported_by_policy` because the production MoE detector flags `text_config.num_experts` even when the local value is null, and the installed Transformers path does not provide exact `gemma4_unified` wrapper support. That production path was not changed in the temporary repair task.
 
 ## Remaining Blockers
 
-- `gemma-4-12b-it`: blocked because `/home/team/lvshuyang/Models/gemma-4-12B-it` does not exist. The temporary download attempt failed with `ImportError: Using SOCKS proxy, but the 'socksio' package is not installed`.
-- `phi-4-multimodal-instruct`: `peft` was installed through the temporary repair script with `--allow-install-peft`, but normal smoke extraction then blocked on the next missing dependency: `No module named 'backoff'`.
-- `molmo-7b-d-0924`: blocked during smoke extraction. The wrapper applies Molmo-local compatibility shims for `all_tied_weights_keys`, `tie_weights(missing_keys, recompute_mapping)`, and `generate_from_batch`, but the local class still lacks `_extract_generation_mode_kwargs` under the installed Transformers version.
-- `llava-v1.5-7b`: blocked because the registered local asset is incomplete for image-text smoke extraction. It lacks processor/image processor metadata, local vision tower weights, and also needs missing tokenizer dependencies such as protobuf or tiktoken. Metadata was not copied from LLaVA-OneVision and no network repair was run.
+- `gemma-4-12b-it`: local asset is complete enough for file integrity checks, but the main pipeline remains `unsupported_by_policy` until production validation and wrapper support handle `gemma4_unified` exactly.
+- `phi-4-multimodal-instruct`: Python package blockers have been repaired. Normal smoke extraction now blocks on `RuntimeError: Tensor.item() cannot be called on meta tensors`, which is a loading/runtime issue, not a missing package issue.
+- `molmo-7b-d-0924`: the main `mind-py311` pipeline remains blocked because the local class lacks `_extract_generation_mode_kwargs` under that Transformers generation API. A separate `mind-molmo-py311` environment with Transformers 4.57.1 verified Molmo smoke extraction and hidden-state validation under `outputs/assets_molmo_tf457`.
+- `llava-v1.5-7b`: the registry now points to the complete HF 7B local asset at `/home/team/lvshuyang/Models/llava-1.5-7b-hf`. The 13B HF asset is also structurally complete but is not registered. The main pipeline remains `unsupported_by_wrapper` because no Experiment 1 LLaVA-v1.5 wrapper is implemented.
 
 ## Temporary Repair Attempt for Remaining Blockers
 
@@ -134,14 +134,15 @@ The temporary repair scripts write diagnostic reports under `outputs/assets/repa
 
 Repair outcomes:
 
-- `gemma-4-12b-it`: download attempted for `google/gemma-4-12B-it` only; blocked because the environment's SOCKS proxy needs missing `socksio`.
-- `phi-4-multimodal-instruct`: `peft` installed in `mind-py311`; blocked after normal smoke extraction because `backoff` is also missing.
-- `molmo-7b-d-0924`: local files appear complete; blocked because the local remote code is incompatible with the installed Transformers generation API and lacks `_extract_generation_mode_kwargs`.
-- `llava-v1.5-7b`: no metadata was copied and no tokenizer dependency install was run; blocked because the local asset remains incomplete and the exact redownload model ID is not proven by local metadata.
+- `gemma-4-12b-it`: local asset is present after moving the uploaded `model.safetensors`; temporary file checks pass.
+- `phi-4-multimodal-instruct`: `peft` and the later missing package blockers are installed; the remaining blocker is the meta-tensor runtime error.
+- `molmo-7b-d-0924`: verified in the separate `mind-molmo-py311` environment through `tmp/asset_repair/run_molmo_tf457_asset_pipeline.py`. The main `mind-py311` pipeline remains blocked.
+- `llava-v1.5-7b`: local HF 7B asset is complete and is now the registered path; no metadata was copied from LLaVA-OneVision. The remaining blocker is wrapper coverage.
 
 Candidates to remove from the main model panel if no further repair is approved:
 
 - `gemma-4-12b-it`
 - `phi-4-multimodal-instruct`
-- `molmo-7b-d-0924`
 - `llava-v1.5-7b`
+
+`molmo-7b-d-0924` does not need removal if the project accepts separate-environment extraction for this asset. The produced hidden-state tensors and sidecars are normal saved outputs and are not tied to the Transformers runtime after extraction.
