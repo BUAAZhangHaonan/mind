@@ -84,6 +84,21 @@ models:
     prompt_template_id: gemma3_chat_single_image_raw_question_v1
     prompt_template_text: "Single user message with one image item followed by the normalized question text unchanged."
     hidden_state_index_offset: 1
+  - alias: gemma-4-12b-it
+    local_path: /home/team/lvshuyang/Models/gemma-4-12B-it
+    hf_model_id: google/gemma-4-12B-it
+    model_config_path: configs/models/gemma_4_12b_it.yaml
+    model_id_or_family_name: gemma4
+    family: gemma4
+    dtype: bfloat16
+    trust_remote_code: false
+    attn_implementation: eager
+    deterministic_generation: {do_sample: false, temperature: 0, max_new_tokens: 1}
+    thinking: {supported: true, disabled_by_default: true, disable_argument: enable_thinking=false}
+    policy: {allow_moe: false, allow_thinking: false, allow_video_only: false, allow_audio_only: false}
+    prompt_template_id: gemma4_chat_single_image_raw_question_no_thinking_v1
+    prompt_template_text: "Single user message with one image item followed by the normalized question text unchanged; chat template receives enable_thinking=false."
+    hidden_state_index_offset: 1
   - alias: qwen3.5-4b
     local_path: /home/team/lvshuyang/Models/Qwen3.5-4B
     model_config_path: configs/models/qwen3_5_4b_asset.yaml

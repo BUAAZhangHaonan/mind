@@ -16,6 +16,7 @@ REQUIRED_MODEL_ALIASES: tuple[str, ...] = (
     "internvl3.5-8b",
     "minicpm-v-2_6",
     "gemma-3-12b-it",
+    "gemma-4-12b-it",
     "qwen3.5-4b",
     "qwen3.5-9b",
     "phi-4-multimodal-instruct",
@@ -53,6 +54,7 @@ class PolicyConfig(BaseModel):
 class AssetModel(BaseModel):
     alias: str
     local_path: str
+    hf_model_id: str | None = None
     model_config_path: str
     model_id_or_family_name: str
     family: str

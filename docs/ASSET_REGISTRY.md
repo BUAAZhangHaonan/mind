@@ -15,7 +15,7 @@ Each asset has one of these statuses:
 - `failed_validation`
 - `not_attempted_due_to_dependency`
 
-The final Experiment 1 status is `passed` only when all 15 requested assets are verified. If any asset has another status, the final status is `blocked`.
+The final Experiment 1 status is `passed` only when all 16 registered assets are verified. If any asset has another status, the final status is `blocked`.
 
 ## Policy Checks
 
@@ -74,22 +74,54 @@ Batch 2 verified these assets for local smoke extraction and hidden-state valida
 - `gemma-3-12b-it`
 - `phi-3.5-vision-instruct`
 
-Batch 3 targets these assets:
-
-- `glm-4.6v-flash`
-- `minicpm-v-2_6`
-- `minicpm-v-4_5`
-
 Batch 3 verified these assets for local smoke extraction and hidden-state validation:
 
 - `glm-4.6v-flash`
 - `minicpm-v-2_6`
 - `minicpm-v-4_5`
 
-The remaining unresolved assets are handled only by their current explicit statuses until separate scoped wrapper batches address them:
+Before the final closure batch, these 12 assets were verified:
 
+- `glm-4.6v-flash`
+- `minicpm-v-2_6`
+- `minicpm-v-4_5`
+- `qwen2.5-vl-7b`
+- `qwen3-vl-8b`
+- `qwen3.5-4b`
+- `qwen3.5-9b`
+- `internvl3.5-8b`
+- `llava-onevision-qwen2-7b-ov-hf`
+- `gemma-3-4b-it`
+- `gemma-3-12b-it`
+- `phi-3.5-vision-instruct`
+
+The final closure batch targets these existing blockers and the new Gemma 4 asset:
+
+- `gemma-4-12b-it`
 - `phi-4-multimodal-instruct`
 - `molmo-7b-d-0924`
 - `llava-v1.5-7b`
 
-Asset verification only checks local asset metadata, deterministic smoke extraction, and hidden-state extraction contracts. It is not scientific validation of a model or of MIND. The final Experiment 1 status remains `blocked` until all 15 registered assets are verified.
+After the final closure run, the 12 previously verified assets remain verified. The remaining unresolved assets are handled only by their current explicit statuses:
+
+- `gemma-4-12b-it`
+- `phi-4-multimodal-instruct`
+- `molmo-7b-d-0924`
+- `llava-v1.5-7b`
+
+Asset verification only checks local asset metadata, deterministic smoke extraction, and hidden-state extraction contracts. It is not scientific validation of a model or of MIND. The final Experiment 1 status remains `blocked` until all 16 registered assets are verified.
+
+## Gemma 4 Asset Notes
+
+`gemma-4-12b-it` is registered as a separate `gemma4` family. It is not silently handled by the Gemma3 wrapper. The registry records `google/gemma-4-12B-it` as the Hugging Face model ID and `/home/team/lvshuyang/Models/gemma-4-12B-it` as the desired local path.
+
+The local Gemma 4 path was missing during this run, so no model files were loaded and no download was performed. The audit supports `--download-gemma4`, which is the only allowed download path for this task and is limited to `google/gemma-4-12B-it`.
+
+The Gemma 4 config entry records thinking support and requires `enable_thinking=false`. That local chat-template behavior still needs to be verified after the local asset exists.
+
+## Remaining Blockers
+
+- `gemma-4-12b-it`: blocked because `/home/team/lvshuyang/Models/gemma-4-12B-it` does not exist. It was not downloaded because `--download-gemma4` was not used.
+- `phi-4-multimodal-instruct`: blocked because `peft` is not installed. The audit records this dependency and does not install it unless `--allow-install-peft` is explicitly used.
+- `molmo-7b-d-0924`: blocked during smoke extraction. The wrapper applies Molmo-local compatibility shims for `all_tied_weights_keys`, `tie_weights(missing_keys, recompute_mapping)`, and `generate_from_batch`, but the local class still lacks `_extract_generation_mode_kwargs` under the installed Transformers version.
+- `llava-v1.5-7b`: blocked because the registered local asset is incomplete for image-text smoke extraction. It lacks processor/image processor metadata, local vision tower weights, and also needs missing tokenizer dependencies such as protobuf or tiktoken. Metadata was not copied from LLaVA-OneVision and no network repair was run.

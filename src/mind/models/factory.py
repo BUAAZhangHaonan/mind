@@ -6,6 +6,7 @@ from mind.config import ModelConfig
 
 from .wrappers import (
     Gemma3Wrapper,
+    Gemma4Wrapper,
     Glm4vWrapper,
     InternVLWrapper,
     LlavaOnevisionWrapper,
@@ -32,6 +33,8 @@ def create_model_wrapper(config: ModelConfig):
         return MolmoWrapper(config)
     if family == "gemma3":
         return Gemma3Wrapper(config)
+    if family == "gemma4":
+        return Gemma4Wrapper(config)
     if family == "phi3_v":
         return Phi35VisionWrapper(config)
     if family == "phi4mm":

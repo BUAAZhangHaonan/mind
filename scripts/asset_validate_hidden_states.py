@@ -71,6 +71,26 @@ BATCH3_REGRESSION_MODELS = (
     "gemma-3-12b-it",
     "phi-3.5-vision-instruct",
 )
+FINAL_CLOSURE_TARGET_MODELS = (
+    "gemma-4-12b-it",
+    "phi-4-multimodal-instruct",
+    "molmo-7b-d-0924",
+    "llava-v1.5-7b",
+)
+FINAL_CLOSURE_REGRESSION_MODELS = (
+    "glm-4.6v-flash",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "gemma-3-4b-it",
+    "gemma-3-12b-it",
+    "phi-3.5-vision-instruct",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -120,6 +140,7 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
         _write_csv(output_root / "hidden_state_validation_report.csv", validation_rows, REPORT_FIELDS)
         _write_json(output_root / "validation_checksums.json", checksums)
         _write_json(output_root / "asset_completion_summary.json", summary)
+        write_final_status_outputs(output_root, summary)
         write_markdown_report(output_root / "ASSET_COMPLETION_REPORT.md", summary)
         write_wrapper_batch2_report(
             output_root / "WRAPPER_BATCH2_REPORT.md",
@@ -129,6 +150,12 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
         )
         write_wrapper_batch3_report(
             output_root / "WRAPPER_BATCH3_REPORT.md",
+            output_root=output_root,
+            summary=summary,
+            validation_rows=validation_rows,
+        )
+        write_final_asset_closure_report(
+            output_root / "FINAL_ASSET_CLOSURE_REPORT.md",
             output_root=output_root,
             summary=summary,
             validation_rows=validation_rows,
@@ -228,6 +255,7 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
     _write_csv(output_root / "hidden_state_validation_report.csv", validation_rows, REPORT_FIELDS)
     _write_json(output_root / "validation_checksums.json", checksums)
     _write_json(output_root / "asset_completion_summary.json", summary)
+    write_final_status_outputs(output_root, summary)
     write_markdown_report(output_root / "ASSET_COMPLETION_REPORT.md", summary)
     write_wrapper_batch1_report(
         output_root / "WRAPPER_BATCH1_REPORT.md",
@@ -243,6 +271,12 @@ def run_validation(*, output_root: Path, smoke_cache_root: Path, models: Sequenc
     )
     write_wrapper_batch3_report(
         output_root / "WRAPPER_BATCH3_REPORT.md",
+        output_root=output_root,
+        summary=summary,
+        validation_rows=validation_rows,
+    )
+    write_final_asset_closure_report(
+        output_root / "FINAL_ASSET_CLOSURE_REPORT.md",
         output_root=output_root,
         summary=summary,
         validation_rows=validation_rows,
@@ -378,6 +412,62 @@ def _write_csv(path: Path, rows: Sequence[Mapping[str, object]], fields: Sequenc
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+
+
+def write_final_status_outputs(output_root: Path, summary: Mapping[str, object]) -> None:
+    write_final_status_model_lists(output_root, summary)
+    annotate_final_closure_inspection(output_root, summary)
+
+
+def write_final_status_model_lists(output_root: Path, summary: Mapping[str, object]) -> None:
+    _write_json(output_root / "blocked_models.json", _summary_status_rows(summary, "blocked_models"))
+    _write_json(output_root / "unsupported_models.json", _summary_status_rows(summary, "unsupported_models"))
+
+
+def _summary_status_rows(summary: Mapping[str, object], list_key: str) -> list[dict[str, object]]:
+    aliases = summary.get(list_key, [])
+    model_statuses = summary.get("model_statuses", {})
+    if not isinstance(aliases, (list, tuple)):
+        return []
+    rows: list[dict[str, object]] = []
+    for alias_object in aliases:
+        alias = str(alias_object)
+        rows.append(
+            {
+                "alias": alias,
+                "status": str(_mapping_get(model_statuses, alias)),
+                "reason": summary_reason_for_alias(summary, alias),
+            }
+        )
+    return rows
+
+
+def annotate_final_closure_inspection(output_root: Path, summary: Mapping[str, object]) -> None:
+    csv_path = output_root / "final_asset_closure_inspection.csv"
+    json_path = output_root / "final_asset_closure_inspection.json"
+    rows = read_csv(csv_path)
+    if not rows:
+        return
+    model_statuses = summary.get("model_statuses", {})
+    fields = list(rows[0].keys())
+    for field in ("audit_status", "audit_reason", "final_status", "final_reason"):
+        if field not in fields:
+            fields.append(field)
+    for row in rows:
+        alias = str(row.get("alias", ""))
+        audit_status = row.get("audit_status") or row.get("status", "")
+        audit_reason = row.get("audit_reason") or row.get("reason", "")
+        final_status = str(_mapping_get(model_statuses, alias))
+        final_reason = summary_reason_for_alias(summary, alias)
+        row["audit_status"] = audit_status
+        row["audit_reason"] = audit_reason
+        row["final_status"] = final_status
+        row["final_reason"] = final_reason
+        if final_status:
+            row["status"] = final_status
+            row["reason"] = final_reason
+    _write_csv(csv_path, rows, fields)
+    _write_json(json_path, rows)
 
 
 def write_markdown_report(path: Path, summary: Mapping[str, object]) -> None:
@@ -602,6 +692,89 @@ def write_wrapper_batch3_report(
             "",
             "## Next Recommended Wrapper Batch",
             "Resolve the Phi-4 missing dependency blocker, then handle Molmo and LLaVA-v1.5 in separate scoped wrapper tasks.",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_final_asset_closure_report(
+    path: Path,
+    *,
+    output_root: Path,
+    summary: Mapping[str, object],
+    validation_rows: Sequence[Mapping[str, object]],
+) -> None:
+    model_statuses = summary.get("model_statuses", {})
+    inspection_rows = read_csv(output_root / "final_asset_closure_inspection.csv")
+    inspection_by_alias = {str(row.get("alias")): row for row in inspection_rows}
+    repaired_targets = [
+        alias for alias in FINAL_CLOSURE_TARGET_MODELS
+        if _mapping_get(model_statuses, alias) == "verified"
+    ]
+    lines = [
+        "# Final Asset Closure Report",
+        "",
+        "## Repaired Target Models",
+    ]
+    if repaired_targets:
+        lines.extend(f"- {alias}: verified by smoke extraction and hidden-state validation." for alias in repaired_targets)
+    else:
+        lines.append("- none; all closure targets remain blocked with explicit reasons.")
+    lines.extend(["", "## New Gemma 4 Asset Status"])
+    gemma4 = inspection_by_alias.get("gemma-4-12b-it", {})
+    lines.extend(
+        [
+            f"- alias: gemma-4-12b-it",
+            f"- final_status: {_mapping_get(model_statuses, 'gemma-4-12b-it')}",
+            f"- downloaded_or_present: {gemma4.get('gemma4_download_status', '')}",
+            f"- download_reason: {gemma4.get('gemma4_download_reason', '')}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "## Exact Wrapper Changes",
+            "- gemma-4-12b-it: explicit Gemma4Wrapper using Gemma4Processor and Gemma4ForConditionalGeneration with enable_thinking=false when local assets are available.",
+            "- phi-4-multimodal-instruct: kept blocked by missing peft unless --allow-install-peft is explicitly used.",
+            "- molmo-7b-d-0924: local dynamic Molmo class receives all_tied_weights_keys, tie_weights loader-kwarg, and generate_from_batch GenerationMixin shims without patching global Transformers classes. Smoke still blocks on the local class missing _extract_generation_mode_kwargs.",
+            "- llava-v1.5-7b: kept blocked because the registered local asset lacks processor/image metadata and local vision tower weights.",
+            "",
+            "## Inspection Findings",
+        ]
+    )
+    for alias in FINAL_CLOSURE_TARGET_MODELS:
+        row = inspection_by_alias.get(alias, {})
+        audit_status = row.get("audit_status", row.get("status", ""))
+        audit_reason = row.get("audit_reason", row.get("reason", ""))
+        final_status = row.get("final_status", _mapping_get(model_statuses, alias))
+        final_reason = row.get("final_reason", summary_reason_for_alias(summary, alias))
+        lines.append(
+            f"- {alias}: model_type={row.get('model_type', '')}, architectures={row.get('architectures', '')}, "
+            f"processor={row.get('candidate_processor_class', '')}, model={row.get('candidate_model_class', '')}, "
+            f"thinking_disable={row.get('thinking_disable_evidence', '')}, peft_installed={row.get('peft_installed', '')}, "
+            f"molmo_shim={row.get('molmo_compatibility_shim', '')}, llava_metadata_complete={row.get('llava_v15_metadata_complete', '')}, "
+            f"audit_status={audit_status}, audit_reason={audit_reason}, final_status={final_status}, final_reason={final_reason}"
+        )
+    lines.extend(["", "## Smoke And Validation Status"])
+    for alias in (*FINAL_CLOSURE_TARGET_MODELS, *FINAL_CLOSURE_REGRESSION_MODELS):
+        alias_rows = [row for row in validation_rows if row.get("model_alias") == alias]
+        row_statuses = sorted({str(row.get("status", "")) for row in alias_rows})
+        row_reasons = sorted({str(row.get("reason", "")) for row in alias_rows if row.get("reason")})
+        lines.append(
+            f"- {alias}: final={_mapping_get(model_statuses, alias)}, "
+            f"validation_rows={','.join(row_statuses)}, reason={' | '.join(row_reasons)}"
+        )
+    lines.extend(["", "## Final Status Per Target Model"])
+    for alias in FINAL_CLOSURE_TARGET_MODELS:
+        lines.append(f"- {alias}: {_mapping_get(model_statuses, alias)}; reason={summary_reason_for_alias(summary, alias)}")
+    lines.extend(["", "## Remaining Blocked Models"])
+    for alias in summary.get("blocked_models", []):
+        lines.append(f"- {alias}: {summary_reason_for_alias(summary, str(alias))}")
+    lines.extend(
+        [
+            "",
+            "## Next Recommended Action",
+            "Download Gemma 4 only with --download-gemma4 if that asset is required, install peft only with --allow-install-peft if Phi-4 should be attempted, repair Molmo against a Transformers-compatible generation API before hidden-state validation, and repair LLaVA-v1.5 only with explicit local metadata/vision-tower inputs.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

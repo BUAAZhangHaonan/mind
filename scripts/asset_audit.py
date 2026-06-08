@@ -33,6 +33,13 @@ BATCH3_TARGET_ALIASES = (
     "minicpm-v-2_6",
     "minicpm-v-4_5",
 )
+FINAL_CLOSURE_TARGET_ALIASES = (
+    "gemma-4-12b-it",
+    "phi-4-multimodal-instruct",
+    "molmo-7b-d-0924",
+    "llava-v1.5-7b",
+)
+GEMMA4_MODEL_ID = "google/gemma-4-12B-it"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,14 +51,41 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Reserved for explicit heavy checks. The default audit never loads weights.",
     )
+    parser.add_argument(
+        "--download-gemma4",
+        action="store_true",
+        help="Download only google/gemma-4-12B-it to the registered local path if the local asset is missing or incomplete.",
+    )
+    parser.add_argument(
+        "--allow-install-peft",
+        action="store_true",
+        help="Explicitly allow installing only peft for Phi-4. Default behavior never installs dependencies.",
+    )
+    parser.add_argument(
+        "--repair-llava-v1-5-metadata",
+        action="store_true",
+        help="Reserved explicit gate for LLaVA-v1.5 metadata repair. Default behavior never repairs or downloads metadata.",
+    )
     return parser
 
 
-def run_audit(*, registry_path: Path, output_root: Path, load_model: bool = False) -> list[dict[str, object]]:
+def run_audit(
+    *,
+    registry_path: Path,
+    output_root: Path,
+    load_model: bool = False,
+    download_gemma4: bool = False,
+    allow_install_peft: bool = False,
+    repair_llava_v1_5_metadata: bool = False,
+) -> list[dict[str, object]]:
     if load_model:
         raise ValueError("--load-model is not implemented for the lightweight Experiment 1 audit")
+    if repair_llava_v1_5_metadata:
+        raise ValueError("--repair-llava-v1-5-metadata is only a gate; metadata repair is not implemented in Experiment 1.6")
     output_root.mkdir(parents=True, exist_ok=True)
     registry = load_asset_registry(registry_path)
+    handle_optional_peft_install(allow_install_peft=allow_install_peft)
+    gemma4_preflight = handle_optional_gemma4_download(registry.models, download_gemma4=download_gemma4)
     results = [audit_asset_metadata(model).as_dict() for model in registry.models]
 
     inventory_fields = [
@@ -110,6 +144,10 @@ def run_audit(*, registry_path: Path, output_root: Path, load_model: bool = Fals
         "registry": str(registry_path),
         "output_root": str(output_root),
         "load_model": False,
+        "download_gemma4": bool(download_gemma4),
+        "allow_install_peft": bool(allow_install_peft),
+        "repair_llava_v1_5_metadata": bool(repair_llava_v1_5_metadata),
+        "gemma4_preflight": gemma4_preflight,
         "git_commit": get_git_commit(),
         "models": results,
         "summary": summary,
@@ -210,6 +248,41 @@ def run_audit(*, registry_path: Path, output_root: Path, load_model: bool = Fals
     ]
     _write_csv(output_root / "wrapper_batch3_asset_inspection.csv", batch3_rows, batch3_fields)
     _write_json(output_root / "wrapper_batch3_asset_inspection.json", batch3_rows)
+    closure_rows = build_final_asset_closure_inspection(registry.models, gemma4_preflight=gemma4_preflight)
+    closure_fields = [
+        "alias",
+        "local_path",
+        "hf_model_id",
+        "config_json_path",
+        "model_type",
+        "architectures",
+        "auto_map",
+        "tokenizer_files",
+        "processor_files",
+        "image_processor_files",
+        "chat_template_available",
+        "image_processor_available",
+        "generation_config_available",
+        "safetensors_files",
+        "hidden_size_candidates",
+        "layer_count_candidates",
+        "moe_indicators",
+        "thinking_indicators",
+        "thinking_disable_evidence",
+        "peft_installed",
+        "required_by",
+        "download_gemma4_requested",
+        "gemma4_download_status",
+        "gemma4_download_reason",
+        "llava_v15_metadata_complete",
+        "molmo_compatibility_shim",
+        "candidate_model_class",
+        "candidate_processor_class",
+        "status",
+        "reason",
+    ]
+    _write_csv(output_root / "final_asset_closure_inspection.csv", closure_rows, closure_fields)
+    _write_json(output_root / "final_asset_closure_inspection.json", closure_rows)
     return results
 
 
@@ -223,6 +296,154 @@ def build_wrapper_batch2_inspection(models: list[object]) -> list[dict[str, obje
 
 def build_wrapper_batch3_inspection(models: list[object]) -> list[dict[str, object]]:
     return [_inspect_batch3_asset(model) for model in models if getattr(model, "alias", "") in BATCH3_TARGET_ALIASES]
+
+
+def build_final_asset_closure_inspection(
+    models: list[object],
+    *,
+    gemma4_preflight: dict[str, object] | None = None,
+) -> list[dict[str, object]]:
+    return [
+        _inspect_final_closure_asset(model, gemma4_preflight=gemma4_preflight or {})
+        for model in models
+        if getattr(model, "alias", "") in FINAL_CLOSURE_TARGET_ALIASES
+    ]
+
+
+def peft_is_installed() -> bool:
+    return importlib.util.find_spec("peft") is not None
+
+
+def install_peft_dependency() -> None:
+    subprocess.run([sys.executable, "-m", "pip", "install", "peft"], check=True)
+
+
+def handle_optional_peft_install(*, allow_install_peft: bool) -> None:
+    if allow_install_peft and not peft_is_installed():
+        install_peft_dependency()
+
+
+def handle_optional_gemma4_download(models: list[object], *, download_gemma4: bool) -> dict[str, object]:
+    model = next((candidate for candidate in models if getattr(candidate, "alias", "") == "gemma-4-12b-it"), None)
+    if model is None:
+        return {
+            "alias": "gemma-4-12b-it",
+            "status": "blocked",
+            "download_requested": bool(download_gemma4),
+            "reason": "gemma-4-12b-it is not registered",
+        }
+    local_path = Path(str(getattr(model, "local_path", "")))
+    complete = gemma4_local_asset_complete(local_path)
+    if complete:
+        return {
+            "alias": "gemma-4-12b-it",
+            "status": "already_present",
+            "download_requested": bool(download_gemma4),
+            "local_path": str(local_path),
+            "reason": "local Gemma 4 asset appears complete",
+        }
+    if not download_gemma4:
+        return {
+            "alias": "gemma-4-12b-it",
+            "status": "blocked",
+            "download_requested": False,
+            "local_path": str(local_path),
+            "reason": "local Gemma 4 asset is missing or incomplete; rerun asset_audit.py with --download-gemma4 to download only google/gemma-4-12B-it",
+        }
+    try:
+        download_gemma4_asset(local_path)
+    except Exception as error:
+        return {
+            "alias": "gemma-4-12b-it",
+            "status": "blocked",
+            "download_requested": True,
+            "local_path": str(local_path),
+            "reason": f"Gemma 4 download failed: {type(error).__name__}: {error}",
+        }
+    return {
+        "alias": "gemma-4-12b-it",
+        "status": "downloaded" if gemma4_local_asset_complete(local_path) else "blocked",
+        "download_requested": True,
+        "local_path": str(local_path),
+        "reason": "downloaded google/gemma-4-12B-it" if gemma4_local_asset_complete(local_path) else "Gemma 4 download completed but local asset is still incomplete",
+    }
+
+
+def gemma4_local_asset_complete(local_path: Path) -> bool:
+    if not local_path.is_dir():
+        return False
+    config_path = local_path / "config.json"
+    if not config_path.is_file():
+        return False
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    if config.get("model_type") != "gemma4" or not _gemma4_config_has_image_text_path(config):
+        return False
+    has_tokenizer_or_processor = any(
+        (local_path / filename).is_file()
+        for filename in ("tokenizer_config.json", "tokenizer.json", "tokenizer.model", "processor_config.json", "preprocessor_config.json")
+    )
+    has_weights = _has_complete_safetensors_asset(local_path)
+    has_processor = _candidate_processor_class(local_path, "gemma-4-12b-it") == "Gemma4Processor"
+    has_image_processor = _image_processor_type(local_path) == "Gemma4ImageProcessor"
+    has_generation_or_processor = (
+        (local_path / "generation_config.json").is_file()
+        or (local_path / "processor_config.json").is_file()
+        or (local_path / "preprocessor_config.json").is_file()
+    )
+    return has_tokenizer_or_processor and has_weights and has_processor and has_image_processor and has_generation_or_processor
+
+
+def _gemma4_config_has_image_text_path(config: dict[str, object]) -> bool:
+    if "image_token_id" in config or "image_token_index" in config:
+        return True
+    modalities = config.get("supported_modalities")
+    if isinstance(modalities, list):
+        return "image" in {str(modality).lower() for modality in modalities}
+    return False
+
+
+def _has_complete_safetensors_asset(path: Path) -> bool:
+    index_path = path / "model.safetensors.index.json"
+    if index_path.is_file():
+        try:
+            payload = json.loads(index_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        weight_map = payload.get("weight_map")
+        if not isinstance(weight_map, dict) or not weight_map:
+            return False
+        shard_names = {str(filename) for filename in weight_map.values()}
+        return all((path / shard_name).is_file() for shard_name in shard_names)
+    return any(path.glob("*.safetensors"))
+
+
+def _image_processor_type(path: Path) -> str:
+    for filename in ("preprocessor_config.json", "image_processor_config.json"):
+        candidate = path / filename
+        if not candidate.is_file():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        image_processor = payload.get("image_processor_type") or payload.get("image_processor_class")
+        if image_processor:
+            return str(image_processor)
+    return ""
+
+
+def download_gemma4_asset(local_path: Path) -> None:
+    from huggingface_hub import snapshot_download
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_download(
+        repo_id=GEMMA4_MODEL_ID,
+        local_dir=str(local_path),
+        local_files_only=False,
+    )
 
 
 def _inspect_batch1_asset(model: object) -> dict[str, object]:
@@ -398,6 +619,59 @@ def _inspect_batch3_asset(model: object) -> dict[str, object]:
     return row
 
 
+def _inspect_final_closure_asset(model: object, *, gemma4_preflight: dict[str, object]) -> dict[str, object]:
+    row = _inspect_batch3_asset(model)
+    alias = str(row["alias"])
+    local_path = Path(str(row["local_path"]))
+    row["hf_model_id"] = str(getattr(model, "hf_model_id", "") or "")
+    row["safetensors_files"] = []
+    row["peft_installed"] = peft_is_installed()
+    row["required_by"] = ""
+    row["download_gemma4_requested"] = bool(gemma4_preflight.get("download_requested", False)) if alias == "gemma-4-12b-it" else False
+    row["gemma4_download_status"] = str(gemma4_preflight.get("status", "")) if alias == "gemma-4-12b-it" else ""
+    row["gemma4_download_reason"] = str(gemma4_preflight.get("reason", "")) if alias == "gemma-4-12b-it" else ""
+    row["llava_v15_metadata_complete"] = False
+    row["molmo_compatibility_shim"] = ""
+
+    if local_path.is_dir():
+        row["safetensors_files"] = sorted(path.name for path in local_path.glob("*.safetensors"))
+        if (local_path / "model.safetensors.index.json").is_file():
+            row["safetensors_files"] = [*row["safetensors_files"], "model.safetensors.index.json"]
+    if alias == "gemma-4-12b-it":
+        row["thinking_disable_evidence"] = "official Gemma 4 chat template uses enable_thinking=false; local template must confirm after download"
+        row["candidate_model_class"] = "Gemma4ForConditionalGeneration"
+        row["candidate_processor_class"] = "Gemma4Processor"
+        if not local_path.is_dir():
+            row["status"] = AssetStatus.BLOCKED.value
+            row["reason"] = str(gemma4_preflight.get("reason") or f"local path does not exist: {local_path}")
+        elif not gemma4_local_asset_complete(local_path):
+            row["status"] = AssetStatus.BLOCKED.value
+            row["reason"] = str(gemma4_preflight.get("reason") or "local Gemma 4 asset is incomplete")
+    elif alias == "phi-4-multimodal-instruct":
+        row["required_by"] = "phi-4 local image-text loading"
+        row["thinking_disable_evidence"] = "no thinking markers detected"
+    elif alias == "molmo-7b-d-0924":
+        row["candidate_model_class"] = "AutoModelForCausalLM"
+        row["candidate_processor_class"] = "MolmoProcessor"
+        row["molmo_compatibility_shim"] = (
+            "MolmoForCausalLM all_tied_weights_keys, tie_weights loader-kwarg, "
+            "and generate_from_batch GenerationMixin shims are applied only to the local dynamic Molmo class"
+        )
+        if row["status"] == "inspected":
+            row["output_hidden_states_support"] = "forward_resolved_by_wrapper"
+            row["generation_api_support"] = "generate_from_batch_deterministic_override"
+    elif alias == "llava-v1.5-7b":
+        metadata_complete = _candidate_processor_class(local_path, alias) != "" and _llava_v15_image_processor_type(local_path) != ""
+        row["llava_v15_metadata_complete"] = metadata_complete
+        row["candidate_model_class"] = "unsupported_until_complete_local_metadata"
+        row["candidate_processor_class"] = _candidate_processor_class(local_path, alias)
+    if alias in FINAL_CLOSURE_TARGET_ALIASES:
+        audit_result = audit_asset_metadata(model)
+        row["status"] = audit_result.status.value
+        row["reason"] = audit_result.reason
+    return row
+
+
 def _candidate_config_values(config: dict[str, object], *paths: tuple[str, ...]) -> dict[str, object]:
     values: dict[str, object] = {}
     for path in paths:
@@ -440,6 +714,8 @@ def _thinking_indicator_files(path: Path) -> list[str]:
 
 
 def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
+    if alias == "gemma-4-12b-it":
+        return "Gemma4ForConditionalGeneration"
     if alias == "glm-4.6v-flash":
         return "Glm4vForConditionalGeneration"
     if alias in {"minicpm-v-2_6", "minicpm-v-4_5"}:
@@ -450,6 +726,10 @@ def _candidate_model_class(alias: str, config: dict[str, object]) -> str:
         return "Phi3VForCausalLM"
     if alias == "phi-4-multimodal-instruct":
         return "Phi4MMForCausalLM"
+    if alias == "molmo-7b-d-0924":
+        return "AutoModelForCausalLM"
+    if alias == "llava-v1.5-7b":
+        return "unsupported_until_complete_local_metadata"
     if alias == "qwen2.5-vl-7b":
         return "Qwen2_5_VLForConditionalGeneration"
     if alias in {"qwen3.5-4b", "qwen3.5-9b"}:
@@ -476,6 +756,8 @@ def _phi4_config_has_image_text_path(config: dict[str, object]) -> bool:
 def _candidate_processor_class(path: Path, alias: str) -> str:
     if alias == "internvl3.5-8b":
         return "InternVLLocalProcessor"
+    if alias == "molmo-7b-d-0924":
+        return "MolmoProcessor"
     for filename in ("processor_config.json", "preprocessor_config.json"):
         candidate = path / filename
         if not candidate.is_file():
@@ -487,6 +769,21 @@ def _candidate_processor_class(path: Path, alias: str) -> str:
         processor_class = payload.get("processor_class")
         if processor_class:
             return str(processor_class)
+    return ""
+
+
+def _llava_v15_image_processor_type(path: Path) -> str:
+    for filename in ("preprocessor_config.json", "image_processor_config.json"):
+        candidate = path / filename
+        if not candidate.is_file():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        image_processor = payload.get("image_processor_type") or payload.get("image_processor_class")
+        if image_processor:
+            return str(image_processor)
     return ""
 
 
@@ -531,6 +828,9 @@ def main(argv: list[str] | None = None) -> int:
             registry_path=args.registry,
             output_root=args.output_root,
             load_model=args.load_model,
+            download_gemma4=args.download_gemma4,
+            allow_install_peft=args.allow_install_peft,
+            repair_llava_v1_5_metadata=args.repair_llava_v1_5_metadata,
         )
     except Exception as error:
         print(str(error), file=sys.stderr)

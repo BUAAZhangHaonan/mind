@@ -4,6 +4,8 @@ from .factory import create_model_wrapper
 from .types import parse_yes_no_answer, resolve_torch_dtype
 from .wrappers import (
     BaseModelWrapper,
+    Gemma3Wrapper,
+    Gemma4Wrapper,
     Glm4vWrapper,
     InternVLWrapper,
     LlavaOnevisionWrapper,
@@ -17,6 +19,8 @@ from .wrappers import (
 
 __all__ = [
     "BaseModelWrapper",
+    "Gemma3Wrapper",
+    "Gemma4Wrapper",
     "Glm4vWrapper",
     "InternVLWrapper",
     "LlavaOnevisionWrapper",

@@ -112,6 +112,7 @@ SUPPORTED_WRAPPER_FAMILIES = {
     "minicpmv": "MiniCPMV",
     "molmo": "AutoModelForCausalLM",
     "gemma3": "Gemma3ForConditionalGeneration",
+    "gemma4": "Gemma4ForConditionalGeneration",
     "phi3_v": "Phi3VForCausalLM",
     "phi4mm": "Phi4MMForCausalLM",
 }
@@ -119,6 +120,7 @@ SUPPORTED_WRAPPER_FAMILIES = {
 SINGLE_IMAGE_VLM_FAMILIES = SUPPORTED_WRAPPER_FAMILIES.keys() | {
     "glm4v",
     "gemma3",
+    "gemma4",
     "qwen3_5",
     "qwen2_5_vl",
     "minicpmv",
@@ -684,6 +686,16 @@ def _audit_family_specific_constraints(
         missing = _missing_transformers_classes(("Gemma3Processor", "Gemma3ForConditionalGeneration"))
         if missing:
             return AssetStatus.BLOCKED, "installed transformers is missing required Gemma3 classes: " + ", ".join(missing)
+    if family == "gemma4":
+        if config.get("model_type") != "gemma4" or not _gemma4_config_has_image_text_path(config):
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "Gemma4 Unified image-text config is required"
+        if _processor_class_from_files(local_path) != "Gemma4Processor" or _image_processor_type(local_path) != "Gemma4ImageProcessor":
+            return AssetStatus.BLOCKED, "Gemma4Processor and Gemma4ImageProcessor metadata are required"
+        if not _has_safetensors_asset(local_path):
+            return AssetStatus.BLOCKED, "Gemma4 safetensors shards are required in the local asset"
+        missing = _missing_transformers_classes(("Gemma4Processor", "Gemma4ForConditionalGeneration", "AutoModelForMultimodalLM"))
+        if missing:
+            return AssetStatus.BLOCKED, "installed transformers is missing required Gemma4 classes: " + ", ".join(missing)
     if family == "phi3_v":
         if config.get("model_type") != "phi3_v" or "img_processor" not in config:
             return AssetStatus.UNSUPPORTED_BY_POLICY, "Phi-3.5 vision image-text config is required"
@@ -700,6 +712,16 @@ def _audit_family_specific_constraints(
                 AssetStatus.BLOCKED,
                 "missing dependency required by Phi4MMForCausalLM local image-text loading: " + ", ".join(missing),
             )
+    if family == "llava_v15":
+        if config.get("model_type") not in {"llava", "llava_v15"}:
+            return AssetStatus.UNSUPPORTED_BY_POLICY, "LLaVA-v1.5 image-text config is required"
+        if _llava_v15_vision_tower_incomplete(local_path, config):
+            return (
+                AssetStatus.BLOCKED,
+                "local llava-v1.5-7b is incomplete for local image-text smoke extraction; processor/image processor metadata is missing, vision tower weights are not included in the registered asset, and tokenizer loading also needs missing protobuf or tiktoken",
+            )
+        if _processor_class_from_files(local_path) is None or _image_processor_type(local_path) is None:
+            return AssetStatus.BLOCKED, "processor/image processor metadata is missing for LLaVA-v1.5 local image-text loading"
     return None
 
 
@@ -739,6 +761,54 @@ def _phi4_config_has_image_text_path(config: Mapping[str, object]) -> bool:
         return False
     image_embedding = str(image_layer.get("embedding_cls", "")).lower()
     return "image" in image_embedding
+
+
+def _gemma4_config_has_image_text_path(config: Mapping[str, object]) -> bool:
+    if _has_any_key(config, ("image_token_id", "image_token_index")):
+        return True
+    modalities = config.get("supported_modalities")
+    if isinstance(modalities, Sequence) and not isinstance(modalities, str):
+        return "image" in {str(modality).lower() for modality in modalities}
+    return False
+
+
+def _has_safetensors_asset(path: Path) -> bool:
+    index_path = path / "model.safetensors.index.json"
+    if index_path.is_file():
+        try:
+            payload = json.loads(index_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        weight_map = payload.get("weight_map")
+        if not isinstance(weight_map, Mapping) or not weight_map:
+            return False
+        shard_names = {str(filename) for filename in weight_map.values()}
+        return all((path / shard_name).is_file() for shard_name in shard_names)
+    return any(path.glob("*.safetensors"))
+
+
+def _llava_v15_vision_tower_incomplete(path: Path, config: Mapping[str, object]) -> bool:
+    if not config.get("mm_vision_tower"):
+        return False
+    index_path = _first_existing_path(path, ("model.safetensors.index.json", "pytorch_model.bin.index.json"))
+    if index_path is None:
+        return False
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return True
+    weight_map = payload.get("weight_map")
+    if not isinstance(weight_map, Mapping):
+        return True
+    return not any(str(name).startswith("model.vision_tower") for name in weight_map)
+
+
+def _first_existing_path(path: Path, names: Sequence[str]) -> Path | None:
+    for name in names:
+        candidate = path / name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _has_any_key(payload: Mapping[str, object], keys: Sequence[str]) -> bool:

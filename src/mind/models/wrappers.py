@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import functools
 import hashlib
+import inspect
 import importlib.util
 import json
 import math
@@ -20,11 +22,13 @@ from transformers import (
     AutoModel,
     AutoModelForCausalLM,
     AutoModelForImageTextToText,
+    AutoModelForMultimodalLM,
     AutoProcessor,
     AutoTokenizer,
     GenerationConfig,
 )
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from transformers.generation import GenerationMixin
 from transformers.modeling_utils import PreTrainedModel
 
 from mind.config import ModelConfig
@@ -146,6 +150,104 @@ def load_molmo_processing_modules(model_id: str) -> tuple[Any, Any, Path]:
         snapshot_path / "preprocessing_molmo.py",
     )
     return preprocessing_module, image_module, snapshot_path
+
+
+def ensure_molmo_remote_class_contract(local_path: str | Path) -> None:
+    snapshot_path = require_local_model_path(str(local_path))
+    model_class = get_class_from_dynamic_module(
+        "modeling_molmo.MolmoForCausalLM",
+        snapshot_path,
+        local_files_only=True,
+        trust_remote_code=True,
+    )
+    if not hasattr(model_class, "all_tied_weights_keys"):
+        model_class.all_tied_weights_keys = {}
+    tie_weights = getattr(model_class, "tie_weights", None)
+    if callable(tie_weights) and not getattr(tie_weights, "_mind_accepts_missing_keys", False):
+        signature = inspect.signature(tie_weights)
+        supports_loader_kwargs = (
+            "missing_keys" in signature.parameters
+            and "recompute_mapping" in signature.parameters
+        ) or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+        if not supports_loader_kwargs:
+
+            @functools.wraps(tie_weights)
+            def tie_weights_with_missing_keys(
+                self: Any,
+                *args: Any,
+                missing_keys: Any = None,
+                recompute_mapping: bool = True,
+                **kwargs: Any,
+            ) -> Any:
+                return tie_weights(self, *args, **kwargs)
+
+            tie_weights_with_missing_keys._mind_accepts_missing_keys = True  # type: ignore[attr-defined]
+            model_class.tie_weights = tie_weights_with_missing_keys
+    _ensure_molmo_generation_mixin_contract(model_class)
+
+
+def _ensure_molmo_generation_mixin_contract(model_class: type[Any]) -> None:
+    generate_from_batch = getattr(model_class, "generate_from_batch", None)
+    if not callable(generate_from_batch) or getattr(generate_from_batch, "_mind_uses_generation_mixin", False):
+        return
+    if any("generate" in getattr(base, "__dict__", {}) for base in model_class.__mro__[1:]):
+        return
+
+    @functools.wraps(generate_from_batch)
+    @torch.no_grad()
+    def generate_from_batch_with_generation_mixin(
+        self: Any,
+        batch: dict[str, Any],
+        generation_config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        if generation_config is not None:
+            assert generation_config.use_cache
+
+        images = batch.get("images")
+        image_masks = batch.get("image_masks")
+        image_input_idx = batch.get("image_input_idx")
+        input_ids = batch["input_ids"]
+        batch_size, seq_len = input_ids.shape
+        attention_mask = batch.get("attention_mask", None)
+        if generation_config is None or generation_config.max_new_tokens is None:
+            raise ValueError("Molmo generation requires max_new_tokens in GenerationConfig")
+        max_new_tokens = generation_config.max_new_tokens
+        mask_len = seq_len + max_new_tokens if self.config.use_position_ids else seq_len
+        position_ids: torch.Tensor | None = None
+        append_last_valid_logits: torch.Tensor | None = None
+        if self.config.use_position_ids and attention_mask is None:
+            attention_mask = input_ids != -1
+            position_ids = torch.clamp(
+                torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1,
+                min=0,
+            )
+            append_last_valid_logits = attention_mask.long().sum(dim=-1) - 1
+            attention_mask = torch.cat(
+                [attention_mask, attention_mask.new_ones((batch_size, max_new_tokens))],
+                dim=1,
+            )
+        if attention_mask is not None:
+            assert attention_mask.shape == (batch_size, mask_len)
+
+        return GenerationMixin.generate(
+            self,
+            input_ids,
+            generation_config,
+            attention_mask=attention_mask,
+            images=images,
+            image_masks=image_masks,
+            image_input_idx=image_input_idx,
+            position_ids=position_ids,
+            append_last_valid_logits=append_last_valid_logits,
+            **kwargs,
+        )
+
+    generate_from_batch_with_generation_mixin._mind_uses_generation_mixin = True  # type: ignore[attr-defined]
+    model_class.generate_from_batch = generate_from_batch_with_generation_mixin
 
 
 def load_internvl_conversation_module(model_id: str) -> Any:
@@ -1309,6 +1411,74 @@ class Gemma3Wrapper(BaseModelWrapper):
         )
 
 
+class Gemma4Wrapper(Gemma3Wrapper):
+    """Gemma 4 image-text wrapper with thinking disabled via chat template."""
+
+    def expected_model_class_name(self) -> str:
+        return "Gemma4ForConditionalGeneration"
+
+    def expected_processor_class_name(self) -> str:
+        return "Gemma4Processor"
+
+    def build_messages(self, *, question: str, image_path: str | None = None) -> list[dict[str, Any]]:
+        if image_path is None:
+            raise ValueError("Gemma4Wrapper requires an image path.")
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": str(Path(image_path))},
+                    {"type": "text", "text": question},
+                ],
+            }
+        ]
+
+    def load_processor(self):
+        from transformers import Gemma4Processor
+
+        local_path = require_local_model_path(self.model_id_or_path())
+        return configure_left_padding(
+            Gemma4Processor.from_pretrained(
+                local_path,
+                trust_remote_code=self.config.trust_remote_code,
+                local_files_only=True,
+            )
+        )
+
+    def load_model(self, *, device: str = "cuda"):
+        from transformers import Gemma4ForConditionalGeneration
+
+        return Gemma4ForConditionalGeneration.from_pretrained(
+            self.model_id_or_path(),
+            **self.model_load_kwargs(device=device),
+        ).eval()
+
+    def prepare_asset_batch_inputs(
+        self,
+        processor: Any,
+        *,
+        questions: list[str],
+        image_paths: list[str | None],
+        device: str,
+    ) -> Any:
+        if len(questions) != len(image_paths):
+            raise ValueError("questions and image_paths must have the same length.")
+        processed = []
+        for question, image_path in zip(questions, image_paths):
+            if image_path is None:
+                raise ValueError("Gemma4Wrapper requires an image path.")
+            batch = processor.apply_chat_template(
+                self.build_messages(question=question, image_path=image_path),
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+                add_generation_prompt=True,
+                **self.chat_template_kwargs(),
+            )
+            processed.append({key: value[0] for key, value in dict(batch).items() if isinstance(value, torch.Tensor)})
+        return self._move_batch_to_device(collate_tensor_dicts(processed), device)
+
+
 class PhiImageTextWrapper(BaseModelWrapper):
     """Shared exact image-text path for local Phi remote-code assets."""
 
@@ -1919,6 +2089,12 @@ class LlavaOnevisionWrapper(QwenVLWrapper):
 
 
 class MolmoWrapper(BaseModelWrapper):
+    def expected_model_class_name(self) -> str:
+        return "AutoModelForCausalLM"
+
+    def expected_processor_class_name(self) -> str:
+        return "MolmoProcessor"
+
     def model_load_kwargs(self, *, device: str = "cuda") -> dict[str, Any]:
         kwargs = super().model_load_kwargs(device=device)
         if kwargs.get("attn_implementation") == "sdpa":
@@ -2104,6 +2280,7 @@ class MolmoWrapper(BaseModelWrapper):
         )
 
     def load_model(self, *, device: str = "cuda"):
+        ensure_molmo_remote_class_contract(self.model_id_or_path())
         model = AutoModelForCausalLM.from_pretrained(
             self.model_id_or_path(),
             **self.model_load_kwargs(device=device),
