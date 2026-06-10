@@ -1,0 +1,210 @@
+{
+  "stage": "stage_a_closeout",
+  "stage_a_closed": true,
+  "stage_b_started": false,
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "datasets": [
+    "repope",
+    "pope",
+    "dash-b"
+  ],
+  "variants": [
+    "Raw-Static",
+    "Sphere-Static",
+    "Raw-Traj-MeanPool",
+    "Sphere-Traj-MeanPool",
+    "Raw-Traj-LSTM",
+    "Sphere-Traj-LSTM"
+  ],
+  "readouts": [
+    "Diag-Classifier",
+    "Diag-KNN"
+  ],
+  "sphere_closeout_verdict": {
+    "verdict": "beneficial",
+    "mean_delta_pr_auc": 0.00523783487499707,
+    "sphere_wins": 8,
+    "raw_wins": 7,
+    "ties": 0,
+    "supporting_models": [
+      "gemma-3-12b-it",
+      "gemma-3-4b-it",
+      "gemma-4-12b-it",
+      "llava-onevision-qwen2-7b-ov-hf",
+      "minicpm-v-2_6",
+      "minicpm-v-4_5",
+      "qwen3-vl-8b",
+      "qwen3.5-4b"
+    ],
+    "contradicting_models": [
+      "internvl3.5-8b",
+      "llava-v1.5-7b",
+      "molmo-7b-d-0924",
+      "phi-3.5-vision-instruct",
+      "phi-4-multimodal-instruct",
+      "qwen2.5-vl-7b",
+      "qwen3.5-9b"
+    ],
+    "comparisons": [
+      {
+        "model_name": "gemma-3-12b-it",
+        "raw_pr_auc": 0.6770795669860022,
+        "sphere_pr_auc": 0.724708480764702,
+        "delta_pr_auc": 0.04762891377869971,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "gemma-3-4b-it",
+        "raw_pr_auc": 0.6950446385098716,
+        "sphere_pr_auc": 0.6983846091725594,
+        "delta_pr_auc": 0.0033399706626877634,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "gemma-4-12b-it",
+        "raw_pr_auc": 0.3101120181250683,
+        "sphere_pr_auc": 0.3127355124740792,
+        "delta_pr_auc": 0.0026234943490109353,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "internvl3.5-8b",
+        "raw_pr_auc": 0.7295122537870561,
+        "sphere_pr_auc": 0.6605003801951004,
+        "delta_pr_auc": -0.06901187359195571,
+        "winner": "raw"
+      },
+      {
+        "model_name": "llava-onevision-qwen2-7b-ov-hf",
+        "raw_pr_auc": 0.4388288846870008,
+        "sphere_pr_auc": 0.48104174611372447,
+        "delta_pr_auc": 0.04221286142672365,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "llava-v1.5-7b",
+        "raw_pr_auc": 0.6495776322929576,
+        "sphere_pr_auc": 0.5955756881284489,
+        "delta_pr_auc": -0.054001944164508764,
+        "winner": "raw"
+      },
+      {
+        "model_name": "minicpm-v-2_6",
+        "raw_pr_auc": 0.11594656408674342,
+        "sphere_pr_auc": 0.27624928176427205,
+        "delta_pr_auc": 0.16030271767752863,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "minicpm-v-4_5",
+        "raw_pr_auc": 0.2544142807379832,
+        "sphere_pr_auc": 0.398564866242765,
+        "delta_pr_auc": 0.14415058550478177,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "molmo-7b-d-0924",
+        "raw_pr_auc": 0.5040249433666727,
+        "sphere_pr_auc": 0.4824144995562846,
+        "delta_pr_auc": -0.02161044381038807,
+        "winner": "raw"
+      },
+      {
+        "model_name": "phi-3.5-vision-instruct",
+        "raw_pr_auc": 0.5109794676944819,
+        "sphere_pr_auc": 0.44480548378461837,
+        "delta_pr_auc": -0.06617398390986351,
+        "winner": "raw"
+      },
+      {
+        "model_name": "phi-4-multimodal-instruct",
+        "raw_pr_auc": 0.4615261649252802,
+        "sphere_pr_auc": 0.41272466150352716,
+        "delta_pr_auc": -0.048801503421753045,
+        "winner": "raw"
+      },
+      {
+        "model_name": "qwen2.5-vl-7b",
+        "raw_pr_auc": 0.24399424496133051,
+        "sphere_pr_auc": 0.18272681820532158,
+        "delta_pr_auc": -0.061267426756008936,
+        "winner": "raw"
+      },
+      {
+        "model_name": "qwen3-vl-8b",
+        "raw_pr_auc": 0.5175408367393094,
+        "sphere_pr_auc": 0.5257941087428244,
+        "delta_pr_auc": 0.008253272003515,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "qwen3.5-4b",
+        "raw_pr_auc": 0.23992491816138978,
+        "sphere_pr_auc": 0.24462085194954766,
+        "delta_pr_auc": 0.0046959337881578855,
+        "winner": "sphere"
+      },
+      {
+        "model_name": "qwen3.5-9b",
+        "raw_pr_auc": 0.32507656284098035,
+        "sphere_pr_auc": 0.3113035124293091,
+        "delta_pr_auc": -0.013773050411671262,
+        "winner": "raw"
+      }
+    ]
+  },
+  "failed_models": {
+    "glm-4.6v-flash": "glm-4.6v-flash/repope has no primary closeout population; glm-4.6v-flash/pope has no primary closeout population; glm-4.6v-flash/dash-b has no primary closeout population"
+  },
+  "evaluated_models": [
+    "gemma-3-12b-it",
+    "gemma-3-4b-it",
+    "gemma-4-12b-it",
+    "glm-4.6v-flash",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "llava-v1.5-7b",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+    "molmo-7b-d-0924",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b"
+  ],
+  "missing_models": [],
+  "all_panel_models_present": true,
+  "metrics_long_path": "outputs/stageA_closeout/reports/closeout_metrics_long.csv",
+  "repope_classifier_table_path": "outputs/stageA_closeout/reports/repope_main_table_classifier.csv",
+  "repope_knn_table_path": "outputs/stageA_closeout/reports/repope_main_table_knn.csv",
+  "pope_secondary_table_path": "outputs/stageA_closeout/reports/pope_secondary_table.csv",
+  "dash_b_secondary_table_path": "outputs/stageA_closeout/reports/dash_b_secondary_table.csv",
+  "per_model_summary_path": "outputs/stageA_closeout/reports/per_model_summary.csv",
+  "merged_input_roots": [
+    "outputs/stageA_closeout_gpu0",
+    "outputs/stageA_closeout_gpu1"
+  ],
+  "notes": [
+    "Stage A closeout does not validate the final MIND detector.",
+    "Stage B was not started."
+  ]
+}
