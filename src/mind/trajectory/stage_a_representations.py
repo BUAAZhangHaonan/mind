@@ -51,6 +51,19 @@ def build_lstm_trajectory(
     return _row_unit_vectors(vectors)
 
 
+def build_raw_lstm_trajectory(
+    entry: Mapping[str, object],
+    *,
+    layer_order: Sequence[int] | None = None,
+) -> np.ndarray:
+    """Build the raw full-layer trajectory for the Raw-Traj-LSTM closeout variant."""
+
+    vectors = _layer_vectors(entry)
+    if layer_order is not None:
+        vectors = vectors[np.asarray(layer_order, dtype=np.int64)]
+    return vectors.astype(np.float32, copy=True)
+
+
 def build_representation(
     entry: Mapping[str, object],
     representation: str,
