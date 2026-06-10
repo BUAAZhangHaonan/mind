@@ -133,3 +133,16 @@ Gemma4 full-cache extraction was run in the dedicated Gemma4 environment. The ca
 The current asset summary has 14 main-env verified models and 2 separate-env verified models. `verified_separate_env` is not the same as `verified`; downstream panels should label Gemma4 and Molmo explicitly if they include them.
 
 These are asset and extraction checks only. They do not make scientific validation claims about any model or about MIND.
+
+## Experiment 2 Full-Cache Closeout
+
+Experiment 2 builds the reusable full-cache asset surface for the final 16-model panel. The authoritative route and cache manifest is:
+
+- `outputs/full_cache/manifests/unified_full_cache_manifest.json`
+- `outputs/full_cache/manifests/extraction_ledger.csv`
+
+The human-readable closeout summary is:
+
+- `outputs/full_cache/reports/FULL_CACHE_SUMMARY.md`
+
+The closeout validation passed for all 16 panel models. The final cache surface includes Stage 0 accepted caches, main-environment extractions, and separate-environment extractions for models that require a compatible Transformers runtime. These files are extraction artifacts for later experiments. They are not scientific result files, and they do not validate MIND or any model scientifically.

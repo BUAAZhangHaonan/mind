@@ -1,0 +1,113 @@
+schema_version: mind_full_cache_model_panel_v1
+experiment: mind_experiment_2
+name: full-cache-model-panel
+output_root: outputs/full_cache
+dtype: float16
+max_new_tokens: 1
+token_index: -1
+logit_source: pre_generation_first_token
+dataset_matrix:
+  - family: pope
+    subsets: [popular, random, adversarial]
+  - family: repope
+    subsets: [popular, random, adversarial]
+  - family: dash-b
+    subsets: [all]
+routes:
+  accept_existing_stage0:
+    models:
+      - qwen3-vl-8b
+      - internvl3.5-8b
+    source_root: outputs/stage0/cache
+  accept_existing_separate_env:
+    models:
+      - gemma-4-12b-it
+    source_root: outputs/assets_gemma4_tf5102/full_cache
+    extraction_env_name: mind-gemma4-py311
+  extract_separate_env:
+    models:
+      - molmo-7b-d-0924
+      - qwen3.5-4b
+    extraction_env_name: mind-molmo-py311
+  extract_main_env:
+    manifest_route: extract_default_env
+    extraction_env_name: mind-py311
+    models:
+      - glm-4.6v-flash
+      - minicpm-v-2_6
+      - minicpm-v-4_5
+      - qwen2.5-vl-7b
+      - qwen3.5-9b
+      - llava-onevision-qwen2-7b-ov-hf
+      - llava-v1.5-7b
+      - gemma-3-4b-it
+      - gemma-3-12b-it
+      - phi-3.5-vision-instruct
+      - phi-4-multimodal-instruct
+models:
+  - alias: llava-onevision-qwen2-7b-ov-hf
+    config_path: configs/models/llava_onevision_qwen2_7b_ov_hf.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: glm-4.6v-flash
+    config_path: configs/models/glm_4_6v_flash.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: qwen3-vl-8b
+    config_path: configs/models/qwen3_vl_8b.yaml
+    route: accept_existing_stage0
+    manifest_route: accept_existing_stage0
+  - alias: internvl3.5-8b
+    config_path: configs/models/internvl3_5_8b.yaml
+    route: accept_existing_stage0
+    manifest_route: accept_existing_stage0
+  - alias: minicpm-v-2_6
+    config_path: configs/models/minicpm_v_2_6.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: gemma-3-12b-it
+    config_path: configs/models/gemma_3_12b_it.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: gemma-4-12b-it
+    config_path: configs/models/gemma_4_12b_it.yaml
+    route: accept_existing_separate_env
+    manifest_route: accept_existing_separate_env
+  - alias: qwen3.5-4b
+    config_path: configs/models/qwen3_5_4b_asset.yaml
+    route: extract_separate_env
+    manifest_route: extract_separate_env
+    extraction_env_name: mind-gemma4-py311
+    cache_output_root: outputs/assets_qwen35_tf5102/full_cache
+  - alias: qwen3.5-9b
+    config_path: configs/models/qwen3_5_9b.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: phi-4-multimodal-instruct
+    config_path: configs/models/phi_4_multimodal_instruct.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: phi-3.5-vision-instruct
+    config_path: configs/models/phi_3_5_vision_instruct.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: gemma-3-4b-it
+    config_path: configs/models/gemma_3_4b_it.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: molmo-7b-d-0924
+    config_path: configs/models/molmo_7b_d_0924_asset.yaml
+    route: extract_separate_env
+    manifest_route: extract_separate_env
+  - alias: minicpm-v-4_5
+    config_path: configs/models/minicpm_v_4_5.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: llava-v1.5-7b
+    config_path: configs/models/llava_v1_5_7b.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
+  - alias: qwen2.5-vl-7b
+    config_path: configs/models/qwen2_5_vl_7b.yaml
+    route: extract_main_env
+    manifest_route: extract_default_env
