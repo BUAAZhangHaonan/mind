@@ -1146,7 +1146,6 @@ def _default_source_records_path(dataset_name: str | None, subset: str | None) -
         return None
     candidates = [
         Path("outputs/stage0/normalized") / dataset_name / f"{subset}.jsonl",
-        Path("outputs/round2_2026_04/normalized") / dataset_name / f"{subset}.jsonl",
         Path("data") / dataset_name / f"{subset}.jsonl",
     ]
     for candidate in candidates:

@@ -705,7 +705,6 @@ def extraction_dtype_from_model_config(model_config_path: Path) -> str:
 def resolve_records_path(dataset_name: str, subset: str) -> Path:
     candidates = [
         Path("outputs/stage0/normalized") / dataset_name / f"{subset}.jsonl",
-        Path("outputs/round2_2026_04/normalized") / dataset_name / f"{subset}.jsonl",
         Path("data") / dataset_name / f"{subset}.jsonl",
     ]
     for candidate in candidates:
