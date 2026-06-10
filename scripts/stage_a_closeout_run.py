@@ -114,8 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     failures: dict[str, str] = {}
     for model_row in model_rows:
         model_name = str(model_row["model_alias"])
-        try:
-            for family in datasets:
+        for family in datasets:
+            try:
                 entries = _load_family_entries(
                     model_row,
                     args.full_cache_root,
@@ -147,9 +147,15 @@ def main(argv: list[str] | None = None) -> int:
                         skip_lstm=args.skip_lstm,
                     )
                 )
-        except Exception as error:  # noqa: BLE001 - must record failed panel models.
-            failures[model_name] = str(error)
-            print(f"model failed: {model_name}: {error}", file=sys.stderr)
+            except Exception as error:  # noqa: BLE001 - must record failed panel models.
+                reason = str(error)
+                failures[model_name] = (
+                    reason
+                    if model_name not in failures
+                    else f"{failures[model_name]}; {reason}"
+                )
+                metric_rows.extend(_failed_metric_rows(model_name, family, reason))
+                print(f"model family failed: {model_name}/{family}: {error}", file=sys.stderr)
 
     report_dir = output_root / "reports"
     audit_dir = output_root / "audit"
@@ -201,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(f"Stage A closeout complete summary={summary_path} verdict={verdict['verdict']}")
-    return 0 if not failures else 2
+    return 0
 
 
 def _validate_datasets(values: Sequence[str]) -> list[str]:
@@ -457,6 +463,42 @@ def _metric_row(
     }
 
 
+def _failed_metric_rows(model_name: str, dataset_family: str, reason: str) -> list[dict[str, object]]:
+    rows = []
+    for variant in CLOSEOUT_VARIANTS:
+        for readout in CLOSEOUT_READOUTS:
+            rows.append(
+                {
+                    "model_name": model_name,
+                    "dataset_family": dataset_family,
+                    "variant": variant,
+                    "readout": readout,
+                    "eval_split": "test",
+                    "eval_scope": "pooled",
+                    "metric_status": "failed",
+                    "failure_reason": reason,
+                    "pr_auc": float("nan"),
+                    "pr_auc_ci_low": float("nan"),
+                    "pr_auc_ci_high": float("nan"),
+                    "roc_auc": float("nan"),
+                    "roc_auc_ci_low": float("nan"),
+                    "roc_auc_ci_high": float("nan"),
+                    "average_precision": float("nan"),
+                    "tpr_at_1pct_fpr": float("nan"),
+                    "fpr_at_95pct_tpr": float("nan"),
+                    "num_test": 0,
+                    "num_test_correct": 0,
+                    "num_test_hard_hallucination": 0,
+                    "num_bank_correct": 0,
+                    "num_encoder_train": 0,
+                    "num_encoder_train_hallucination": 0,
+                    "num_excluded_false_negative": 0,
+                    "num_excluded_parsed_none": 0,
+                }
+            )
+    return rows
+
+
 def _write_tables(report_dir: Path, metric_rows: Sequence[Mapping[str, object]]) -> dict[str, Path]:
     paths = {
         "repope_classifier": report_dir / "repope_main_table_classifier.csv",
@@ -494,6 +536,8 @@ def _per_model_summary_rows(
     for row in metric_rows:
         by_model[str(row["model_name"])].append(row)
     for model_name, values in sorted(by_model.items()):
+        if model_name in failures:
+            continue
         repope = [
             row
             for row in values

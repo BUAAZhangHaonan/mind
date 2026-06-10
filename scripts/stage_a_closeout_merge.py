@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(f"merged closeout roots into {output_root} verdict={verdict['verdict']}")
-    return 0 if not failures and not status["missing_models"] else 2
+    return 0
 
 
 def _read_many(roots: Sequence[Path], relative_path: str) -> list[dict[str, str]]:

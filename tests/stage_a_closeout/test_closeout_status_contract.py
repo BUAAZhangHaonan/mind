@@ -6,6 +6,8 @@ from mind.trajectory.stage_a_closeout import (
     summarize_closeout_status,
 )
 
+from scripts import stage_a_closeout_run
+
 from .conftest import PANEL_MODELS
 
 
@@ -52,3 +54,12 @@ def test_failed_models_are_reported_not_skipped() -> None:
     assert "model-03" in summary["failed_models"]
     assert summary["all_panel_models_present"] is True
     assert summary["stage_b_started"] is False
+
+
+def test_failed_metric_rows_cover_all_variants_and_readouts() -> None:
+    rows = stage_a_closeout_run._failed_metric_rows("model-03", "repope", "no primary population")
+
+    assert len(rows) == 12
+    assert {row["variant"] for row in rows} == set(CLOSEOUT_VARIANTS)
+    assert {row["readout"] for row in rows} == {"Diag-Classifier", "Diag-KNN"}
+    assert {row["metric_status"] for row in rows} == {"failed"}
