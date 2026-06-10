@@ -162,3 +162,5 @@ Stage B has not started.
 ## Closeout State
 
 Stage A is closed after Raw-Traj-LSTM is added and the closeout summary is written. Later stages must not reopen Stage A except if the frozen theory note in `README.md` is explicitly revised.
+
+Current closeout artifacts are under `outputs/stageA_closeout`. The RePOPE primary closeout verdict is `beneficial` under the frozen closeout semantics. `glm-4.6v-flash` is recorded as failed for Stage A closeout metrics because it has no primary closeout population in the current full cache.

@@ -70,3 +70,22 @@ The `outputs/` tree is ignored by default, so tracked docs record the canonical 
 ## Closure Rule
 
 Stage A is closed after Raw-Traj-LSTM is added and the closeout summary is written. Later stages must not reopen Stage A except if the frozen theory note is explicitly revised.
+
+## Current Closeout Result
+
+The canonical closeout summary is:
+
+```text
+outputs/stageA_closeout/reports/STAGE_A_CLOSEOUT_SUMMARY.md
+outputs/stageA_closeout/reports/STAGE_A_CLOSEOUT_SUMMARY.json
+```
+
+The merged full-panel closeout contains 16 panel models and 576 metric rows. The RePOPE primary closeout verdict is `beneficial` under the frozen closeout semantics.
+
+One model is explicitly recorded as failed for Stage A closeout metrics:
+
+```text
+glm-4.6v-flash: no primary closeout population on RePOPE, POPE, or DASH-B because parsed_answer is None across the checked cache population.
+```
+
+This is a Stage A population issue, not a claim about the model asset being unusable. It does not change the Experiment 2 full-cache status.
