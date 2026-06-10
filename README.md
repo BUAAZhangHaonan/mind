@@ -1,17 +1,69 @@
 # MIND
 
-`master` contains the completed Stage 0 line and the Stage A representation acid test.
+`master` contains the completed Stage 0 line, the Experiment 2 full-cache asset surface, and the frozen Stage A closeout line.
 
 For local model asset registry and smoke validation details, see `docs/ASSET_REGISTRY.md`.
 
 MIND starts from audited multimodal records, deterministic grouped splits, and full-layer hidden-state cache shards. Stage A uses those cached tensors to test representation hypotheses only. It does not validate the final MIND detector.
+
+## Frozen Theory Note
+
+### MIND Frozen Note v1: Hyperspherical Sequential Metric Learning for Pre-generation Support Estimation
+
+MIND does not study how to build a stronger object hallucination classifier. It studies how to model VLM pre-generation hidden states as an interpretable, comparable representation space that supports inlier support estimation. Object hallucination detection is then written as support estimation on that space, not as ordinary classification.
+
+Given one sample `x`, MIND observes the final prefill token hidden states from all layers:
+
+```text
+H(x) = (h_1, ..., h_L), h_l in R^d
+```
+
+Each layer vector is L2-normalized:
+
+```text
+u_l = h_l / ||h_l||_2, u_l in S^(d-1)
+```
+
+The basic object is the pre-generation semantic trajectory:
+
+```text
+T(x) = (u_1, ..., u_L) in (S^(d-1))^L
+```
+
+So MIND is built around a product-of-spheres trajectory, not a single hidden-state point. This matches the full-layer prefill cache surface built in Experiment 2.
+
+The default representation map is:
+
+```text
+z = f_theta(T(x)), z in S^(m-1)
+```
+
+The current engineering default can use an LSTM sequence encoder, but the method is not the LSTM itself. Stage A showed that classifier-friendly embeddings can be strong while bank geometry can remain weak. This means BCE or CE can expose signal without learning an embedding that is well aligned with support estimation. BCE and CE are therefore baselines only.
+
+The only main objective families after Stage A are supervised contrastive learning, Proxy Anchor, and angular-margin objectives. The detector head must be described as support estimation on hyperspherical embeddings. A non-parametric head can use a geodesic radius ball, and a parametric head can use vMF support. `radius_ball` is one support estimator, not the core contribution.
+
+Frozen kNN is a signal probe, not a one-class method. Deep one-class methods need their own compactness or descriptiveness objective, and MIND must not rename frozen kNN as one-class learning.
+
+Mainline methods must use pre-generation full-layer trajectories, hyperspherical or manifold-aware representation space, metric-aligned representation learning, and support estimation heads. Euclidean classifiers, BCE-only sequence encoders, frozen kNN, raw static probes, HALP, and linear probes remain baselines.
+
+The frozen stage order is:
+
+- Stage A: close representation pretests by comparing `Sphere-Traj-LSTM` with `Raw-Traj-LSTM`.
+- Stage B: test metric-aligned objectives such as SupCon, Proxy Anchor, and angular-margin losses.
+- Stage C: compare support estimators on frozen hyperspherical embeddings.
+- Stage D: test cross-domain and domain-expansion behavior.
+
+Stage A is closed after Raw-Traj-LSTM is added and the closeout summary is written. Later stages must not reopen Stage A except if this frozen theory note is explicitly revised.
+
+Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyperspherical VAE [3], Supervised Contrastive Learning [4], Proxy Anchor [5], probabilistic hyperspherical contrastive learning [6], Deep One-Class [7], Deep SVDD [8], DROCC [9], HALP [10], and Riemannian adaptive optimization [11].
 
 ## Scope
 
 - Stage 0 data audit.
 - Stage 0 grouped split manifests.
 - Stage 0 full-layer cache extraction and validation.
-- Stage A representation-space diagnostics from `outputs/stage0` to `outputs/stageA`.
+- Experiment 2 full-cache unified manifest under `outputs/full_cache/manifests/`.
+- Stage A closeout diagnostics from `outputs/full_cache` to `outputs/stageA_closeout`.
 - Stage B has not started.
 
 ## Kept Surface
@@ -33,6 +85,8 @@ src/mind/trajectory/
 src/mind/utils/
 tests/stage0/
 tests/stage_a/
+tests/full_cache/
+tests/stage_a_closeout/
 ```
 
 ## Environment
@@ -71,16 +125,27 @@ Stage 0 writes under `outputs/stage0` by default. Existing output artifacts are 
 
 ## Stage A
 
-Run a Stage A dry run:
+Legacy Stage A v1 used `outputs/stageA`. The closeout run uses the Experiment 2 unified full-cache manifest and writes to `outputs/stageA_closeout`.
 
 ```bash
-conda run --no-capture-output -n mind-py311 python scripts/stage_a_run.py \
-  --stage0-root outputs/stage0 \
-  --output-root outputs/stageA \
-  --models qwen3-vl-8b \
-  --subsets popular random adversarial \
+conda run --no-capture-output -n mind-py311 python scripts/stage_a_closeout_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageA_closeout \
+  --bootstrap 1000 \
   --device cuda:0 \
-  --dry-run
+  --lstm-epochs 10
 ```
 
-Stage A may conclude that only multi-layer aggregation is useful while layer order remains unproven. DASH-B and RePOPE are checked for Stage 0 completion but are not Stage A primary inputs.
+Stage A closeout evaluates RePOPE as the primary closeout dataset, with POPE and DASH-B as secondary readouts. Stage B has not started.
+
+[1]: https://arxiv.org/abs/1901.10514
+[2]: https://arxiv.org/abs/1801.07698
+[3]: https://arxiv.org/abs/1804.00891
+[4]: https://arxiv.org/abs/2004.11362
+[5]: https://arxiv.org/abs/2003.13911
+[6]: https://arxiv.org/abs/2405.16460
+[7]: https://arxiv.org/abs/1801.05365
+[8]: https://arxiv.org/abs/2001.08873
+[9]: https://arxiv.org/abs/2002.12718
+[10]: https://arxiv.org/abs/2603.05465
+[11]: https://arxiv.org/abs/1810.00760

@@ -2,6 +2,8 @@
 
 Stage A is the representation-space acid test. It tests whether cached full-layer hidden states contain useful hallucination-detection signal. Stage A tests representation hypotheses only. Stage A does not validate the final MIND detector.
 
+The Stage A closeout path is documented in `docs/STAGE_A_CLOSEOUT.md`. Closeout adds `Raw-Traj-LSTM`, reads the Experiment 2 unified full-cache manifest, and writes to `outputs/stageA_closeout`. Stage B has not started.
+
 ## What It Does
 
 - Reads the completed Stage 0 cache from `outputs/stage0`.
@@ -156,3 +158,7 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_a_run.py \
 ```
 
 Stage B has not started.
+
+## Closeout State
+
+Stage A is closed after Raw-Traj-LSTM is added and the closeout summary is written. Later stages must not reopen Stage A except if the frozen theory note in `README.md` is explicitly revised.
