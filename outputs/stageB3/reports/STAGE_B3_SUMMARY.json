@@ -1,0 +1,77 @@
+{
+  "stage": "stage_b3",
+  "stage_c_started": false,
+  "detector_selected": false,
+  "full_cache_manifest": "outputs/full_cache/manifests/unified_full_cache_manifest.json",
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "evaluated_models": [
+    "gemma-3-12b-it",
+    "gemma-3-4b-it",
+    "gemma-4-12b-it",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "llava-v1.5-7b",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+    "molmo-7b-d-0924",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b"
+  ],
+  "excluded_models": {
+    "glm-4.6v-flash": "answer format incompatible with frozen yes/no population rule"
+  },
+  "objective": "proxy_anchor",
+  "encoder_family": "Sphere-Traj-LSTM",
+  "negative_budget_ratio": 0.5,
+  "negative_budget_seeds": [
+    20260506,
+    20260507,
+    20260508
+  ],
+  "primary_decision_metric": "RePOPE test kNN scale-grid PR-AUC stability",
+  "verdict": {
+    "verdict": "scale_sensitive_panel",
+    "models_scale_stable": 6,
+    "models_scale_sensitive": 9,
+    "models_insufficient_coverage": 0,
+    "models_total": 15,
+    "stability_drop_tolerance": 0.02
+  },
+  "preflight_path": "outputs/stageB3/preflight/stageB3_preflight.json",
+  "split_manifest_paths": {
+    "repope": "outputs/stageB3/manifests/repope_family_split_manifest.json",
+    "pope": "outputs/stageB3/manifests/pope_family_split_manifest.json",
+    "dash-b": "outputs/stageB3/manifests/dash_b_split_manifest.json"
+  },
+  "metrics_long_path": "outputs/stageB3/reports/stageB3_metrics_long.csv",
+  "knn_scale_grid_path": "outputs/stageB3/reports/knn_scale_grid.csv",
+  "knn_selected_k_path": "outputs/stageB3/reports/knn_selected_k.csv",
+  "knn_stability_band_path": "outputs/stageB3/reports/knn_stability_band.csv",
+  "per_model_scale_stability_path": "outputs/stageB3/reports/per_model_scale_stability.csv",
+  "classifier_control_path": "outputs/stageB3/reports/classifier_control.csv",
+  "vmf_probe_summary_path": "outputs/stageB3/reports/vmf_probe_summary.csv",
+  "stage_b3_scope": "Proxy Anchor kNN scale stability at fixed 0.5 negative-budget ratio.",
+  "missing_models": [],
+  "all_panel_models_accounted_for": true
+}
