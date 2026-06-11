@@ -4,6 +4,7 @@ Stage B3 evaluates Proxy Anchor kNN scale stability at a fixed 0.5 ratio.
 Stage C has not started.
 
 - stage_c_started: false
+- detector_selected: false
 - objective: proxy_anchor
 - negative_budget_ratio: 0.5
 - verdict: scale_sensitive_panel
