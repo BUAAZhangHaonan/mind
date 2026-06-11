@@ -1,0 +1,194 @@
+{
+  "stage": "stage_b1",
+  "stage_b_started": true,
+  "stage_c_started": false,
+  "final_detector_selected": false,
+  "full_cache_manifest": "outputs/full_cache/manifests/unified_full_cache_manifest.json",
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "evaluated_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "excluded_models": {
+    "glm-4.6v-flash": "excluded because GLM answer_text is not parseable"
+  },
+  "objectives": [
+    "bce",
+    "supcon",
+    "proxy_anchor"
+  ],
+  "encoder_family": "Sphere-Traj-LSTM",
+  "primary_decision_metric": "RePOPE pooled/test geodesic kNN PR-AUC",
+  "status": {
+    "stage": "stage_b",
+    "stage_b_started": true,
+    "stage_c_started": false,
+    "panel_models": [
+      "llava-onevision-qwen2-7b-ov-hf",
+      "glm-4.6v-flash",
+      "qwen3-vl-8b",
+      "internvl3.5-8b",
+      "minicpm-v-2_6",
+      "gemma-3-12b-it",
+      "gemma-4-12b-it",
+      "qwen3.5-4b",
+      "qwen3.5-9b",
+      "phi-4-multimodal-instruct",
+      "phi-3.5-vision-instruct",
+      "gemma-3-4b-it",
+      "molmo-7b-d-0924",
+      "minicpm-v-4_5",
+      "llava-v1.5-7b",
+      "qwen2.5-vl-7b"
+    ],
+    "model_status": {
+      "llava-onevision-qwen2-7b-ov-hf": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "glm-4.6v-flash": {
+        "status": "excluded",
+        "reason": "excluded because GLM answer_text is not parseable"
+      },
+      "qwen3-vl-8b": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "internvl3.5-8b": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "minicpm-v-2_6": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "gemma-3-12b-it": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "gemma-4-12b-it": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "qwen3.5-4b": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "qwen3.5-9b": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "phi-4-multimodal-instruct": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "phi-3.5-vision-instruct": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "gemma-3-4b-it": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "molmo-7b-d-0924": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "minicpm-v-4_5": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "llava-v1.5-7b": {
+        "status": "evaluated",
+        "reason": ""
+      },
+      "qwen2.5-vl-7b": {
+        "status": "evaluated",
+        "reason": ""
+      }
+    },
+    "evaluated_models": [
+      "gemma-3-12b-it",
+      "gemma-3-4b-it",
+      "gemma-4-12b-it",
+      "internvl3.5-8b",
+      "llava-onevision-qwen2-7b-ov-hf",
+      "llava-v1.5-7b",
+      "minicpm-v-2_6",
+      "minicpm-v-4_5",
+      "molmo-7b-d-0924",
+      "phi-3.5-vision-instruct",
+      "phi-4-multimodal-instruct",
+      "qwen2.5-vl-7b",
+      "qwen3-vl-8b",
+      "qwen3.5-4b",
+      "qwen3.5-9b"
+    ],
+    "excluded_models": {
+      "glm-4.6v-flash": "excluded because GLM answer_text is not parseable"
+    },
+    "missing_models": [],
+    "all_panel_models_accounted_for": true
+  },
+  "verdict": {
+    "verdict": "winner",
+    "winner": "proxy_anchor",
+    "winners": [
+      "proxy_anchor"
+    ],
+    "objective_scores": {
+      "bce": 0.16305872621597234,
+      "supcon": 0.27952877943003,
+      "proxy_anchor": 0.33978587153078443
+    }
+  },
+  "glm_qc_json_path": "outputs/stageB/preflight/glm_answer_qc.json",
+  "glm_qc_markdown_path": "outputs/stageB/preflight/glm_answer_qc.md",
+  "split_manifest_paths": {
+    "repope": "outputs/stageB/manifests/repope_family_split_manifest.json",
+    "pope": "outputs/stageB/manifests/pope_family_split_manifest.json",
+    "dash-b": "outputs/stageB/manifests/dash_b_split_manifest.json"
+  },
+  "metrics_long_path": "outputs/stageB/reports/stageB1_metrics_long.csv",
+  "repope_knn_table_path": "outputs/stageB/reports/repope_objective_table_knn.csv",
+  "repope_vmf_table_path": "outputs/stageB/reports/repope_objective_table_vmf.csv",
+  "repope_classifier_table_path": "outputs/stageB/reports/repope_objective_table_classifier.csv",
+  "pope_secondary_table_path": "outputs/stageB/reports/pope_secondary_table.csv",
+  "dash_b_secondary_table_path": "outputs/stageB/reports/dash_b_secondary_table.csv",
+  "selected_k_path": "outputs/stageB/reports/knn_selected_k.csv",
+  "vmf_summary_path": "outputs/stageB/reports/vmf_prototype_summary.csv",
+  "per_model_objective_summary_path": "outputs/stageB/reports/per_model_objective_summary.csv",
+  "training_history_path": "outputs/stageB/reports/training_history.csv",
+  "no_stage_c_started": true,
+  "repope_cal_knn_tuning_path": "outputs/stageB/reports/repope_cal_knn_tuning.csv"
+}
