@@ -945,6 +945,10 @@ def _per_model_negative_budget_summary(
                     "reason": "",
                 }
             )
+    panel_set = {str(model) for model in panel_models}
+    for model, reason in sorted(excluded_models.items()):
+        if model not in panel_set:
+            rows.append({"model_alias": model, "status": "excluded", "reason": reason})
     return rows
 
 

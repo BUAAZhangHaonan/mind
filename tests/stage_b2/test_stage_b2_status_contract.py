@@ -92,3 +92,19 @@ def test_negative_budget_verdict_requires_complete_model_seed_coverage() -> None
     assert verdict["verdict"] == "negative_budget_stable_to_50pct"
     assert verdict["per_ratio_complete_model_count"]["0.1"] == 1
     assert verdict["baseline_complete_model_count"] == 2
+
+
+def test_per_model_summary_keeps_excluded_models_not_in_selected_subset() -> None:
+    per_model_summary = stage_b2_script_attr(
+        "stage_b2_run",
+        "_per_model_negative_budget_summary",
+    )
+
+    rows = per_model_summary(
+        [],
+        panel_models=["model-a"],
+        excluded_models={GLM_MODEL_ALIAS: "not parseable"},
+        model_failures={},
+    )
+
+    assert {"model_alias": GLM_MODEL_ALIAS, "status": "excluded", "reason": "not parseable"} in rows
