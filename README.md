@@ -64,7 +64,7 @@ Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyper
 - Stage 0 full-layer cache extraction and validation.
 - Experiment 2 full-cache unified manifest under `outputs/full_cache/manifests/`.
 - Stage A closeout diagnostics from `outputs/full_cache` to `outputs/stageA_closeout`.
-- Stage B has not started.
+- Stage B1 metric-objective diagnostics from `outputs/full_cache` to `outputs/stageB`.
 
 ## Kept Surface
 
@@ -87,6 +87,7 @@ tests/stage0/
 tests/stage_a/
 tests/full_cache/
 tests/stage_a_closeout/
+tests/stage_b/
 ```
 
 ## Environment
@@ -136,7 +137,22 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_a_closeout_run.
   --lstm-epochs 10
 ```
 
-Stage A closeout evaluates RePOPE as the primary closeout dataset, with POPE and DASH-B as secondary readouts. Stage B has not started.
+Stage A closeout evaluates RePOPE as the primary closeout dataset, with POPE and DASH-B as secondary readouts. Stage B1 starts after this closeout and does not reopen Stage A.
+
+## Stage B1
+
+Stage B compares metric-aligned objectives on the frozen hyperspherical trajectory representation. It does not choose the final detector.
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B1 keeps the object, space, and encoder family fixed. It compares `bce`, `supcon`, and `proxy_anchor` with auto-tuned geodesic kNN as the primary geometry diagnostic, vMF prototype as a secondary diagnostic, and classifier readout as a control. Stage C has not started.
 
 [1]: https://arxiv.org/abs/1901.10514
 [2]: https://arxiv.org/abs/1801.07698
