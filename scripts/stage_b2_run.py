@@ -948,8 +948,12 @@ def _per_model_negative_budget_summary(
     return rows
 
 
-def _negative_budget_verdict(metric_rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    ratio_scores: dict[float, list[float]] = defaultdict(list)
+def _negative_budget_verdict(
+    metric_rows: Sequence[Mapping[str, object]],
+    *,
+    required_seed_count: int = 3,
+) -> dict[str, object]:
+    ratio_seed_model_scores: dict[float, dict[int, dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     for row in metric_rows:
         if (
             row.get("dataset_family") == "repope"
@@ -958,12 +962,31 @@ def _negative_budget_verdict(metric_rows: Sequence[Mapping[str, object]]) -> dic
         ):
             value = _finite_float(row.get("pr_auc"))
             if value is not None:
-                ratio_scores[float(row["negative_budget_ratio"])].append(value)
-    means = {
-        f"{ratio:g}": float(np.mean(values))
-        for ratio, values in sorted(ratio_scores.items(), reverse=True)
-        if values
-    }
+                ratio = float(row["negative_budget_ratio"])
+                seed = int(float(row["negative_budget_seed"]))
+                ratio_seed_model_scores[ratio][seed][str(row["model_alias"])] = value
+
+    means: dict[str, float] = {}
+    complete_counts: dict[str, int] = {}
+    seed_counts: dict[str, int] = {}
+    model_sets: dict[float, set[str]] = {}
+    for ratio, seed_map in sorted(ratio_seed_model_scores.items(), reverse=True):
+        seed_means = [float(np.mean(list(model_scores.values()))) for model_scores in seed_map.values()]
+        if seed_means:
+            means[f"{ratio:g}"] = float(np.mean(seed_means))
+        model_seed_counts: dict[str, int] = defaultdict(int)
+        for model_scores in seed_map.values():
+            for model in model_scores:
+                model_seed_counts[model] += 1
+        complete_models = {
+            model
+            for model, count in model_seed_counts.items()
+            if count >= int(required_seed_count)
+        }
+        complete_counts[f"{ratio:g}"] = len(complete_models)
+        seed_counts[f"{ratio:g}"] = len(seed_map)
+        model_sets[ratio] = complete_models
+
     if not means or "1" not in means:
         return {
             "verdict": "negative_budget_inconclusive",
@@ -971,11 +994,15 @@ def _negative_budget_verdict(metric_rows: Sequence[Mapping[str, object]]) -> dic
             "reason": "missing baseline 1.0 ratio or no finite primary rows",
         }
     baseline = means["1"]
+    baseline_models = model_sets.get(1.0, set())
+    baseline_model_count = len(baseline_models)
     threshold = baseline * 0.95
     stable = [
         float(ratio)
         for ratio, value in means.items()
         if float(value) >= threshold
+        and complete_counts.get(ratio, 0) == baseline_model_count
+        and seed_counts.get(ratio, 0) >= int(required_seed_count)
     ]
     if not stable:
         label = "negative_budget_inconclusive"
@@ -989,8 +1016,14 @@ def _negative_budget_verdict(metric_rows: Sequence[Mapping[str, object]]) -> dic
         "baseline_ratio": 1.0,
         "baseline_repope_knn_pr_auc_mean": baseline,
         "per_ratio_repope_knn_pr_auc_mean": means,
+        "per_ratio_complete_model_count": complete_counts,
+        "per_ratio_seed_count": seed_counts,
+        "baseline_complete_model_count": baseline_model_count,
         "material_degradation_below_ratio": material,
-        "stability_rule": "stable means panel average RePOPE kNN PR-AUC is at least 95% of ratio 1.0",
+        "stability_rule": (
+            "stable means panel average RePOPE kNN PR-AUC is at least 95% of ratio 1.0 "
+            "and the ratio has complete model-by-seed coverage"
+        ),
     }
 
 
@@ -1135,6 +1168,11 @@ def _render_summary_markdown(summary: Mapping[str, object]) -> str:
             lines.append(f"- {ratio}: {value}")
     else:
         lines.append("- no finite primary rows")
+    counts = verdict.get("per_ratio_complete_model_count", {})
+    if isinstance(counts, Mapping) and counts:
+        lines.extend(["", "## Complete Model Coverage", ""])
+        for ratio, value in counts.items():
+            lines.append(f"- {ratio}: {value} complete models")
     lines.extend(["", "## Excluded Models", ""])
     excluded = summary.get("excluded_models", {})
     if isinstance(excluded, Mapping) and excluded:

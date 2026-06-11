@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from .conftest import GLM_MODEL_ALIAS, PANEL_MODELS, stage_b2_attr
+from .conftest import stage_b2_script_attr
 
 
 def test_stage_b2_summary_accounts_for_models_and_does_not_start_stage_c() -> None:
@@ -60,3 +61,34 @@ def test_stage_b2_summary_rejects_detector_language_and_missing_models() -> None
                 "verdict": {"verdict": "negative_budget_inconclusive"},
             }
         )
+
+
+def test_negative_budget_verdict_requires_complete_model_seed_coverage() -> None:
+    negative_budget_verdict = stage_b2_script_attr(
+        "stage_b2_run",
+        "_negative_budget_verdict",
+    )
+    rows = []
+    for ratio in (1.0, 0.5, 0.1):
+        for seed in (20260506, 20260507, 20260508):
+            models = ("model-a", "model-b")
+            if ratio == 0.1:
+                models = ("model-a",)
+            for model in models:
+                rows.append(
+                    {
+                        "model_alias": model,
+                        "dataset_family": "repope",
+                        "readout": "Diag-kNN-tuned",
+                        "metric_status": "passed",
+                        "negative_budget_ratio": ratio,
+                        "negative_budget_seed": seed,
+                        "pr_auc": 0.9 if ratio == 0.1 else 0.8,
+                    }
+                )
+
+    verdict = negative_budget_verdict(rows)
+
+    assert verdict["verdict"] == "negative_budget_stable_to_50pct"
+    assert verdict["per_ratio_complete_model_count"]["0.1"] == 1
+    assert verdict["baseline_complete_model_count"] == 2
