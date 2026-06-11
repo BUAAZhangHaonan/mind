@@ -158,14 +158,18 @@ def summarize_glm_qc(qc_rows: Sequence[Mapping[str, object]]) -> dict[str, objec
     """Summarize GLM QC rows."""
 
     counts = Counter("parseable" if row.get("parseable") else "nonparseable" for row in qc_rows)
-    nonparseable_rows = [dict(row) for row in qc_rows if not row.get("parseable")]
+    answer_text_counts = Counter(str(row.get("answer_text", "")) for row in qc_rows)
     return {
         "num_rows": len(qc_rows),
         "num_parseable": counts["parseable"],
         "num_nonparseable": counts["nonparseable"],
+        "parseable_rate": counts["parseable"] / len(qc_rows) if qc_rows else 0.0,
         "blocked": False,
-        "has_nonparseable_rows": bool(nonparseable_rows),
-        "nonparseable_rows": nonparseable_rows,
+        "has_nonparseable_rows": counts["nonparseable"] > 0,
+        "answer_text_top_counts": [
+            {"answer_text": text, "count": int(count)}
+            for text, count in answer_text_counts.most_common(20)
+        ],
     }
 
 
@@ -198,6 +202,7 @@ def write_glm_qc_reports(
     *,
     json_path: Path | str,
     markdown_path: Path | str,
+    max_rows: int = 100,
 ) -> dict[str, object]:
     """Write JSON and Markdown QC reports."""
 
@@ -205,7 +210,9 @@ def write_glm_qc_reports(
         "stage": "stage_b_glm_answer_qc",
         "model_alias": GLM_MODEL_ALIAS,
         "summary": summarize_glm_qc(qc_rows),
-        "rows": [dict(row) for row in qc_rows],
+        "sample_rows": [dict(row) for row in qc_rows[: int(max_rows)]],
+        "sample_row_limit": int(max_rows),
+        "all_rows_stored": len(qc_rows) <= int(max_rows),
         "cache_entries_mutated": False,
     }
     output_json = Path(json_path)
@@ -230,15 +237,17 @@ def render_glm_qc_markdown(payload: Mapping[str, object]) -> str:
         f"- parseable: {summary.get('num_parseable', 0)}",
         f"- nonparseable: {summary.get('num_nonparseable', 0)}",
         f"- cache_entries_mutated: {str(payload.get('cache_entries_mutated', False)).lower()}",
+        f"- all_rows_stored: {str(payload.get('all_rows_stored', False)).lower()}",
+        f"- sample_row_limit: {payload.get('sample_row_limit', 0)}",
         "",
-        "## Non-Parseable Rows",
+        "## Sample Rows",
         "",
         "| sample_id | reason | answer_text |",
         "| --- | --- | --- |",
     ]
-    nonparseable = summary.get("nonparseable_rows", [])
-    if isinstance(nonparseable, Sequence) and not isinstance(nonparseable, (str, bytes)):
-        for row in nonparseable:
+    sample_rows = payload.get("sample_rows", [])
+    if isinstance(sample_rows, Sequence) and not isinstance(sample_rows, (str, bytes)):
+        for row in sample_rows:
             if isinstance(row, Mapping):
                 lines.append(
                     "| {sample_id} | {reason} | {answer_text} |".format(
