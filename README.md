@@ -49,7 +49,7 @@ Mainline methods must use pre-generation full-layer trajectories, hyperspherical
 The frozen stage order is:
 
 - Stage A: close representation pretests by comparing `Sphere-Traj-LSTM` with `Raw-Traj-LSTM`.
-- Stage B: test metric-aligned objectives and then measure negative-budget efficiency on the selected objective.
+- Stage B: test metric-aligned objectives, measure negative-budget efficiency on the selected objective, and check kNN scale robustness.
 - Stage C: compare support estimators on frozen hyperspherical embeddings.
 - Stage D: test cross-domain and domain-expansion behavior.
 
@@ -66,6 +66,7 @@ Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyper
 - Stage A closeout diagnostics from `outputs/full_cache` to `outputs/stageA_closeout`.
 - Stage B1 metric-objective diagnostics from `outputs/full_cache` to `outputs/stageB`.
 - Stage B2 Proxy Anchor negative-budget diagnostics from `outputs/full_cache` to `outputs/stageB2`.
+- Stage B3 Proxy Anchor kNN scale-robustness diagnostics from `outputs/full_cache` to `outputs/stageB3`.
 
 ## Kept Surface
 
@@ -169,6 +170,21 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b2_run.py \
 ```
 
 Stage B2 uses ratios `1.00`, `0.50`, `0.25`, and `0.10`, with seeds `20260506`, `20260507`, and `20260508`. Auto-tuned geodesic kNN is the primary geometry diagnostic. The classifier readout is a control, and the single-vMF prototype is a tertiary diagnostic. Stage B2 does not choose the final detector, and Stage C has not started.
+
+## Stage B3
+
+Stage B3 freezes `Sphere-Traj-LSTM + Proxy Anchor` at the 50% hard-negative budget and checks whether the geodesic kNN signal is stable across local neighborhood scales.
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b3_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB3 \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B3 evaluates the fixed k grid `{1, 2, 4, 8, 16, 32, 64}` after bank-size clipping. It reports selected `k`, scale-grid curves, stability bands, classifier control, and a single-vMF probe. It does not choose the final detector, and Stage C has not started.
 
 [1]: https://arxiv.org/abs/1901.10514
 [2]: https://arxiv.org/abs/1801.07698

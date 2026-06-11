@@ -85,3 +85,31 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b2_run.py \
 ```
 
 Stage B2 writes reports under `outputs/stageB2/`. Those reports measure negative-budget efficiency for the frozen Proxy Anchor trajectory representation only.
+
+## Stage B3 Geodesic kNN Scale Robustness
+
+Stage B3 freezes the Stage B1/B2 decisions:
+
+- objective: `proxy_anchor`;
+- encoder: `Sphere-Traj-LSTM`;
+- hard-negative budget: `0.50`;
+- seeds: `20260506`, `20260507`, `20260508`.
+
+It varies only the geodesic kNN neighborhood scale. The candidate set remains `{1, 2, 4, 8, 16, 32, 64}`, clipped by the correct-bank size and `floor(sqrt(num_bank_correct))`. For each model and seed, `k*` is selected on RePOPE calibration rows. Stage B3 then evaluates every valid `k` on RePOPE, POPE, and DASH-B test rows.
+
+The stability band is defined on RePOPE pooled/test. It contains the maximal contiguous set of `k` values around the selected `k*` whose PR-AUC is within `0.02` of the PR-AUC at `k*`. Per-model verdicts are `scale_stable`, `scale_sensitive`, or `insufficient_coverage`. The panel verdict is one of `scale_stable_panel`, `scale_mixed_panel`, or `scale_sensitive_panel`.
+
+Classifier control remains a lightweight logistic readout. It is only a sanity check that the embedding has not collapsed. The single-vMF probe remains tertiary. Stage B3 does not choose the final detector and does not start Stage C.
+
+Canonical command:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b3_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB3 \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B3 writes reports under `outputs/stageB3/`. Those reports test readout scale robustness for the frozen Proxy Anchor representation only.
