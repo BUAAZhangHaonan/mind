@@ -10,7 +10,7 @@ Stage B compares metric-aligned objectives on the frozen hyperspherical trajecto
 - RePOPE is the primary development dataset.
 - POPE is a secondary compatibility readout.
 - DASH-B is a secondary transfer descriptor.
-- Stage C has not started in Stage B1.
+- Stage C has not started in Stage B.
 
 ## Stage B1 Objective Set
 
@@ -50,3 +50,38 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b_run.py \
 ```
 
 Stage B1 writes reports under `outputs/stageB/`. Those reports identify objective-family behavior only. They do not validate the final MIND detector.
+
+## Stage B2 Negative-Budget Efficiency
+
+Stage B2 freezes the Stage B1 winner, `proxy_anchor`, and varies only the hard-hallucination negative budget. It does not compare new objective families.
+
+The required ratios are:
+
+- `1.00`
+- `0.50`
+- `0.25`
+- `0.10`
+
+The fixed seeds are `20260506`, `20260507`, and `20260508`. Correct samples from `encoder_train` are not subsampled. Hard hallucination samples are subsampled without replacement. If a model-ratio pair would leave fewer than 20 hard negatives, that pair is skipped and reported.
+
+Stage B2 uses the same frozen object, space, and encoder:
+
+- pre-generation full-layer trajectory;
+- layerwise hyperspherical normalization;
+- `Sphere-Traj-LSTM`;
+- `Proxy Anchor` objective only.
+
+The primary diagnostic remains auto-tuned geodesic kNN on RePOPE pooled/test. The selected `k` is chosen on RePOPE calibration rows and then frozen for test evaluation. The classifier readout is a secondary control, not the decision signal. The single-vMF prototype remains a tertiary diagnostic. Stage B2 does not choose the final detector and does not start Stage C.
+
+Canonical command:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b2_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB2 \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B2 writes reports under `outputs/stageB2/`. Those reports measure negative-budget efficiency for the frozen Proxy Anchor trajectory representation only.

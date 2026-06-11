@@ -49,7 +49,7 @@ Mainline methods must use pre-generation full-layer trajectories, hyperspherical
 The frozen stage order is:
 
 - Stage A: close representation pretests by comparing `Sphere-Traj-LSTM` with `Raw-Traj-LSTM`.
-- Stage B: test metric-aligned objectives such as SupCon, Proxy Anchor, and angular-margin losses.
+- Stage B: test metric-aligned objectives and then measure negative-budget efficiency on the selected objective.
 - Stage C: compare support estimators on frozen hyperspherical embeddings.
 - Stage D: test cross-domain and domain-expansion behavior.
 
@@ -65,6 +65,7 @@ Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyper
 - Experiment 2 full-cache unified manifest under `outputs/full_cache/manifests/`.
 - Stage A closeout diagnostics from `outputs/full_cache` to `outputs/stageA_closeout`.
 - Stage B1 metric-objective diagnostics from `outputs/full_cache` to `outputs/stageB`.
+- Stage B2 Proxy Anchor negative-budget diagnostics from `outputs/full_cache` to `outputs/stageB2`.
 
 ## Kept Surface
 
@@ -153,6 +154,21 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b_run.py \
 ```
 
 Stage B1 keeps the object, space, and encoder family fixed. It compares `bce`, `supcon`, and `proxy_anchor` with auto-tuned geodesic kNN as the primary geometry diagnostic, vMF prototype as a secondary diagnostic, and classifier readout as a control. Stage C has not started.
+
+## Stage B2
+
+Stage B2 freezes `Proxy Anchor` and varies only the hard-hallucination negative budget.
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b2_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB2 \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B2 uses ratios `1.00`, `0.50`, `0.25`, and `0.10`, with seeds `20260506`, `20260507`, and `20260508`. Auto-tuned geodesic kNN is the primary geometry diagnostic. The classifier readout is a control, and the single-vMF prototype is a tertiary diagnostic. Stage B2 does not choose the final detector, and Stage C has not started.
 
 [1]: https://arxiv.org/abs/1901.10514
 [2]: https://arxiv.org/abs/1801.07698
