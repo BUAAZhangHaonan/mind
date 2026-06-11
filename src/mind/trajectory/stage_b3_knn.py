@@ -63,14 +63,18 @@ def build_stage_b3_knn_scale_grid(
     bank_mask = (split_array == "bank") & (label_array == 0)
     eval_mask = split_array == str(metric_split)
     num_bank_correct = int(bank_mask.sum())
-    candidate_values = tuple(
-        int(value)
-        for value in (
-            candidates
-            if candidates is not None
-            else generate_stage_b3_k_candidates(num_bank_correct=num_bank_correct)
-        )
-    )
+    valid_for_bank = set(generate_stage_b3_k_candidates(num_bank_correct=num_bank_correct))
+    if candidates is None:
+        candidate_values = tuple(sorted(valid_for_bank))
+    else:
+        supplied = tuple(int(value) for value in candidates)
+        invalid_grid_values = [value for value in supplied if value not in ALLOWED_STAGE_B3_K_VALUES]
+        if invalid_grid_values:
+            raise ValueError(
+                "Stage B3 k candidate is outside the allowed grid: "
+                + ", ".join(str(value) for value in invalid_grid_values)
+            )
+        candidate_values = tuple(value for value in supplied if value in valid_for_bank)
     if not candidate_values:
         raise ValueError("Stage B3 kNN scale grid has no k candidates")
 

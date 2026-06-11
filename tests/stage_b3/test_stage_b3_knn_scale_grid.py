@@ -36,8 +36,8 @@ def test_stage_b3_knn_scale_grid_evaluates_every_candidate_on_repope_cal() -> No
         ],
         dtype=np.float32,
     )
-    labels = np.asarray([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.int64)
-    splits = np.asarray(["bank", "bank", "cal", "cal", "cal", "cal", "test", "test"])
+    labels = np.asarray([0, 0, 1, 0, 0, 1, 0, 1], dtype=np.int64)
+    splits = np.asarray(["bank", "bank", "cal", "cal", "bank", "cal", "bank", "cal"])
 
     rows = build_stage_b3_knn_scale_grid(
         model_alias="model-a",
@@ -56,6 +56,31 @@ def test_stage_b3_knn_scale_grid_evaluates_every_candidate_on_repope_cal() -> No
     assert {row["all_k_evaluated"] for row in rows} == {True}
     assert {row["objective"] for row in rows} == {"proxy_anchor"}
     assert all(row["metric_status"] == "passed" for row in rows)
+
+
+def test_stage_b3_knn_scale_grid_clips_supplied_candidates_by_current_bank() -> None:
+    build_stage_b3_knn_scale_grid = stage_b3_attr(
+        "stage_b3_knn",
+        "build_stage_b3_knn_scale_grid",
+    )
+    embeddings = np.eye(8, dtype=np.float32)
+    labels = np.asarray([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.int64)
+    splits = np.asarray(["bank", "bank", "test", "test", "test", "test", "test", "test"])
+
+    rows = build_stage_b3_knn_scale_grid(
+        model_alias="model-a",
+        dataset_family="dash-b",
+        labels=labels,
+        splits=splits,
+        embeddings=embeddings,
+        seed=20260506,
+        ratio=0.5,
+        candidates=(1, 2, 4, 8, 16, 32),
+        metric_split="test",
+    )
+
+    assert [row["k"] for row in rows] == [1]
+    assert {row["num_bank_correct"] for row in rows} == {2}
 
 
 def test_stage_b3_knn_selects_from_repope_cal_and_rejects_invalid_candidate() -> None:

@@ -129,3 +129,38 @@ def test_stage_b3_runner_paths_match_preflight_manifest_report_layout() -> None:
     assert paths["preflight_json"].as_posix() == "outputs/stageB3/preflight/stageB3_preflight.json"
     assert paths["metrics_long"].as_posix() == "outputs/stageB3/reports/stageB3_metrics_long.csv"
     assert paths["summary_json"].as_posix() == "outputs/stageB3/reports/STAGE_B3_SUMMARY.json"
+
+
+def test_stage_b3_metric_row_uses_repope_training_budget_counts() -> None:
+    import numpy as np
+
+    metric_row = stage_b3_script_attr("stage_b3_run", "_metric_row")
+    row = metric_row(
+        model_alias="model-a",
+        dataset_family="pope",
+        readout="Diag-Classifier",
+        labels=np.asarray([0, 1, 0, 1], dtype=np.int64),
+        splits=np.asarray(["encoder_train", "encoder_train", "test", "test"]),
+        scores=np.asarray([0.1, 0.9, 0.2, 0.8], dtype=np.float32),
+        entries=[
+            {"stage_b3_split": "encoder_train", "parsed_answer": 0, "label": 0},
+            {"stage_b3_split": "encoder_train", "parsed_answer": 1, "label": 0},
+            {"stage_b3_split": "test", "parsed_answer": 0, "label": 0},
+            {"stage_b3_split": "test", "parsed_answer": 1, "label": 0},
+        ],
+        all_entries=[],
+        bootstrap=2,
+        seed=20260506,
+        ratio=0.5,
+        selected_k="",
+        num_bank_correct=7,
+        train_correct_available=100,
+        train_hard_available=40,
+        used_hard=20,
+    )
+
+    assert row["training_dataset_family"] == "repope"
+    assert row["num_encoder_train_correct"] == 100
+    assert row["num_encoder_train_hard_hallucination_available"] == 40
+    assert row["num_encoder_train_hard_hallucination_used"] == 20
+    assert row["num_encoder_train"] == 120

@@ -291,6 +291,8 @@ def _run_model_stage_b3(
     trajectories_train_all = np.asarray(repope["trajectories"], dtype=np.float32)[train_mask]
     num_layers = int(trajectories_train_all.shape[1])
     hidden_dim = int(trajectories_train_all.shape[2])
+    train_correct_available = int(np.sum(train_labels_all == 0))
+    train_hard_available = int(np.sum(train_labels_all == 1))
 
     metric_rows: list[dict[str, object]] = []
     scale_grid_rows: list[dict[str, object]] = []
@@ -389,6 +391,8 @@ def _run_model_stage_b3(
                 seed=int(seed),
                 ratio=float(ratio),
                 used_hard=used_hard,
+                train_correct_available=train_correct_available,
+                train_hard_available=train_hard_available,
             )
             metric_rows.extend(rows)
             vmf_summary_rows.append(
@@ -539,6 +543,8 @@ def _evaluate_family(
     seed: int,
     ratio: float,
     used_hard: int,
+    train_correct_available: int,
+    train_hard_available: int,
 ) -> list[dict[str, object]]:
     labels = np.asarray(data["labels"], dtype=np.int64)
     splits = np.asarray(data["splits"])
@@ -561,6 +567,8 @@ def _evaluate_family(
             selected_k="",
             num_bank_correct=int(bank_mask.sum()),
             used_hard=used_hard,
+            train_correct_available=train_correct_available,
+            train_hard_available=train_hard_available,
         )
     ]
     knn_scores = _knn_scores_for_selected(embeddings=embeddings, labels=labels, splits=splits, selected_k=selected_k)
@@ -580,6 +588,8 @@ def _evaluate_family(
             selected_k=int(selected_k),
             num_bank_correct=int(bank_mask.sum()),
             used_hard=used_hard,
+            train_correct_available=train_correct_available,
+            train_hard_available=train_hard_available,
         )
     )
     prototype = fit_single_vmf_prototype(embeddings[bank_mask])
@@ -600,6 +610,8 @@ def _evaluate_family(
             selected_k="",
             num_bank_correct=int(bank_mask.sum()),
             used_hard=used_hard,
+            train_correct_available=train_correct_available,
+            train_hard_available=train_hard_available,
         )
     )
     return rows
@@ -637,6 +649,8 @@ def _metric_row(
     ratio: float,
     selected_k: int | str,
     num_bank_correct: int,
+    train_correct_available: int,
+    train_hard_available: int,
     used_hard: int,
 ) -> dict[str, object]:
     mask = splits == "test"
@@ -660,10 +674,6 @@ def _metric_row(
         ci_low = {name: intervals[name].lower for name in ("pr_auc", "roc_auc")}
         ci_high = {name: intervals[name].upper for name in ("pr_auc", "roc_auc")}
     excluded = _excluded_counts(all_entries, split="test")
-    train_mask = splits == "encoder_train"
-    train_labels = labels[train_mask]
-    available_correct = int(np.sum(train_labels == 0))
-    available_hard = int(np.sum(train_labels == 1))
     return {
         "model_alias": model_alias,
         "model_name": model_alias,
@@ -692,10 +702,11 @@ def _metric_row(
         "num_test_correct": int(np.sum(y == 0)),
         "num_test_hard_hallucination": int(np.sum(y == 1)),
         "num_bank_correct": int(num_bank_correct),
-        "num_encoder_train_correct": available_correct,
-        "num_encoder_train_hard_hallucination_available": available_hard,
+        "training_dataset_family": "repope",
+        "num_encoder_train_correct": int(train_correct_available),
+        "num_encoder_train_hard_hallucination_available": int(train_hard_available),
         "num_encoder_train_hard_hallucination_used": int(used_hard),
-        "num_encoder_train": int(available_correct + used_hard),
+        "num_encoder_train": int(train_correct_available + used_hard),
         "num_encoder_train_hallucination": int(used_hard),
         "num_excluded_false_negative": excluded["false_negative"],
         "num_excluded_parsed_none": excluded["parsed_none"],
@@ -763,6 +774,7 @@ def _failed_metric_rows(
                         "num_test_correct": 0,
                         "num_test_hard_hallucination": 0,
                         "num_bank_correct": 0,
+                        "training_dataset_family": "repope",
                     }
                 )
     return rows
@@ -907,6 +919,7 @@ def _render_summary_markdown(summary: Mapping[str, object]) -> str:
         "Stage C has not started.",
         "",
         f"- stage_c_started: {str(summary.get('stage_c_started', False)).lower()}",
+        f"- detector_selected: {str(summary.get('detector_selected', False)).lower()}",
         f"- objective: {summary.get('objective', STAGE_B3_OBJECTIVE)}",
         f"- negative_budget_ratio: {summary.get('negative_budget_ratio', REQUIRED_STAGE_B3_RATIO)}",
         f"- verdict: {verdict.get('verdict', 'scale_stability_inconclusive')}",
