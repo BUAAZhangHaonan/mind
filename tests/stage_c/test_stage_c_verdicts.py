@@ -54,6 +54,59 @@ def test_stage_c_summary_rejects_stage_d_started() -> None:
         )
 
 
+def test_stage_c_summary_rejects_non_glm_exclusions() -> None:
+    validate = stage_c_attr("stage_c_status", "validate_stage_c_summary")
+
+    with pytest.raises(ValueError, match="Only GLM"):
+        validate(
+            {
+                "stage": "stage_c",
+                "stage_d_started": False,
+                "objective": "proxy_anchor",
+                "negative_budget_ratio": 0.5,
+                "negative_budget_seeds": [20260506, 20260507, 20260508],
+                "panel_models": ["glm-4.6v-flash", "model-a"],
+                "evaluated_models": [],
+                "excluded_models": {
+                    "glm-4.6v-flash": "answer format incompatible with frozen yes/no population rule",
+                    "model-a": "RuntimeError: failed",
+                },
+                "failed_models": {},
+                "skipped_models": {},
+                "support_winner": "single_vmf",
+                "comparator_status": "matches_supervised",
+                "panel_verdict": "parametric_winner",
+            }
+        )
+
+
+def test_stage_c_summary_allows_failed_and_skipped_panel_models_without_dropping_them() -> None:
+    validate = stage_c_attr("stage_c_status", "validate_stage_c_summary")
+
+    payload = validate(
+        {
+            "stage": "stage_c",
+            "stage_d_started": False,
+            "objective": "proxy_anchor",
+            "negative_budget_ratio": 0.5,
+            "negative_budget_seeds": [20260506, 20260507, 20260508],
+            "panel_models": ["glm-4.6v-flash", "model-a", "model-b", "model-c"],
+            "evaluated_models": ["model-a"],
+            "excluded_models": {
+                "glm-4.6v-flash": "answer format incompatible with frozen yes/no population rule",
+            },
+            "failed_models": {"model-b": "RuntimeError: failed"},
+            "skipped_models": {"model-c": "not requested in this run"},
+            "support_winner": "single_vmf",
+            "comparator_status": "matches_supervised",
+            "panel_verdict": "parametric_winner",
+        }
+    )
+
+    assert payload["failed_models"] == {"model-b": "RuntimeError: failed"}
+    assert payload["skipped_models"] == {"model-c": "not requested in this run"}
+
+
 def _metric(model: str, method: str, pr_auc: float, roc_auc: float) -> dict[str, object]:
     return {
         "model_alias": model,

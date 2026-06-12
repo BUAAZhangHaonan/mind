@@ -7,7 +7,12 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from .stage_c_manifest import REQUIRED_STAGE_C_RATIO, REQUIRED_STAGE_C_SEEDS, STAGE_C_OBJECTIVE
+from .stage_c_manifest import (
+    REQUIRED_STAGE_C_RATIO,
+    REQUIRED_STAGE_C_SEEDS,
+    STAGE_C_GLM_EXCLUSION_REASON,
+    STAGE_C_OBJECTIVE,
+)
 from .stage_c_support import STAGE_C_METHODS, STAGE_C_SUPPORT_METHODS
 
 
@@ -89,10 +94,14 @@ def build_stage_c_per_model_summary(
     *,
     panel_models: Sequence[str],
     excluded_models: Mapping[str, object] | None = None,
+    failed_models: Mapping[str, object] | None = None,
+    skipped_models: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     """Build one Stage C detector summary row per panel model."""
 
     excluded = {str(model): str(reason) for model, reason in dict(excluded_models or {}).items()}
+    failed = {str(model): str(reason) for model, reason in dict(failed_models or {}).items()}
+    skipped = {str(model): str(reason) for model, reason in dict(skipped_models or {}).items()}
     output: list[dict[str, object]] = []
     rows = [dict(row) for row in metric_rows]
     for model in [str(value) for value in panel_models]:
@@ -105,6 +114,30 @@ def build_stage_c_per_model_summary(
                     "comparator_status": "insufficient_coverage",
                     "panel_verdict": "insufficient_coverage",
                     "reason": excluded[model],
+                }
+            )
+            continue
+        if model in failed:
+            output.append(
+                {
+                    "model_alias": model,
+                    "status": "failed",
+                    "support_winner": "insufficient_coverage",
+                    "comparator_status": "insufficient_coverage",
+                    "panel_verdict": "insufficient_coverage",
+                    "reason": failed[model],
+                }
+            )
+            continue
+        if model in skipped:
+            output.append(
+                {
+                    "model_alias": model,
+                    "status": "skipped",
+                    "support_winner": "insufficient_coverage",
+                    "comparator_status": "insufficient_coverage",
+                    "panel_verdict": "insufficient_coverage",
+                    "reason": skipped[model],
                 }
             )
             continue
@@ -169,9 +202,19 @@ def validate_stage_c_summary(summary: Mapping[str, object]) -> dict[str, object]
     panel_models = [str(model) for model in payload.get("panel_models", [])]
     evaluated_models = [str(model) for model in payload.get("evaluated_models", [])]
     excluded = {str(model): str(reason) for model, reason in dict(payload.get("excluded_models", {}) or {}).items()}
-    missing = sorted(set(panel_models) - set(evaluated_models) - set(excluded))
+    invalid_exclusions = sorted(model for model in excluded if model != "glm-4.6v-flash")
+    if invalid_exclusions:
+        raise ValueError("Only GLM may be excluded from Stage C metrics: " + ", ".join(invalid_exclusions))
+    if "glm-4.6v-flash" in excluded and excluded["glm-4.6v-flash"] != STAGE_C_GLM_EXCLUSION_REASON:
+        raise ValueError("GLM Stage C exclusion reason does not match the frozen answer-format reason")
+    failed = {str(model): str(reason) for model, reason in dict(payload.get("failed_models", {}) or {}).items()}
+    skipped = {str(model): str(reason) for model, reason in dict(payload.get("skipped_models", {}) or {}).items()}
+    missing = sorted(set(panel_models) - set(evaluated_models) - set(excluded) - set(failed) - set(skipped))
     if missing:
         raise ValueError("missing Stage C panel model(s): " + ", ".join(missing))
+    invalid_status_models = sorted((set(excluded) | set(failed) | set(skipped)) - set(panel_models))
+    if invalid_status_models:
+        raise ValueError("Stage C status model(s) are not in the panel: " + ", ".join(invalid_status_models))
     return payload
 
 

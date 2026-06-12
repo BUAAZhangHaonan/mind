@@ -135,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = load_stage_c_panel(args.full_cache_root)
     panel_models = [str(row["model_alias"]) for row in manifest.models]
     model_rows = _select_model_rows(manifest.models, requested=args.models)
+    summary_panel = _build_stage_c_summary_panel(panel_models=panel_models, requested_models=args.models)
     split_maps = _build_splits(
         manifest.models[0],
         full_cache_root=args.full_cache_root,
@@ -194,12 +195,17 @@ def main(argv: list[str] | None = None) -> int:
         logistic_selected_rows.extend(result["logistic_selected_rows"])
 
     status_exclusions = dict(excluded_models)
-    status_exclusions.update(model_failures)
-    panel_for_summary = [str(row["model_alias"]) for row in model_rows]
+    skipped_models = {
+        str(model): str(reason)
+        for model, reason in dict(summary_panel["skipped_models"]).items()
+    }
+    panel_for_summary = [str(model) for model in summary_panel["panel_models"]]
     per_model_rows = build_stage_c_per_model_summary(
         metric_rows,
         panel_models=panel_for_summary,
         excluded_models=status_exclusions,
+        failed_models=model_failures,
+        skipped_models=skipped_models,
     )
     detector_panel = summarize_stage_c_detector_panel(metric_rows)
     evaluated_models = sorted(
@@ -228,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
             "panel_models": panel_for_summary,
             "evaluated_models": evaluated_models,
             "excluded_models": status_exclusions,
+            "failed_models": model_failures,
+            "skipped_models": skipped_models,
             "objective": STAGE_C_OBJECTIVE,
             "encoder_family": STAGE_B_ENCODER_FAMILY,
             "negative_budget_ratio": REQUIRED_STAGE_C_RATIO,
@@ -941,6 +949,23 @@ def _select_model_rows(model_rows: Sequence[Mapping[str, object]], *, requested:
     if missing:
         raise SystemExit("requested Stage C models not found in unified manifest: " + ", ".join(missing))
     return selected
+
+
+def _build_stage_c_summary_panel(
+    *,
+    panel_models: Sequence[str],
+    requested_models: Sequence[str] | None,
+) -> dict[str, object]:
+    panel = [str(model) for model in panel_models]
+    if not requested_models:
+        return {"panel_models": panel, "skipped_models": {}}
+    requested = {str(model) for model in requested_models}
+    skipped = {
+        model: "not requested in this run"
+        for model in panel
+        if model not in requested and model != GLM_MODEL_ALIAS
+    }
+    return {"panel_models": panel, "skipped_models": skipped}
 
 
 def _filter_rows(rows: Sequence[Mapping[str, object]], *, dataset: str) -> list[dict[str, object]]:
