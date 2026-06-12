@@ -1,0 +1,17 @@
+model_alias,status,support_winner,comparator_status,panel_verdict,support_winner_mean_pr_auc,logistic_mean_pr_auc,reason
+llava-onevision-qwen2-7b-ov-hf,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.5289188260854488,0.42505415765521165,
+glm-4.6v-flash,excluded,insufficient_coverage,insufficient_coverage,insufficient_coverage,,,answer format incompatible with frozen yes/no population rule
+qwen3-vl-8b,evaluated,radius_ball,trails_supervised,nonparametric_winner,0.44424450119656117,0.5074244923392023,
+internvl3.5-8b,evaluated,single_vmf,trails_supervised,parametric_winner,0.6047279263774318,0.6188470368161408,
+minicpm-v-2_6,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.3143753428907547,0.2936348178307619,
+gemma-3-12b-it,evaluated,single_vmf,matches_supervised,parametric_winner,0.7212415137813201,0.7199227306361354,
+gemma-4-12b-it,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.46540096789161733,0.14836705264752478,
+qwen3.5-4b,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.4443270287586451,0.2912266568946546,
+qwen3.5-9b,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.40937306859905925,0.2490648968605708,
+phi-4-multimodal-instruct,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.416290601897928,0.35531351373000714,
+phi-3.5-vision-instruct,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.5386436878719908,0.43246662316305784,
+gemma-3-4b-it,evaluated,single_vmf,matches_supervised,parametric_winner,0.610128393119763,0.6158380036508843,
+molmo-7b-d-0924,evaluated,mixture_vmf,beats_supervised,parametric_winner,0.4571751535996076,0.4425888939778962,
+minicpm-v-4_5,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.5165866503903259,0.36090668890948935,
+llava-v1.5-7b,evaluated,radius_ball,trails_supervised,nonparametric_winner,0.4071689260012418,0.477881907363049,
+qwen2.5-vl-7b,evaluated,radius_ball,beats_supervised,nonparametric_winner,0.3986619912412674,0.19033359227418403,

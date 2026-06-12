@@ -1,0 +1,107 @@
+{
+  "stage": "stage_c",
+  "stage_d_started": false,
+  "full_cache_manifest": "outputs/full_cache/manifests/unified_full_cache_manifest.json",
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "evaluated_models": [
+    "gemma-3-12b-it",
+    "gemma-3-4b-it",
+    "gemma-4-12b-it",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "llava-v1.5-7b",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+    "molmo-7b-d-0924",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b"
+  ],
+  "excluded_models": {
+    "glm-4.6v-flash": "answer format incompatible with frozen yes/no population rule"
+  },
+  "failed_models": {},
+  "skipped_models": {},
+  "objective": "proxy_anchor",
+  "encoder_family": "Sphere-Traj-LSTM",
+  "negative_budget_ratio": 0.5,
+  "negative_budget_seeds": [
+    20260506,
+    20260507,
+    20260508
+  ],
+  "support_winner": "radius_ball",
+  "comparator_status": "beats_supervised",
+  "panel_verdict": "nonparametric_winner",
+  "support_winner_mean_pr_auc": 0.4673199432069357,
+  "logistic_mean_pr_auc": 0.40859140431658464,
+  "support_minus_logistic_pr_auc": 0.05872853889035107,
+  "method_stats": {
+    "radius_ball": {
+      "mean_pr_auc": 0.4673199432069357,
+      "mean_roc_auc": 0.820791826923934,
+      "num_rows": 45,
+      "win_count": 29
+    },
+    "knn": {
+      "mean_pr_auc": 0.3428996425272656,
+      "mean_roc_auc": 0.8797910657520807,
+      "num_rows": 45,
+      "win_count": 3
+    },
+    "single_vmf": {
+      "mean_pr_auc": 0.38671412682939077,
+      "mean_roc_auc": 0.9134626853325789,
+      "num_rows": 45,
+      "win_count": 11
+    },
+    "mixture_vmf": {
+      "mean_pr_auc": 0.3191087938752709,
+      "mean_roc_auc": 0.7421538025035679,
+      "num_rows": 45,
+      "win_count": 2
+    },
+    "logistic": {
+      "mean_pr_auc": 0.40859140431658464,
+      "mean_roc_auc": 0.9174937748779814,
+      "num_rows": 45,
+      "win_count": 0
+    }
+  },
+  "preflight_path": "outputs/stageC/preflight/stageC_preflight.json",
+  "split_manifest_paths": {
+    "repope": "outputs/stageC/manifests/repope_family_split_manifest.json",
+    "pope": "outputs/stageC/manifests/pope_family_split_manifest.json",
+    "dash-b": "outputs/stageC/manifests/dash_b_split_manifest.json"
+  },
+  "metrics_long_path": "outputs/stageC/reports/stageC_metrics_long.csv",
+  "repope_main_table_path": "outputs/stageC/reports/repope_main_table.csv",
+  "pope_secondary_table_path": "outputs/stageC/reports/pope_secondary_table.csv",
+  "dash_b_secondary_table_path": "outputs/stageC/reports/dash_b_secondary_table.csv",
+  "knn_selected_k_path": "outputs/stageC/reports/knn_selected_k.csv",
+  "radius_ball_selected_rho_path": "outputs/stageC/reports/radius_ball_selected_rho.csv",
+  "vmf_selected_k_path": "outputs/stageC/reports/vmf_selected_k.csv",
+  "logistic_selected_c_path": "outputs/stageC/reports/logistic_selected_c.csv",
+  "per_model_detector_summary_path": "outputs/stageC/reports/per_model_detector_summary.csv",
+  "stage_c_scope": "Detector-family selection on frozen Sphere-Traj-LSTM Proxy Anchor embeddings. Stage D has not started."
+}
