@@ -1,0 +1,17 @@
+readout,model,role,objective,negative_budget_ratio,negative_budget_seeds,uses_large_mlp,primary_decision_signal,model_alias,status,reason
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,llava-onevision-qwen2-7b-ov-hf,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,glm-4.6v-flash,excluded,answer format incompatible with frozen yes/no population rule
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,qwen3-vl-8b,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,internvl3.5-8b,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,minicpm-v-2_6,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,gemma-3-12b-it,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,gemma-4-12b-it,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,qwen3.5-4b,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,qwen3.5-9b,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,phi-4-multimodal-instruct,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,phi-3.5-vision-instruct,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,gemma-3-4b-it,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,molmo-7b-d-0924,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,minicpm-v-4_5,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,llava-v1.5-7b,evaluated,
+Diag-Classifier,logistic_regression,secondary_control,proxy_anchor,0.5,"[20260506, 20260507, 20260508]",False,False,qwen2.5-vl-7b,evaluated,

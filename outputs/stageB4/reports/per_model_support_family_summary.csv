@@ -1,0 +1,17 @@
+model_alias,verdict,status,median_parametric_pr_auc,median_nonparametric_pr_auc,median_pr_auc_delta_parametric_minus_nonparametric,num_valid_runs,required_seed_count,pr_auc_margin,valid_seeds,selected_parametric_support_families,best_parametric_support_families,reason
+llava-onevision-qwen2-7b-ov-hf,mixed_support,evaluated,0.4179420968695417,0.43507344057398467,-0.01713134370444297,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+glm-4.6v-flash,insufficient_coverage,excluded,,,,0,3,0.02,,,,answer format incompatible with frozen yes/no population rule
+qwen3-vl-8b,parametric_preferred,evaluated,0.5442748795189642,0.44569737688913424,0.09857750262983,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+internvl3.5-8b,mixed_support,evaluated,0.5892663403602666,0.5933079426010972,-0.004041602240830611,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+minicpm-v-2_6,parametric_preferred,evaluated,0.23649702285904695,0.0589562538098508,0.17754076904919613,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+gemma-3-12b-it,parametric_preferred,evaluated,0.736456434544031,0.6831157864223585,0.053340648121672496,3,3,0.02,20260506;20260507;20260508,mixture_vmf:2;single_vmf:1,mixture_vmf:2;single_vmf:1,
+gemma-4-12b-it,mixed_support,evaluated,0.22062268580349298,0.2051050203433144,0.015517665460178576,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+qwen3.5-4b,parametric_preferred,evaluated,0.3032548728875506,0.19333063688559277,0.10992423600195783,3,3,0.02,20260506;20260507;20260508,mixture_vmf:1;single_vmf:2,mixture_vmf:1;single_vmf:2,
+qwen3.5-9b,parametric_preferred,evaluated,0.25752900905873205,0.15720403229916083,0.10032497675957122,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+phi-4-multimodal-instruct,mixed_support,evaluated,0.3681597766079722,0.36963087021361385,-0.0014710936056416268,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+phi-3.5-vision-instruct,parametric_preferred,evaluated,0.46305369239174676,0.44253770335914405,0.02051598903260271,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+gemma-3-4b-it,parametric_preferred,evaluated,0.6026776164934454,0.5267333173833945,0.07594429911005096,3,3,0.02,20260506;20260507;20260508,mixture_vmf:1;single_vmf:2,mixture_vmf:1;single_vmf:2,
+molmo-7b-d-0924,parametric_preferred,evaluated,0.4668673741908014,0.3344737991458404,0.13239357504496096,3,3,0.02,20260506;20260507;20260508,mixture_vmf:1;single_vmf:2,mixture_vmf:1;single_vmf:2,
+minicpm-v-4_5,parametric_preferred,evaluated,0.36777815211422027,0.29405610004853855,0.07372205206568172,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,
+llava-v1.5-7b,parametric_preferred,evaluated,0.425192303078308,0.3408339447056635,0.08435835837264449,3,3,0.02,20260506;20260507;20260508,mixture_vmf:1;single_vmf:2,mixture_vmf:1;single_vmf:2,
+qwen2.5-vl-7b,mixed_support,evaluated,0.13623052570036434,0.12172995789202556,0.014500567808338777,3,3,0.02,20260506;20260507;20260508,single_vmf:3,single_vmf:3,

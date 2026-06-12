@@ -1,0 +1,83 @@
+{
+  "stage": "stage_b4",
+  "stage_c_started": false,
+  "detector_selected": false,
+  "full_cache_manifest": "outputs/full_cache/manifests/unified_full_cache_manifest.json",
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "evaluated_models": [
+    "gemma-3-12b-it",
+    "gemma-3-4b-it",
+    "gemma-4-12b-it",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "llava-v1.5-7b",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+    "molmo-7b-d-0924",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b"
+  ],
+  "excluded_models": {
+    "glm-4.6v-flash": "answer format incompatible with frozen yes/no population rule"
+  },
+  "objective": "proxy_anchor",
+  "encoder_family": "Sphere-Traj-LSTM",
+  "negative_budget_ratio": 0.5,
+  "negative_budget_seeds": [
+    20260506,
+    20260507,
+    20260508
+  ],
+  "primary_decision_metric": "RePOPE test support-family PR-AUC at frozen B4 plan",
+  "verdict": {
+    "verdict": "parametric_support_preferred",
+    "models_parametric_preferred": 10,
+    "models_nonparametric_preferred": 0,
+    "models_mixed_support": 5,
+    "models_insufficient_coverage": 1,
+    "models_total": 16
+  },
+  "preflight_path": "outputs/stageB4/preflight/stageB4_preflight.json",
+  "split_manifest_paths": {
+    "repope": "outputs/stageB4/manifests/repope_family_split_manifest.json",
+    "pope": "outputs/stageB4/manifests/pope_family_split_manifest.json",
+    "dash-b": "outputs/stageB4/manifests/dash_b_split_manifest.json"
+  },
+  "metrics_long_path": "outputs/stageB4/reports/stageB4_metrics_long.csv",
+  "repope_support_family_knn_path": "outputs/stageB4/reports/repope_support_family_knn.csv",
+  "repope_support_family_single_vmf_path": "outputs/stageB4/reports/repope_support_family_single_vmf.csv",
+  "repope_support_family_mixture_vmf_path": "outputs/stageB4/reports/repope_support_family_mixture_vmf.csv",
+  "pope_secondary_table_path": "outputs/stageB4/reports/pope_secondary_table.csv",
+  "dash_b_secondary_table_path": "outputs/stageB4/reports/dash_b_secondary_table.csv",
+  "knn_scale_grid_path": "outputs/stageB4/reports/knn_scale_grid.csv",
+  "knn_selected_k_path": "outputs/stageB4/reports/knn_selected_k.csv",
+  "knn_stability_band_path": "outputs/stageB4/reports/knn_stability_band.csv",
+  "vmf_selected_k_path": "outputs/stageB4/reports/vmf_selected_k.csv",
+  "vmf_stability_band_path": "outputs/stageB4/reports/vmf_stability_band.csv",
+  "per_model_support_family_summary_path": "outputs/stageB4/reports/per_model_support_family_summary.csv",
+  "classifier_control_path": "outputs/stageB4/reports/classifier_control.csv",
+  "stage_b4_scope": "Proxy Anchor support-family diagnostics at fixed 0.5 negative-budget ratio.",
+  "missing_models": [],
+  "all_panel_models_accounted_for": true
+}
