@@ -50,7 +50,7 @@ The frozen stage order is:
 
 - Stage A: close representation pretests by comparing `Sphere-Traj-LSTM` with `Raw-Traj-LSTM`.
 - Stage B: test metric-aligned objectives, measure negative-budget efficiency on the selected objective, check kNN scale robustness, and compare parametric hyperspherical support diagnostics.
-- Stage C: compare support estimators on frozen hyperspherical embeddings.
+- Stage C: compare support estimators on frozen hyperspherical embeddings without retraining representation families.
 - Stage D: test cross-domain and domain-expansion behavior.
 
 Stage A is closed after Raw-Traj-LSTM is added and the closeout summary is written. Later stages must not reopen Stage A except if this frozen theory note is explicitly revised.
@@ -68,6 +68,7 @@ Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyper
 - Stage B2 Proxy Anchor negative-budget diagnostics from `outputs/full_cache` to `outputs/stageB2`.
 - Stage B3 Proxy Anchor kNN scale-robustness diagnostics from `outputs/full_cache` to `outputs/stageB3`.
 - Stage B4 Proxy Anchor vMF support-family diagnostics from `outputs/full_cache` to `outputs/stageB4`.
+- Stage C support-estimator comparison from `outputs/full_cache` to `outputs/stageC`.
 
 ## Kept Surface
 
@@ -91,6 +92,10 @@ tests/stage_a/
 tests/full_cache/
 tests/stage_a_closeout/
 tests/stage_b/
+tests/stage_b2/
+tests/stage_b3/
+tests/stage_b4/
+tests/stage_c/
 ```
 
 ## Environment
@@ -201,6 +206,21 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b4_run.py \
 ```
 
 Stage B4 keeps kNN as the nonparametric reference and evaluates single-vMF plus mixture-vMF as parametric hyperspherical support diagnostics. Mixture `K` is selected on RePOPE calibration rows only from `{1, 2, 4, 8}`. The classifier readout is a control. Stage B4 does not choose the final detector, and Stage C has not started.
+
+## Stage C
+
+Stage C freezes `Sphere-Traj-LSTM + Proxy Anchor` at the 50% hard-negative budget and compares support estimators on the frozen hyperspherical embedding.
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_c_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageC \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage C compares exactly `single_vmf`, `mixture_vmf`, `radius_ball`, `knn`, and `logistic`. The first four are support estimators. `logistic` is only the supervised comparator. All hyperparameters are selected on RePOPE calibration rows only, then frozen for RePOPE, POPE, and DASH-B test rows. Stage D has not started.
 
 [1]: https://arxiv.org/abs/1901.10514
 [2]: https://arxiv.org/abs/1801.07698

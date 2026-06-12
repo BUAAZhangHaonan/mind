@@ -154,4 +154,4 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b4_run.py \
   --device cuda:0
 ```
 
-Stage B4 compares support-family diagnostics only. It does not choose the final detector and does not start Stage C.
+Stage B4 compares support-family diagnostics only. It does not choose the final detector. Stage C starts after B4 and keeps the B4 representation decisions frozen.
