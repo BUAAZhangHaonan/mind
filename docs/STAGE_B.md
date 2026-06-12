@@ -113,3 +113,45 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b3_run.py \
 ```
 
 Stage B3 writes reports under `outputs/stageB3/`. Those reports test readout scale robustness for the frozen Proxy Anchor representation only.
+
+## Stage B4 Parametric Hyperspherical Support Diagnostics
+
+Stage B4 freezes the Stage B1-B3 decisions:
+
+- objective: `proxy_anchor`;
+- encoder: `Sphere-Traj-LSTM`;
+- hard-negative budget: `0.50`;
+- seeds: `20260506`, `20260507`, `20260508`.
+
+It compares support-family diagnostics on the frozen embedding. The nonparametric reference is selected geodesic kNN. The parametric family is vMF support:
+
+- single-vMF, fitted as one mean direction and concentration proxy on the correct bank;
+- mixture-vMF, fitted with directional initialization and EM-style updates on the correct bank;
+- candidate mixture component counts `{1, 2, 4, 8}`, with `K=1` equivalent to single-vMF.
+
+Mixture `K` is selected only on RePOPE calibration rows by PR-AUC, then ROC-AUC, then smaller `K`. The selected vMF family is then frozen for RePOPE, POPE, and DASH-B test rows. kNN remains the nonparametric reference and is not renamed as a one-class method.
+
+The vMF stability band is defined on RePOPE pooled/test. It contains the maximal contiguous set of `K` values around the selected `K*` whose PR-AUC is within `0.02` of the PR-AUC at `K*`. The classifier readout remains a lightweight logistic control only. It does not decide the support-family verdict.
+
+Stage B4 writes:
+
+- `outputs/stageB4/reports/repope_support_family_knn.csv`;
+- `outputs/stageB4/reports/repope_support_family_single_vmf.csv`;
+- `outputs/stageB4/reports/repope_support_family_mixture_vmf.csv`;
+- `outputs/stageB4/reports/vmf_selected_k.csv`;
+- `outputs/stageB4/reports/vmf_stability_band.csv`;
+- `outputs/stageB4/reports/per_model_support_family_summary.csv`;
+- `outputs/stageB4/reports/STAGE_B4_SUMMARY.md`.
+
+Canonical command:
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b4_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB4 \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B4 compares support-family diagnostics only. It does not choose the final detector and does not start Stage C.

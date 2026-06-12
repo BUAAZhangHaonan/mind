@@ -49,7 +49,7 @@ Mainline methods must use pre-generation full-layer trajectories, hyperspherical
 The frozen stage order is:
 
 - Stage A: close representation pretests by comparing `Sphere-Traj-LSTM` with `Raw-Traj-LSTM`.
-- Stage B: test metric-aligned objectives, measure negative-budget efficiency on the selected objective, and check kNN scale robustness.
+- Stage B: test metric-aligned objectives, measure negative-budget efficiency on the selected objective, check kNN scale robustness, and compare parametric hyperspherical support diagnostics.
 - Stage C: compare support estimators on frozen hyperspherical embeddings.
 - Stage D: test cross-domain and domain-expansion behavior.
 
@@ -67,6 +67,7 @@ Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyper
 - Stage B1 metric-objective diagnostics from `outputs/full_cache` to `outputs/stageB`.
 - Stage B2 Proxy Anchor negative-budget diagnostics from `outputs/full_cache` to `outputs/stageB2`.
 - Stage B3 Proxy Anchor kNN scale-robustness diagnostics from `outputs/full_cache` to `outputs/stageB3`.
+- Stage B4 Proxy Anchor vMF support-family diagnostics from `outputs/full_cache` to `outputs/stageB4`.
 
 ## Kept Surface
 
@@ -185,6 +186,21 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_b3_run.py \
 ```
 
 Stage B3 evaluates the fixed k grid `{1, 2, 4, 8, 16, 32, 64}` after bank-size clipping. It reports selected `k`, scale-grid curves, stability bands, classifier control, and a single-vMF probe. It does not choose the final detector, and Stage C has not started.
+
+## Stage B4
+
+Stage B4 freezes `Sphere-Traj-LSTM + Proxy Anchor` at the 50% hard-negative budget and compares support-family diagnostics on the frozen hyperspherical embedding.
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_b4_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageB4 \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage B4 keeps kNN as the nonparametric reference and evaluates single-vMF plus mixture-vMF as parametric hyperspherical support diagnostics. Mixture `K` is selected on RePOPE calibration rows only from `{1, 2, 4, 8}`. The classifier readout is a control. Stage B4 does not choose the final detector, and Stage C has not started.
 
 [1]: https://arxiv.org/abs/1901.10514
 [2]: https://arxiv.org/abs/1801.07698
