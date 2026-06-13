@@ -1,0 +1,17 @@
+model_alias,status,mind_main_mean_pr_auc,reason
+llava-onevision-qwen2-7b-ov-hf,evaluated,0.62617928196556,
+glm-4.6v-flash,excluded,,answer format incompatible with frozen yes/no population rule
+qwen3-vl-8b,evaluated,0.4904564363287176,
+internvl3.5-8b,evaluated,0.5337170698068655,
+minicpm-v-2_6,evaluated,0.3912724723904948,
+gemma-3-12b-it,evaluated,0.6911308294034014,
+gemma-4-12b-it,evaluated,0.5243114261770171,
+qwen3.5-4b,evaluated,0.5670671474140508,
+qwen3.5-9b,evaluated,0.5579192140820628,
+phi-4-multimodal-instruct,evaluated,0.5672264450007168,
+phi-3.5-vision-instruct,evaluated,0.6092214528193686,
+gemma-3-4b-it,evaluated,0.6056692324742305,
+molmo-7b-d-0924,evaluated,0.5054481331348964,
+minicpm-v-4_5,evaluated,0.5701080662896213,
+llava-v1.5-7b,evaluated,0.5375822713540593,
+qwen2.5-vl-7b,evaluated,0.46061252736695674,

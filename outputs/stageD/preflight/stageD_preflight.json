@@ -1,0 +1,82 @@
+{
+  "stage": "stage_d",
+  "panel_manifest_path": "outputs/full_cache/manifests/unified_full_cache_manifest.json",
+  "manifest_source": "unified_full_cache_manifest",
+  "total_panel_models": 16,
+  "evaluable_models": 15,
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "excluded_models": {
+    "glm-4.6v-flash": "answer format incompatible with frozen yes/no population rule"
+  },
+  "split_readiness": "ready",
+  "cache_root_readiness": "ready",
+  "fixed_objective": "proxy_anchor",
+  "fixed_encoder_family": "Sphere-Traj-LSTM",
+  "fixed_negative_budget_ratio": 0.5,
+  "fixed_seeds": [
+    20260506,
+    20260507,
+    20260508
+  ],
+  "frozen_main_method": "Sphere-Traj-LSTM + Proxy Anchor + radius_ball",
+  "frozen_param_method": "Sphere-Traj-LSTM + Proxy Anchor + single-vMF",
+  "stage_e_started": false,
+  "method_redesigned": false,
+  "plan": {
+    "objective": "proxy_anchor",
+    "encoder_family": "Sphere-Traj-LSTM",
+    "negative_budget_ratio": 0.5,
+    "seeds": [
+      20260506,
+      20260507,
+      20260508
+    ],
+    "main_detector": "radius_ball",
+    "param_detector": "single_vmf"
+  },
+  "protocols": [
+    "repope_to_repope",
+    "repope_to_pope",
+    "repope_to_dashb",
+    "pope_to_dashb"
+  ],
+  "baseline_tiers": {
+    "tierA": [
+      "MIND-main",
+      "MIND-param",
+      "logistic(z)",
+      "final-hidden linear probe",
+      "output-confidence",
+      "HALP-lite"
+    ],
+    "tierB": [
+      "official HALP"
+    ],
+    "roles": {
+      "MIND-main": "frozen_main_method",
+      "MIND-param": "parametric_secondary",
+      "logistic(z)": "same_embedding_supervised_comparator",
+      "final-hidden linear probe": "traditional_linear_probe",
+      "output-confidence": "cheap_gray_box_baseline",
+      "HALP-lite": "fair_same_constraint_baseline",
+      "official HALP": "ceiling_broader_access"
+    }
+  }
+}
