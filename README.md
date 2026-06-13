@@ -1,6 +1,6 @@
 # MIND
 
-`master` contains the completed Stage 0 line, the Experiment 2 full-cache asset surface, and the frozen Stage A closeout line.
+`master` contains the completed Stage 0 line, the Experiment 2 full-cache asset surface, the frozen Stage A closeout line, and the Stage B/C evaluation surface.
 
 For local model asset registry and smoke validation details, see `docs/ASSET_REGISTRY.md`.
 
@@ -69,6 +69,7 @@ Background references: Hyperspherical Prototype Networks [1], ArcFace [2], Hyper
 - Stage B3 Proxy Anchor kNN scale-robustness diagnostics from `outputs/full_cache` to `outputs/stageB3`.
 - Stage B4 Proxy Anchor vMF support-family diagnostics from `outputs/full_cache` to `outputs/stageB4`.
 - Stage C support-estimator comparison from `outputs/full_cache` to `outputs/stageC`.
+- Stage D frozen-method cross-domain, domain-expansion, and model-family evaluation from `outputs/full_cache` to `outputs/stageD`.
 
 ## Kept Surface
 
@@ -96,6 +97,7 @@ tests/stage_b2/
 tests/stage_b3/
 tests/stage_b4/
 tests/stage_c/
+tests/stage_d/
 ```
 
 ## Environment
@@ -221,6 +223,21 @@ conda run --no-capture-output -n mind-py311 python scripts/stage_c_run.py \
 ```
 
 Stage C compares exactly `single_vmf`, `mixture_vmf`, `radius_ball`, `knn`, and `logistic`. The first four are support estimators. `logistic` is only the supervised comparator. All hyperparameters are selected on RePOPE calibration rows only, then frozen for RePOPE, POPE, and DASH-B test rows. Stage D has not started.
+
+## Stage D
+
+Stage D evaluates the frozen method. It does not redesign the object, space, encoder, objective, negative-budget ratio, or detector family.
+
+```bash
+conda run --no-capture-output -n mind-py311 python scripts/stage_d_run.py \
+  --full-cache-root outputs/full_cache \
+  --output-root outputs/stageD \
+  --bootstrap 1000 \
+  --epochs 20 \
+  --device cuda:0
+```
+
+Stage D runs three evaluation tasks: cross-domain dataset generalization, Tier A/Tier B domain-expansion comparison, and model-family analysis. Tier A is the fair same-constraint table. Tier B is a ceiling or broader-access table. `glm-4.6v-flash` stays in the panel summary but remains excluded from population-based quantitative metrics while its answer format is incompatible with the frozen yes/no rule.
 
 [1]: https://arxiv.org/abs/1901.10514
 [2]: https://arxiv.org/abs/1801.07698
