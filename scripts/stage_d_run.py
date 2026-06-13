@@ -17,7 +17,7 @@ sys.path.insert(0, str(REPO_SRC))
 
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
-from sklearn.linear_model import LogisticRegression  # noqa: E402
+from sklearn.linear_model import SGDClassifier  # noqa: E402
 from sklearn.pipeline import Pipeline  # noqa: E402
 from sklearn.preprocessing import StandardScaler  # noqa: E402
 
@@ -569,17 +569,20 @@ def _fit_linear_models(features: np.ndarray, labels: np.ndarray, *, seed: int) -
         raise ValueError("linear baseline labels must contain both classes")
     models: dict[float, Pipeline] = {}
     for c_value in (0.1, 1.0, 10.0):
+        alpha = 1.0 / (float(c_value) * max(int(labels.size), 1))
         model = Pipeline(
             steps=[
                 ("scaler", StandardScaler()),
                 (
                     "classifier",
-                    LogisticRegression(
-                        C=float(c_value),
+                    SGDClassifier(
+                        loss="log_loss",
+                        penalty="l2",
+                        alpha=alpha,
                         class_weight="balanced",
-                        max_iter=1000,
+                        max_iter=300,
                         random_state=int(seed),
-                        solver="lbfgs",
+                        tol=1e-3,
                     ),
                 ),
             ]
