@@ -1,0 +1,104 @@
+{
+  "stage": "stage_b2",
+  "stage_c_started": false,
+  "detector_selected": false,
+  "full_cache_manifest": "outputs/full_cache/manifests/unified_full_cache_manifest.json",
+  "panel_models": [
+    "llava-onevision-qwen2-7b-ov-hf",
+    "glm-4.6v-flash",
+    "qwen3-vl-8b",
+    "internvl3.5-8b",
+    "minicpm-v-2_6",
+    "gemma-3-12b-it",
+    "gemma-4-12b-it",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "phi-4-multimodal-instruct",
+    "phi-3.5-vision-instruct",
+    "gemma-3-4b-it",
+    "molmo-7b-d-0924",
+    "minicpm-v-4_5",
+    "llava-v1.5-7b",
+    "qwen2.5-vl-7b"
+  ],
+  "evaluated_models": [
+    "gemma-3-12b-it",
+    "gemma-3-4b-it",
+    "gemma-4-12b-it",
+    "internvl3.5-8b",
+    "llava-onevision-qwen2-7b-ov-hf",
+    "llava-v1.5-7b",
+    "minicpm-v-2_6",
+    "minicpm-v-4_5",
+    "molmo-7b-d-0924",
+    "phi-3.5-vision-instruct",
+    "phi-4-multimodal-instruct",
+    "qwen2.5-vl-7b",
+    "qwen3-vl-8b",
+    "qwen3.5-4b",
+    "qwen3.5-9b"
+  ],
+  "excluded_models": {
+    "glm-4.6v-flash": "GLM answer_text is not parseable under frozen yes/no population rules"
+  },
+  "objective": "proxy_anchor",
+  "encoder_family": "Sphere-Traj-LSTM",
+  "negative_budget_ratios": [
+    1.0,
+    0.5,
+    0.25,
+    0.1
+  ],
+  "negative_budget_seeds": [
+    20260506,
+    20260507,
+    20260508
+  ],
+  "primary_decision_metric": "RePOPE pooled/test auto-tuned geodesic kNN PR-AUC",
+  "verdict": {
+    "verdict": "negative_budget_stable_to_50pct",
+    "baseline_ratio": 1.0,
+    "baseline_repope_knn_pr_auc_mean": 0.34804843710005784,
+    "per_ratio_repope_knn_pr_auc_mean": {
+      "1": 0.34804843710005784,
+      "0.5": 0.33258777664026556,
+      "0.25": 0.3443204262789325,
+      "0.1": 0.48015931854377575
+    },
+    "per_ratio_complete_model_count": {
+      "1": 15,
+      "0.5": 15,
+      "0.25": 14,
+      "0.1": 5
+    },
+    "per_ratio_seed_count": {
+      "1": 3,
+      "0.5": 3,
+      "0.25": 3,
+      "0.1": 3
+    },
+    "baseline_complete_model_count": 15,
+    "material_degradation_below_ratio": 0.25,
+    "stability_rule": "stable means panel average RePOPE kNN PR-AUC is at least 95% of ratio 1.0 and the ratio has complete model-by-seed coverage"
+  },
+  "preflight_path": "outputs/stageB2/preflight/stageB2_preflight.json",
+  "split_manifest_paths": {
+    "repope": "outputs/stageB2/manifests/repope_family_split_manifest.json",
+    "pope": "outputs/stageB2/manifests/pope_family_split_manifest.json",
+    "dash-b": "outputs/stageB2/manifests/dash_b_split_manifest.json"
+  },
+  "metrics_long_path": "outputs/stageB2/reports/stageB2_metrics_long.csv",
+  "repope_knn_table_path": "outputs/stageB2/reports/repope_negative_budget_knn.csv",
+  "repope_classifier_table_path": "outputs/stageB2/reports/repope_negative_budget_classifier.csv",
+  "repope_vmf_table_path": "outputs/stageB2/reports/repope_negative_budget_vmf.csv",
+  "pope_secondary_table_path": "outputs/stageB2/reports/pope_secondary_table.csv",
+  "dash_b_secondary_table_path": "outputs/stageB2/reports/dash_b_secondary_table.csv",
+  "selected_k_path": "outputs/stageB2/reports/knn_selected_k.csv",
+  "vmf_summary_path": "outputs/stageB2/reports/vmf_prototype_summary.csv",
+  "per_model_negative_budget_summary_path": "outputs/stageB2/reports/per_model_negative_budget_summary.csv",
+  "budget_skips_path": "outputs/stageB2/reports/budget_skips.csv",
+  "training_history_path": "outputs/stageB2/reports/training_history.csv",
+  "stage_b2_scope": "Proxy Anchor negative-budget efficiency only; no final detector selected.",
+  "missing_models": [],
+  "all_panel_models_accounted_for": true
+}
